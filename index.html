@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Borrowed Time</title>
+  </head>
+  <body>
+    <div id="game"></div>
+
+    <div id="underwater"></div>
+    <div id="crosshair"></div>
+
+    <div id="weather-panel" class="panel">
+      <div class="now"><span id="w-icon"></span><span id="w-label"></span><span id="w-temp"></span></div>
+      <div id="w-wind"></div>
+      <div id="w-sea"></div>
+      <div id="w-forecast"></div>
+    </div>
+
+    <div id="climate-panel" class="panel">
+      <div id="clock"></div>
+      <div id="solar"></div>
+      <div id="sea"></div>
+    </div>
+
+    <div id="bars">
+      <div id="depth"></div>
+      <div id="oxygen" class="bar"><div id="oxygen-fill"></div></div>
+      <div id="health" class="bar"><div id="health-fill"></div></div>
+    </div>
+
+    <div id="message"></div>
+    <pre id="perf"></pre>
+
+    <div id="overlay">
+      <div class="card">
+        <h1>BORROWED TIME</h1>
+        <p class="tagline">The sun is swelling. Earth is running out of time.</p>
+        <span class="play">Click to play</span>
+        <div class="controls">
+          <b>WASD</b><span>Move / swim</span>
+          <b>Mouse</b><span>Look</span>
+          <b>Shift</b><span>Sprint / swim fast</span>
+          <b>Space</b><span>Jump / swim up</span>
+          <b>C</b><span>Dive</span>
+          <b>M</b><span>Mute</span>
+          <b>P</b><span>Performance readout</span>
+          <b>Esc</b><span>Pause</span>
+        </div>
+        <div class="settings">
+          <span>Water quality</span>
+          <button type="button" data-water="low">Low</button>
+          <button type="button" data-water="medium">Medium</button>
+          <button type="button" data-water="high">High</button>
+        </div>
+        <div class="dev">Dev keys: 1–7 force weather (4 again for a worse storm) · G rogue wave set · T skip an hour · K fast-forward climate</div>
+        <div id="gpu-tip"></div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
