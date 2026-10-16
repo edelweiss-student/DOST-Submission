@@ -78,8 +78,11 @@ files.
   from the crown, so a crown shades as one soft volume. Light shows through
   leaves from behind, leaves flutter, and whole trees sway with the wind.
   Trees within 38 m (Medium) are full 3D. Beyond that they are billboards,
-  baked at startup with colour and normals so they light like the real tree,
-  and dithered into view with no popping.
+  baked at startup from 8 directions with colour and normals so they light
+  like the real tree. Each billboard shows the side that matches how its
+  tree is turned and takes the same crown shadows, so the 5 m dithered
+  hand-over from 3D to billboard lines up instead of leaving see-through
+  gaps.
 - **Grass, bushes and rocks.** 3D grass clumps around the player, placed
   entirely on the GPU, bend in rolling gusts and part around your feet.
   Boulders are noise-shaped and cut into facets, with rock texture and moss

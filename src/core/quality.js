@@ -11,19 +11,19 @@ export const TIERS = {
   low: {
     label: 'Low', pixelRatio: 0.8, antialias: false, minScale: 0.6,
     texSize: 256, anisotropy: 2, shadowMap: 0, shadowRange: 0, shadowTaps: 1, shadowEvery: 1,
-    nearTrees: 26, grass: { radius: 0, spacing: 1 }, cloudShadows: false, impostorTile: 128,
+    nearTrees: 26, grass: { radius: 0, spacing: 1 }, cloudShadows: false, impostorTile: 96,
   },
   // Integrated graphics such as Intel Graphics / Iris Xe.
   medium: {
     label: 'Medium', pixelRatio: 1.25, antialias: true, minScale: 0.7,
     texSize: 512, anisotropy: 4, shadowMap: 1024, shadowRange: 38, shadowTaps: 1, shadowEvery: 2,
-    nearTrees: 38, grass: { radius: 16, spacing: 0.46 }, cloudShadows: true, impostorTile: 256,
+    nearTrees: 38, grass: { radius: 16, spacing: 0.46 }, cloudShadows: true, impostorTile: 160,
   },
   // Dedicated GPUs such as GeForce RTX.
   high: {
     label: 'High', pixelRatio: 1.5, antialias: true, minScale: 0.75,
     texSize: 1024, anisotropy: 8, shadowMap: 2048, shadowRange: 64, shadowTaps: 4, shadowEvery: 1,
-    nearTrees: 64, grass: { radius: 28, spacing: 0.36 }, cloudShadows: true, impostorTile: 256,
+    nearTrees: 64, grass: { radius: 28, spacing: 0.36 }, cloudShadows: true, impostorTile: 192,
   },
 };
 

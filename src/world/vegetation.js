@@ -30,7 +30,7 @@ export class ColliderGrid {
 }
 
 const TREE_SWAY = 0.6;    // bark and leaves must match so leaves stay on their branches
-const LOD_BAND = 8;       // metres over which near trees dither into billboards
+const LOD_BAND = 5;       // metres over which near trees dither into billboards
 
 // Instanced objects split into square chunks, so the GPU only gets the
 // chunks that are in view (frustum culling per chunk) and within
@@ -129,11 +129,14 @@ export function rockGeometries() {
   return [buildRock(41), buildRock(42), buildRock(43)];
 }
 
-// Billboards for distant trees: each variant is drawn once, from the side,
-// into an atlas of colour and normals. A billboard turns to face the camera
-// and is lit with the baked normals, so it shades like the real tree.
+// Billboards for distant trees: each variant is drawn from IMPOSTOR_VIEWS
+// directions around it into an atlas of colour and normals (one row per
+// variant). A billboard turns to face the camera and shows the view that
+// matches how its tree is turned, so it lines up with the 3D tree it hands
+// over to; it is lit with the baked normals, so it shades like the real tree.
+const IMPOSTOR_VIEWS = 8;
 function bakeImpostors(renderer, variants, tile, anisotropy) {
-  const cols = 3, rows = Math.ceil(variants.length / cols);
+  const cols = IMPOSTOR_VIEWS, rows = variants.length;
   const tw = tile, th = tile * 2;
   const W = cols * tw, H = rows * th;
   const options = {
@@ -148,7 +151,7 @@ function bakeImpostors(renderer, variants, tile, anisotropy) {
     vertexShader: /* glsl */ `
       varying vec2 vUv; varying vec3 vN; varying float vAO;
       void main() {
-        vUv = uv; vN = normal; vAO = color.r;
+        vUv = uv; vN = mat3( modelMatrix ) * normal; vAO = color.r;
         gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
       }`,
     fragmentShader: /* glsl */ `
@@ -177,30 +180,46 @@ function bakeImpostors(renderer, variants, tile, anisotropy) {
 
   const camera = new THREE.OrthographicCamera();
   const prevTarget = renderer.getRenderTarget();
-  variants.forEach((v, i) => {
+  // Mipmaps are built on the first render (which sets up their storage) and
+  // the last, not after every tile.
+  const lastRender = rows * cols - 1;
+  variants.forEach((v, row) => {
+    // Wide enough for the tree turned to any side, with a little transparent
+    // padding so mipmaps don't bleed between neighbouring views.
+    let radius = 0;
+    for (const g of [v.geometry.bark, v.geometry.leaves]) {
+      const p = g.attributes.position;
+      for (let i = 0; i < p.count; i++) radius = Math.max(radius, Math.hypot(p.getX(i), p.getZ(i)));
+    }
     const box = new THREE.Box3().union(v.geometry.bark.boundingBox).union(v.geometry.leaves.boundingBox);
-    const half = Math.max(-box.min.x, box.max.x, -box.min.z, box.max.z) + 0.1;
-    let w = 2 * half, h = box.max.y - box.min.y + 0.2;
+    let w = 2 * radius * 1.08 + 0.2, h = (box.max.y - box.min.y) * 1.04 + 0.2;
     if (w * 2 > h) h = w * 2; else w = h / 2;
     const y0 = box.min.y - 0.1;
     Object.assign(camera, { left: -w / 2, right: w / 2, bottom: y0, top: y0 + h, near: 0.1, far: 400 });
     camera.position.set(0, 0, 200);
     camera.updateProjectionMatrix();
-    const col = i % cols, row = Math.floor(i / cols);
-    v.impostor = { w, h, y0, tile: [(col * tw) / W, (row * th) / H, tw / W, th / H] };
+    // Tile row for this variant; the view (column) is picked per billboard.
+    v.impostor = { w, h, y0, tile: [0, (row * th) / H, tw / W, th / H] };
 
     targets.forEach((target, mode) => {
       const scene = new THREE.Scene();
-      scene.add(backgrounds[mode]);
-      scene.add(new THREE.Mesh(v.geometry.bark, partMaterial(v.barkMap, false, mode)));
-      scene.add(new THREE.Mesh(v.geometry.leaves, partMaterial(v.leafMap, true, mode)));
-      target.viewport.set(col * tw, row * th, tw, th);
-      target.scissor.set(col * tw, row * th, tw, th);
-      target.scissorTest = true;
-      renderer.setRenderTarget(target);
-      renderer.clear();
-      renderer.render(scene, camera);
-      scene.traverse((o) => { if (o.material && !backgrounds.includes(o)) o.material.dispose(); });
+      const bark = new THREE.Mesh(v.geometry.bark, partMaterial(v.barkMap, false, mode));
+      const leaves = new THREE.Mesh(v.geometry.leaves, partMaterial(v.leafMap, true, mode));
+      scene.add(backgrounds[mode], bark, leaves);
+      for (let k = 0; k < cols; k++) {
+        // View k shows the tree turned by k steps, seen from +z.
+        bark.rotation.y = leaves.rotation.y = (k / cols) * Math.PI * 2;
+        const n = row * cols + k;
+        target.texture.generateMipmaps = n === 0 || n === lastRender;
+        target.viewport.set(k * tw, row * th, tw, th);
+        target.scissor.set(k * tw, row * th, tw, th);
+        target.scissorTest = true;
+        renderer.setRenderTarget(target);
+        renderer.clear();
+        renderer.render(scene, camera);
+      }
+      bark.material.dispose();
+      leaves.material.dispose();
     });
   });
   renderer.setRenderTarget(prevTarget);
@@ -208,13 +227,12 @@ function bakeImpostors(renderer, variants, tile, anisotropy) {
 }
 
 const IMPOSTOR_VERTEX_HEAD = /* glsl */ `
-attribute vec4 iPos;     // base x, y, z, mirror (+-1)
-attribute vec4 iSize;    // width, height, unused, quad bottom relative to the tree base
-attribute vec4 iTile;    // atlas offset, scale
+attribute vec3 iPos;     // tree base x, y, z
+attribute vec4 iSize;    // width, height, how the tree is turned (radians), quad bottom relative to the tree base
+attribute vec4 iTile;    // atlas row: offset, tile size
 attribute vec3 iColor;
 varying vec3 vImpRight;
 varying vec3 vImpFwd;
-varying float vImpFlip;
 varying vec3 vImpColor;
 varying float vImpLod;
 `;
@@ -234,23 +252,23 @@ float gust = sin( uTime * ( 1.3 + uWind * 2.0 ) + ph ) * 0.6 + sin( uTime * 3.1 
 float swayH = max( impH + iSize.w, 0.0 );
 impPos.xz += uWindDir * ( ${TREE_SWAY.toFixed(2)} * swayH * swayH * 0.008 ) * ( uWind * 0.8 + gust * ( 0.2 + 0.6 * uWind ) );
 if ( impLod > 0.999 ) impPos = impBase;   // the 3D tree is fully shown here
+// The baked view that shows the tree from the side the camera sees it.
+float impView = mod( floor( ( iSize.z - atan( toCam.x, toCam.y ) ) * ${(IMPOSTOR_VIEWS / (Math.PI * 2)).toFixed(6)} + 0.5 ), ${IMPOSTOR_VIEWS.toFixed(1)} );
 vImpRight = impRight;
 vImpFwd = impFwd;
-vImpFlip = iPos.w;
 vImpColor = iColor;
 vImpLod = impLod;
 `;
 const IMPOSTOR_BEGIN = /* glsl */ `
 vec3 transformed = impPos;
 #ifdef USE_MAP
-  vMapUv = iTile.xy + vec2( iPos.w > 0.0 ? uv.x : 1.0 - uv.x, uv.y ) * iTile.zw;
+  vMapUv = iTile.xy + vec2( impView + uv.x, uv.y ) * iTile.zw;
 #endif
 `;
 const IMPOSTOR_FRAGMENT_HEAD = /* glsl */ `
 uniform sampler2D tImpNormal;
 varying vec3 vImpRight;
 varying vec3 vImpFwd;
-varying float vImpFlip;
 varying vec3 vImpColor;
 varying float vImpLod;
 vec3 btImpW;
@@ -260,7 +278,6 @@ if ( btDither( gl_FragCoord.xy ) < vImpLod ) discard;
 diffuseColor.rgb *= vImpColor;
 {
   vec3 nb = texture2D( tImpNormal, vMapUv ).xyz * 2.0 - 1.0;
-  nb.x *= vImpFlip;
   btImpW = normalize( vImpRight * nb.x + vec3( 0.0, nb.y, 0.0 ) + vImpFwd * nb.z );
   btUpN = btImpW.y;
 }
@@ -446,7 +463,7 @@ export function createVegetation(scene, terrain, rng, renderer, { quality, groun
   // kept sorted nearest first (re-sorted every few metres of movement).
   const atlas = bakeImpostors(renderer, variants, quality.impostorTile, aniso);
   const all = variants.flatMap((v) => v.trees.map((t) => ({ t, v, d2: 0 })));
-  const iPos = new Float32Array(all.length * 4), iSize = new Float32Array(all.length * 4);
+  const iPos = new Float32Array(all.length * 3), iSize = new Float32Array(all.length * 4);
   const iTile = new Float32Array(all.length * 4), iColor = new Float32Array(all.length * 3);
   const impLast = new THREE.Vector2(1e9, 1e9);
   function sortImpostors(camera) {
@@ -457,10 +474,11 @@ export function createVegetation(scene, terrain, rng, renderer, { quality, groun
     all.sort((a, b) => a.d2 - b.d2);
     all.forEach(({ t, v }, i) => {
       const imp = v.impostor, sy = t.s * t.sy;
-      iPos[i * 4] = t.x; iPos[i * 4 + 1] = t.y + imp.y0 * sy; iPos[i * 4 + 2] = t.z;
-      iPos[i * 4 + 3] = (t.tone * 997) % 1 < 0.5 ? 1 : -1;
-      // x: width, y: height, w: height of the quad's base above the tree's base (for sway).
-      iSize[i * 4] = imp.w * t.s; iSize[i * 4 + 1] = imp.h * sy; iSize[i * 4 + 3] = imp.y0 * sy;
+      iPos[i * 3] = t.x; iPos[i * 3 + 1] = t.y + imp.y0 * sy; iPos[i * 3 + 2] = t.z;
+      // Width, height, the tree's turn (to pick the matching view), and the
+      // height of the quad's base above the tree's base (for sway).
+      iSize[i * 4] = imp.w * t.s; iSize[i * 4 + 1] = imp.h * sy;
+      iSize[i * 4 + 2] = t.rot; iSize[i * 4 + 3] = imp.y0 * sy;
       iTile.set(imp.tile, i * 4);
       iColor.set(v.colors.subarray(t.index * 3, t.index * 3 + 3), i * 3);
     });
@@ -473,14 +491,14 @@ export function createVegetation(scene, terrain, rng, renderer, { quality, groun
   quad.setIndex([0, 1, 2, 0, 2, 3]);
   const impGeo = new THREE.InstancedBufferGeometry().copy(quad);
   impGeo.instanceCount = all.length;
-  impGeo.setAttribute('iPos', new THREE.InstancedBufferAttribute(iPos, 4));
+  impGeo.setAttribute('iPos', new THREE.InstancedBufferAttribute(iPos, 3));
   impGeo.setAttribute('iSize', new THREE.InstancedBufferAttribute(iSize, 4));
   impGeo.setAttribute('iTile', new THREE.InstancedBufferAttribute(iTile, 4));
   impGeo.setAttribute('iColor', new THREE.InstancedBufferAttribute(iColor, 3));
   const impMat = new THREE.MeshLambertMaterial({ map: atlas.albedo, alphaTest: 0.5, alphaToCoverage: msaa });
   impMat.defines = { BT_CUSTOM_UP: '' };
   patchMaterial(impMat, {
-    key: 'impostor', foliage: 0.6, dry: true, snowMin: 0.35, sqrtMap: true, cloudShadows,
+    key: 'impostor', foliage: 0.6, dry: true, snowMin: 0.35, sqrtMap: true, cloudShadows, hardShadow: true,
     custom: {
       uniforms: { tImpNormal: { value: atlas.normal } },
       vertexHead: IMPOSTOR_VERTEX_HEAD, beginNormal: IMPOSTOR_BEGIN_NORMAL, begin: IMPOSTOR_BEGIN,
@@ -489,6 +507,9 @@ export function createVegetation(scene, terrain, rng, renderer, { quality, groun
   });
   const impostors = new THREE.Mesh(impGeo, impMat);
   impostors.frustumCulled = false;
+  // Within shadow range, billboards take the same crown shadows as the 3D
+  // trees they hand over to, so the two match during the hand-over.
+  impostors.receiveShadow = shadows;
   scene.add(impostors);
 
   // --- Bushes: always 3D (they're small), two shapes, in culled chunks.
