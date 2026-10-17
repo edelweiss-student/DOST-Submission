@@ -21,7 +21,7 @@ Open http://localhost:5173 in Chrome, Edge or Firefox and click to play.
 | --- | --- |
 | WASD | Move / swim (you swim where you look) |
 | Mouse | Look (drag with the left button if mouse capture is blocked) |
-| Shift | Sprint / swim fast |
+| Shift | Sprint / swim fast (uses stamina) |
 | Space | Jump / swim up |
 | C | Dive |
 | M | Mute |
@@ -38,7 +38,7 @@ Add `?seed=1234` to the URL to generate a different island, or
 ## How the climate works
 
 - Weather blends between seven presets. Each one sets cloud cover, rain,
-  snow, fog, wind, waves, temperature, haze and lightning.
+  snow, fog, wind, waves, temperature, humidity, haze and lightning.
 - **Instability** climbs from 0 to 1 over 25 minutes, driven by the sun's
   rising output. As it climbs, the weather changes more often, flips faster,
   and leans toward storms, heatwaves and cold snaps.
@@ -48,6 +48,7 @@ Add `?seed=1234` to the URL to generate a different island, or
 - Every thunderstorm rolls a severity: Thunderstorm, Severe thunderstorm or
   Violent storm. Violent storms get likelier as instability climbs.
 - The sea rises, and storms push it further inland (see below).
+- Hot, humid weather wears you out faster (see Heat and stamina below).
 
 ## Sea level
 
@@ -80,6 +81,48 @@ into durability lost per second. Wood (resistance 1) lasts about 2–3
 minutes a metre under water, about 15 minutes in the surf, and a few hours
 in salt spray just above it. Rough seas wear it faster, and sturdier
 materials pass a higher resistance (stone about 4).
+
+## Heat and stamina
+
+Sprinting and fast swimming use stamina, shown in a bar at the bottom of the
+screen. Walking and swimming slowly bring it back, standing still fastest.
+In mild weather a full bar lasts about 12 seconds of sprinting or 10 of fast
+swimming, and refills in about 7 seconds standing still. Run it dry and you
+can't sprint, and you move slower, until it is back to 30%. The bar pulses
+while you are worn out.
+
+Heat makes all of this worse:
+
+- Every weather type has a humidity (rain, fog and storms are humid, cold
+  snaps dry). Temperature and humidity together give the **heat index**:
+  how hot it feels. It uses the US National Weather Service's formula (the
+  Rothfusz regression) and is just the air temperature below about 27 °C.
+  A heatwave at 43 °C and 30% humidity feels like 49 °C; once the climate
+  has broken down, like 65 °C. Clear days reach about 32 °C by then.
+- The weather panel shows the heat index next to the temperature
+  ("feels 49°C") when it is clearly higher, in red from 41 °C. A message
+  warns you when it reaches 41 °C (the NWS "danger" level) and again at
+  54 °C ("extreme danger").
+- How hot it feels to you depends on where you are. The heat index is
+  measured in the shade: full sun adds up to 8 °C (less under cloud,
+  nothing at night). Shade blocks the sun: it comes from bushes now, which
+  give only a little, and will come from trees once a tree asset is added.
+  Plants the sea has killed give none. The sea is the real relief: water
+  cools you to about 26 °C, and your body takes about 15 seconds to warm up
+  again, so a swim keeps you cool for a while.
+- From 27 °C you tire faster and recover slower, and the stamina bar turns
+  orange once the heat is clearly wearing you down:
+
+  | How hot it feels to you | Sprinting uses stamina | Stamina comes back |
+  | --- | --- | --- |
+  | Under 27 °C | as normal | as normal |
+  | 41 °C | 2× as fast | ¾ as fast |
+  | 54 °C | about 3× as fast | about half as fast |
+  | 69 °C and up | 4× as fast | ¼ as fast |
+
+  In an early heatwave a full bar lasts about 4 seconds of sprinting in the
+  midday sun and 6–7 at night, against 12 on a mild day. Swimming in the
+  sea, you tire no faster than on a mild day.
 
 ## Graphics
 
@@ -228,7 +271,8 @@ src/
   main.js               bootstraps the scene and runs the game loop
   shared.js             world constants, shared shader uniforms, helpers
   core/quality.js       GPU detection, quality tiers, adaptive resolution, GPU timer, perf readout
-  world/terrain.js      island heightmap, smooth terrain mesh, biome and canopy map, exact ground height
+  world/terrain.js      island heightmap, smooth terrain mesh, biome and canopy map (also for shade),
+                        exact ground height
   world/textures.js     procedural textures: ground layers, cloud noise, leaf/grass/kelp sprites
   world/materials.js    shader patches: sway, snow, wetness, drought, caustics, cloud shadows,
                         fog, distance dithering, terrain splatting, shadow filtering, salt damage
@@ -243,11 +287,11 @@ src/
   world/atmosphere.js   atmospheric scattering (GPU sky table, CPU colours)
   world/sky.js          sky dome, swollen sun, moon, stars, cloud layer, sun/sky light,
                         fog colours, shadow placement, exposure
-  weather/weather.js    weather presets, climate instability
+  weather/weather.js    weather presets, humidity and heat index, climate instability
   weather/sealevel.js   sea level rise, tides, storm surge, salt damage lines, structure exposure
   weather/precipitation.js  GPU rain and snow, lightning
-  player/player.js      walking, buoyant swimming, oxygen, health
-  ui/hud.js             HUD panels and messages
+  player/player.js      walking, buoyant swimming, oxygen, health, stamina, heat strain
+  ui/hud.js             HUD panels, bars, messages and heat warnings
   audio/ambience.js     synthesized wind, rain, surf, underwater, thunder, splashes
 ```
 

@@ -1,24 +1,25 @@
 import * as THREE from 'three';
-import { SEA, uniforms, clamp, lerp } from '../shared.js';
+import { SEA, uniforms, clamp, lerp, smoothstep } from '../shared.js';
 
 // Every preset is a target the live weather blends toward.
 // wind is 0..1 of MAX_WIND. It drives tree sway, rain slant and the sea:
 // waves are generated from the wind speed (see world/waves.js).
+// humidity is relative humidity in %.
 export const MAX_WIND = 28; // m/s, about 100 km/h
 
 const DEFAULTS = {
-  cloud: 0, dark: 0, rain: 0, snow: 0, fog: 0.0026, wind: 0.11, temp: 20,
+  cloud: 0, dark: 0, rain: 0, snow: 0, fog: 0.0026, wind: 0.11, temp: 20, humidity: 60,
   haze: 0, mist: 0, sunMul: 1, sunScale: 1, lightning: 0,
 };
 
 export const WEATHER = {
-  clear:    { label: 'Clear skies',  icon: '☀', water: '#2a86ad', cloud: 0.12, wind: 0.11, temp: 24 },
-  overcast: { label: 'Overcast',     icon: '☁', water: '#2d6f8c', cloud: 0.8, dark: 0.25, fog: 0.0035, wind: 0.16, temp: 17 },
-  rain:     { label: 'Rain',         icon: '☂', water: '#2a5f78', cloud: 0.92, dark: 0.45, rain: 0.55, fog: 0.006, wind: 0.3, temp: 14, sunMul: 0.8 },
-  storm:    { label: 'Thunderstorm', icon: '⚡', water: '#21475a', cloud: 1, dark: 0.85, rain: 1, fog: 0.009, wind: 1, temp: 12, lightning: 0.3 },
-  fog:      { label: 'Dense fog',    icon: '≋', water: '#3a6676', cloud: 0.5, dark: 0.1, fog: 0.028, wind: 0.06, temp: 11, mist: 1 },
-  heatwave: { label: 'Heatwave',     icon: '♨', water: '#3e8f7c', cloud: 0, fog: 0.0045, wind: 0.09, temp: 43, haze: 1, sunMul: 1.25, sunScale: 1.35 },
-  snow:     { label: 'Cold snap',    icon: '❄', water: '#3b6f8a', cloud: 0.85, dark: 0.2, snow: 0.8, fog: 0.011, wind: 0.3, temp: -6 },
+  clear:    { label: 'Clear skies',  icon: '☀', water: '#2a86ad', cloud: 0.12, wind: 0.11, temp: 24, humidity: 55 },
+  overcast: { label: 'Overcast',     icon: '☁', water: '#2d6f8c', cloud: 0.8, dark: 0.25, fog: 0.0035, wind: 0.16, temp: 17, humidity: 70 },
+  rain:     { label: 'Rain',         icon: '☂', water: '#2a5f78', cloud: 0.92, dark: 0.45, rain: 0.55, fog: 0.006, wind: 0.3, temp: 14, humidity: 90, sunMul: 0.8 },
+  storm:    { label: 'Thunderstorm', icon: '⚡', water: '#21475a', cloud: 1, dark: 0.85, rain: 1, fog: 0.009, wind: 1, temp: 12, humidity: 95, lightning: 0.3 },
+  fog:      { label: 'Dense fog',    icon: '≋', water: '#3a6676', cloud: 0.5, dark: 0.1, fog: 0.028, wind: 0.06, temp: 11, humidity: 98, mist: 1 },
+  heatwave: { label: 'Heatwave',     icon: '♨', water: '#3e8f7c', cloud: 0, fog: 0.0045, wind: 0.09, temp: 43, humidity: 30, haze: 1, sunMul: 1.25, sunScale: 1.35 },
+  snow:     { label: 'Cold snap',    icon: '❄', water: '#3b6f8a', cloud: 0.85, dark: 0.2, snow: 0.8, fog: 0.011, wind: 0.3, temp: -6, humidity: 40 },
 };
 export const WEATHER_KEYS = Object.keys(WEATHER);
 const PARAMS = Object.keys(DEFAULTS);
@@ -40,6 +41,21 @@ const stormTarget = (s) => ({
 });
 
 const CLIMATE_RAMP = 1500;   // seconds until the climate is at its most unstable
+
+// Heat index: how hot it feels (°C) at a temperature (°C) and relative
+// humidity (%), in the shade. This is the US National Weather Service's
+// Rothfusz regression, with its corrections for very dry and very humid
+// air. It is only meant for hot weather, so below about 27 °C it hands over
+// to the air temperature.
+export function heatIndex(temp, rh) {
+  const T = temp * 1.8 + 32;
+  let hi = -42.379 + 2.04901523 * T + 10.14333127 * rh - 0.22475541 * T * rh
+    - 0.00683783 * T * T - 0.05481717 * rh * rh + 0.00122874 * T * T * rh
+    + 0.00085282 * T * rh * rh - 0.00000199 * T * T * rh * rh;
+  if (rh < 13 && T > 80 && T < 112) hi -= ((13 - rh) / 4) * Math.sqrt((17 - Math.abs(T - 95)) / 17);
+  else if (rh > 85 && T > 80 && T < 87) hi += ((rh - 85) / 10) * ((87 - T) / 5);
+  return lerp(temp, (hi - 32) / 1.8, smoothstep(26, 28, temp));
+}
 
 // Climate model: weather keeps shifting, and as the swelling sun's output
 // rises the shifts come faster and more often extreme. The sea level that
@@ -129,6 +145,10 @@ export class Weather {
     const c = this.current;
     return c.temp + (c.temp > 5 ? 6 * this.instability : 0) - (1 - this.dayF) * 5;
   }
+
+  get humidity() { return this.current.humidity; }
+
+  get heatIndex() { return heatIndex(this.temperature, this.humidity); }
 
   get solarOutput() { return 1 + this.instability * 0.04; }
 

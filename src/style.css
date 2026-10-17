@@ -5,6 +5,8 @@
   --accent: #ffb25b;
   --oxygen: #5fd3ff;
   --health: #ff6b6b;
+  --stamina: #c2e870;
+  --heat: #ff8a5c;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -35,6 +37,9 @@ html, body {
 #weather-panel .now { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 600; }
 #w-icon { font-size: 22px; width: 26px; text-align: center; }
 #w-temp { margin-left: auto; color: var(--accent); }
+#w-feels { font-size: 12px; color: var(--heat); }
+#w-feels:empty { display: none; }
+#w-feels.danger { color: var(--health); }
 #w-wind, #w-sea, #w-forecast { color: var(--muted); }
 
 #climate-panel { top: 16px; right: 16px; text-align: right; }
@@ -59,7 +64,9 @@ html, body {
 .bar > div { height: 100%; width: 100%; transition: width 0.15s linear; }
 #oxygen-fill { background: var(--oxygen); }
 #health-fill { background: var(--health); }
-#oxygen.low #oxygen-fill { animation: pulse 0.6s infinite alternate; }
+#stamina-fill { background: var(--stamina); transition: width 0.15s linear, background-color 0.8s; }
+#stamina.hot #stamina-fill { background: var(--heat); }
+#oxygen.low #oxygen-fill, #stamina.low #stamina-fill { animation: pulse 0.6s infinite alternate; }
 #depth { text-align: center; font-size: 12px; color: var(--oxygen); min-height: 1em; }
 @keyframes pulse { from { opacity: 1; } to { opacity: 0.35; } }
 

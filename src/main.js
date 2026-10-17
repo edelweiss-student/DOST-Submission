@@ -193,7 +193,7 @@ function step() {
 
   weather.update(sdt);
   sea.update(sdt, weather, sky.state.time);
-  player.update(sdt, t);
+  player.update(sdt, t, weather.heatIndex);
   uniforms.uPlayerPos.value.copy(player.pos);
   precip.update(sdt, t, camera, weather);
   const env = sky.update(sdt, camera, weather.current, precip.flash, weather.instability);

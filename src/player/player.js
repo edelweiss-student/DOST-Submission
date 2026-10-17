@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-import { WORLD, uniforms, clamp } from '../shared.js';
+import { WORLD, uniforms, clamp, smoothstep } from '../shared.js';
 
 const EYE = 1.7;
 const BODY = 1.8;
@@ -8,6 +8,23 @@ const WALK = 5.5, SPRINT = 9.5, SWIM = 3.6, SWIM_FAST = 6.2;
 const GRAVITY = 24, JUMP = 7.5;
 const FLOAT_DEPTH = 1.45;       // feet below the surface while treading water
 export const MAX_OXYGEN = 30;   // seconds of breath
+
+// Stamina per second in mild weather: about 12 s of sprinting or 10 s of
+// fast swimming from full. Standing still refills it in about 7 s. Run it
+// dry and you can't sprint, and move slower, until it's back to RECOVERED.
+export const MAX_STAMINA = 100;
+const SPRINT_COST = 8, SWIM_FAST_COST = 10;
+const REST = 14, REST_MOVING = 6;   // standing still, walking (half that while swimming)
+const RECOVERED = 30;
+const TIRED = 0.7;                  // speed while exhausted
+
+// Heat: the heat index is a shade value. Full sun adds up to SUN_HEAT °C and
+// shade blocks it (from bushes now, and from trees once a tree asset is
+// added). The sea cools you to SEA_TEMP. From 27 °C you
+// tire faster and recover slower: sprinting drains stamina twice as fast at
+// 41 °C (the "danger" level), about three times at 54 °C ("extreme danger")
+// and four times from 69 °C, where you recover at a quarter of the rate.
+const SUN_HEAT = 8, SEA_TEMP = 26;
 
 const fwd = new THREE.Vector3(), right = new THREE.Vector3(), wish = new THREE.Vector3();
 const near = [];
@@ -31,10 +48,15 @@ export class Player {
     this.roll = 0;
     this.oxygen = MAX_OXYGEN;
     this.health = 100;
+    this.stamina = MAX_STAMINA;
+    this.exhausted = false;
+    this.heat = 20;        // how hot you feel, °C
+    this.strain = 0;       // 0..1, how hard the heat is on you
     this.dragLook = false;
     this.onMessage = null;
     this.onSplash = null;
     this.edgeWarned = 0;
+    this.tiredWarned = -Infinity;
     addEventListener('keydown', (e) => this.keys.add(e.code));
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => this.keys.clear());
@@ -65,13 +87,17 @@ export class Player {
     this.camera.rotation.set(0, this.spawn.yaw, 0, 'YXZ');
     this.oxygen = MAX_OXYGEN;
     this.health = 100;
+    this.stamina = MAX_STAMINA;
+    this.exhausted = false;
   }
 
-  update(dt, t) {
+  // heatIndex: the weather's heat index, °C.
+  update(dt, t, heatIndex = 20) {
     const k = this.keys, p = this.pos, v = this.vel;
     const ix = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
     const iz = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
-    const sprint = k.has('ShiftLeft') || k.has('ShiftRight');
+    // Too tired to sprint until you've got some stamina back.
+    const sprint = (k.has('ShiftLeft') || k.has('ShiftRight')) && !this.exhausted;
 
     this.camera.getWorldDirection(fwd);
     right.set(-fwd.z, 0, fwd.x).normalize();
@@ -111,11 +137,14 @@ export class Player {
     this.underwater = this.camera.position.y < sea - 0.05;
     this.depth = Math.max(0, sea - this.camera.position.y);
     this.breathe(dt);
+    this.warm(dt, heatIndex, g, submerged);
+    const moving = ix !== 0 || iz !== 0 || (this.swimming && (k.has('Space') || k.has('KeyC')));
+    this.tire(dt, t, sprint && moving, moving);
   }
 
   swim(dt, sprint, ix, iz, surf) {
     const k = this.keys, p = this.pos, v = this.vel;
-    const speed = sprint ? SWIM_FAST : SWIM;
+    const speed = (sprint ? SWIM_FAST : SWIM) * (this.exhausted ? TIRED : 1);
     wish.copy(fwd).multiplyScalar(iz).addScaledVector(right, ix);
     if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(speed);
     const up = k.has('Space'), down = k.has('KeyC');
@@ -157,7 +186,7 @@ export class Player {
     const p = this.pos, v = this.vel;
     const wading = submerged > 0.2;
     wish.set(fwd.x, 0, fwd.z).normalize().multiplyScalar(iz).addScaledVector(right, ix);
-    if (wish.lengthSq() > 0) wish.normalize().multiplyScalar((sprint ? SPRINT : WALK) * (wading ? 0.6 : 1));
+    if (wish.lengthSq() > 0) wish.normalize().multiplyScalar((sprint ? SPRINT : WALK) * (wading ? 0.6 : 1) * (this.exhausted ? TIRED : 1));
     const accel = Math.min(1, dt * (this.grounded ? 10 : 2));
     v.x += (wish.x - v.x) * accel;
     v.z += (wish.z - v.z) * accel;
@@ -202,6 +231,43 @@ export class Player {
     if (this.health <= 0) {
       this.onMessage?.('You blacked out… and woke up on the shore.');
       this.respawn();
+    }
+  }
+
+  // How hot you feel: the heat index, plus the sun unless plants shade you,
+  // and cooled right down in the water. Your body takes a while to warm up
+  // again, so you stay cool for a bit after a swim.
+  warm(dt, heatIndex, ground, submerged) {
+    const p = this.pos;
+    // Plants the sea has killed have no leaves left to give shade.
+    const shade = this.terrain.canopyAt(p.x, p.z) * (1 - smoothstep(0, 0.9, uniforms.uTreeKillLine.value - ground));
+    let felt = heatIndex + SUN_HEAT * uniforms.uSunlight.value * (1 - shade);
+    const wet = this.swimming ? 1 : clamp(submerged, 0, 1);
+    felt += (Math.min(felt, SEA_TEMP) - felt) * wet;
+    this.heat += (felt - this.heat) * (1 - Math.exp(-dt / (wet > 0.3 ? 4 : 15)));
+    this.strain = clamp((this.heat - 27) / 42, 0, 1);
+  }
+
+  // True once the heat is clearly wearing you down (from about 35 °C).
+  get hot() { return this.strain > 0.2; }
+
+  // Sprinting and fast swimming wear you out; resting brings you back,
+  // standing still fastest. Heat makes you tire faster and recover slower.
+  tire(dt, t, sprinting, moving) {
+    const s = this.strain;
+    if (sprinting) this.stamina -= (this.swimming ? SWIM_FAST_COST : SPRINT_COST) * (1 + 3 * s) * dt;
+    else this.stamina += (moving ? REST_MOVING : REST) * (this.swimming ? 0.5 : 1) * (1 - 0.75 * s) * dt;
+    this.stamina = clamp(this.stamina, 0, MAX_STAMINA);
+    if (this.exhausted) {
+      this.exhausted = this.stamina < RECOVERED;
+    } else if (this.stamina <= 0) {
+      this.exhausted = true;
+      if (t - this.tiredWarned > 30) {
+        this.tiredWarned = t;
+        this.onMessage?.(this.hot
+          ? 'The heat has worn you out. Cool off in the sea or find some shade.'
+          : 'You’re out of breath. Slow down for a moment.');
+      }
     }
   }
 }
