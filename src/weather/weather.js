@@ -40,10 +40,10 @@ const stormTarget = (s) => ({
 });
 
 const CLIMATE_RAMP = 1500;   // seconds until the climate is at its most unstable
-const MAX_SEA_RISE = 2.4;    // metres
 
 // Climate model: weather keeps shifting, and as the swelling sun's output
-// rises the shifts come faster, more often extreme, and the sea creeps up.
+// rises the shifts come faster and more often extreme. The sea level that
+// goes with it is in sealevel.js.
 export class Weather {
   constructor(rng) {
     this.rng = rng;
@@ -64,7 +64,6 @@ export class Weather {
     this.gustiness = 0;
     this.gustWind = 0;     // wind right now, gusts included (0..1.3)
     this.wetness = 0; this.snowCover = 0; this.dryness = 0; this.bleach = 0;
-    this.seaLevel = 0;
     this.dayF = 1;
     this.onChange = null;
     this.onMilestone = null;
@@ -153,7 +152,6 @@ export class Weather {
     this.snowCover = clamp(this.snowCover + (temp < 2 ? (c.snow * dt) / 30 : 0) - (temp > 0 ? (dt / 60) * Math.max(0.3, temp / 8) : 0), 0, 1);
     this.dryness = clamp(this.dryness + (temp > 32 ? dt / 70 : 0) - (c.rain * dt) / 25 - (temp <= 32 ? dt / 400 : 0), 0, 1);
     this.bleach = clamp(this.bleach + (temp > 35 ? dt / 110 : -dt / 500), 0, 1);
-    this.seaLevel = this.instability * MAX_SEA_RISE;
 
     // The wind wanders around the prevailing direction, swinging harder in storms.
     const e = this.elapsed;
@@ -168,7 +166,6 @@ export class Weather {
 
     uniforms.uWind.value = this.gustWind;
     uniforms.uWindDir.value.set(Math.cos(this.windAngle), Math.sin(this.windAngle));
-    uniforms.uWaterLevel.value = this.seaLevel;
     uniforms.uSnow.value = this.snowCover;
     uniforms.uWet.value = this.wetness;
     uniforms.uDry.value = this.dryness;

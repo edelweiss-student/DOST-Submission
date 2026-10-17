@@ -23,10 +23,52 @@ uniform float uWind;
 uniform vec2 uWindDir;
 uniform float uWave;
 uniform vec2 uLodRange;
+uniform float uTreeKillLine;
 varying vec3 btWorldPos;
 varying vec3 btWorldNormal;
 #ifdef BT_LOD
   varying float btLod;
+#endif
+#ifdef BT_TREE
+  varying float btDead;   // 0 healthy .. 1 killed by salt water at the roots
+  varying vec3 btObj;     // position in the tree's own space
+#endif
+`;
+
+// Smooth 3D value noise (used to drop dead leaves in patches).
+const NOISE3 = /* glsl */ `
+float btHash3( vec3 p ) {
+  p = fract( p * 0.3183099 + 0.1 );
+  p *= 17.0;
+  return fract( p.x * p.y * p.z * ( p.x + p.y + p.z ) );
+}
+float btValueNoise( vec3 x ) {
+  vec3 i = floor( x ), f = fract( x );
+  f = f * f * ( 3.0 - 2.0 * f );
+  return mix(
+    mix( mix( btHash3( i ), btHash3( i + vec3( 1.0, 0.0, 0.0 ) ), f.x ),
+         mix( btHash3( i + vec3( 0.0, 1.0, 0.0 ) ), btHash3( i + vec3( 1.0, 1.0, 0.0 ) ), f.x ), f.y ),
+    mix( mix( btHash3( i + vec3( 0.0, 0.0, 1.0 ) ), btHash3( i + vec3( 1.0, 0.0, 1.0 ) ), f.x ),
+         mix( btHash3( i + vec3( 0.0, 1.0, 1.0 ) ), btHash3( i + 1.0 ), f.x ), f.y ), f.z );
+}
+`;
+
+// A tree whose roots salt water has reached dies: leaves brown and drop
+// away in patches, then the bare wood bleaches grey.
+const TREE_DEATH = /* glsl */ `
+#ifdef BT_TREE
+  if ( btDead > 0.0 ) {
+    #ifdef BT_TREE_LEAVES
+      if ( btValueNoise( btObj * 0.9 ) < btDead * 1.25 - 0.2 ) discard;
+      #ifndef BT_DEPTH
+        float btL = dot( diffuseColor.rgb, vec3( 0.35, 0.5, 0.15 ) );
+        diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 1.6, 1.15, 0.55 ) * btL, smoothstep( 0.0, 0.45, btDead ) );
+      #endif
+    #elif !defined( BT_DEPTH )
+      float btL = dot( diffuseColor.rgb, vec3( 0.3, 0.5, 0.2 ) );
+      diffuseColor.rgb = mix( diffuseColor.rgb, vec3( btL * 1.3 ), btDead * 0.8 );
+    #endif
+  }
 #endif
 `;
 
@@ -72,6 +114,11 @@ btWorldNormal = normalize( mat3( modelMatrix ) * wNrm );
     btLod = 1.0 - smoothstep( uLodRange.x, uLodRange.y, distance( wBase.xz, cameraPosition.xz ) );
   #endif
 #endif
+#ifdef BT_TREE
+  // How far salt water has climbed above the tree's base (see weather/sealevel.js).
+  btDead = smoothstep( 0.0, 0.9, uTreeKillLine - wBase.y );
+  btObj = transformed;
+#endif
 btWorldPos = wPos.xyz;
 vec4 mvPosition = viewMatrix * wPos;
 gl_Position = projectionMatrix * mvPosition;
@@ -84,8 +131,9 @@ const WORLDPOS = /* glsl */ `
 #endif
 `;
 
-const FRAG_HEAD = COMMON + /* glsl */ `
+const FRAG_HEAD = COMMON + NOISE3 + /* glsl */ `
 uniform float uWaterLevel;
+uniform float uSaltLine;
 uniform float uSnow;
 uniform float uWet;
 uniform float uDry;
@@ -154,6 +202,7 @@ diffuseColor.rgb = mix( diffuseColor.rgb, btSnowCol, btSnow );
   float depthFade = clamp( 1.0 + ( btWorldPos.y - uWaterLevel ) / 22.0, 0.0, 1.0 );
   diffuseColor.rgb += cz * 0.3 * ( 1.0 - btAbove ) * depthFade * uSunlight;
 #endif
+${TREE_DEATH}
 `;
 
 const ALPHA = /* glsl */ `
@@ -330,6 +379,11 @@ const TERRAIN_MAP = /* glsl */ `
   alb *= mix( 1.0, 0.6, shoreWet * b.x );
   btRough = mix( btRough, 0.3, shoreWet * b.x * step( uWaterLevel - 0.3, h ) );
   alb *= mix( vec3( 1.0 ), vec3( 0.62, 0.7, 0.7 ), smoothstep( -1.0, -22.0, h ) );
+  // Grass and undergrowth that salt water has reached die back to straw;
+  // the dead band regrows slowly as the salt line drops.
+  float salt = ( 1.0 - smoothstep( uSaltLine - 0.05, uSaltLine + 0.45, h + nMid * 0.3 ) )
+    * smoothstep( uWaterLevel - 0.3, uWaterLevel + 0.1, h );
+  alb = mix( alb, vec3( 1.45, 1.1, 0.6 ) * dot( alb, vec3( 0.4, 0.45, 0.15 ) ), salt * ( b.y + b.z ) * 0.9 );
 
   // Ground under trees: darker in the open sky light, and in place of the
   // shadow map beyond its range.
@@ -394,6 +448,7 @@ const NORMAL_BEGIN_FOLIAGE = THREE.ShaderChunk.normal_fragment_begin.replace('no
 //   foliage        translucency strength; also keeps leaf normals un-flipped on back faces
 //   lod            near mesh that dithers out over uniforms.uLodRange
 //   fadeOut        [start, end] metres: dithers out with distance (small props)
+//   tree           'leaves' or 'bark': dies when salt water reaches the roots
 //   dry, snowMin, caustics, bleach   weather reactions
 //   terrain        { textures, control, controlRect, scales } texture splatting
 //   sqrtMap        material.map stores sqrt(albedo)
@@ -403,9 +458,10 @@ const NORMAL_BEGIN_FOLIAGE = THREE.ShaderChunk.normal_fragment_begin.replace('no
 export function patchMaterial(material, {
   key, sway = 0, kelp = false, flutter = 0, foliage = 0, lod = false, dry = false, snowMin = 0.5,
   caustics = false, bleach = false, terrain = null, sqrtMap = false, cloudShadows = false, hardShadow = false,
-  fadeOut = null, custom = null,
+  fadeOut = null, tree = null, custom = null,
 } = {}) {
   const d = { ...(material.defines || {}), BT_SNOW_MIN: snowMin.toFixed(3) };
+  if (tree) Object.assign(d, treeDefines(tree));
   // One shadow-map read instead of four: leaves and grass are busy enough
   // that soft shadow edges don't show.
   if (hardShadow) d.BT_HARD_SHADOW = '';
@@ -460,17 +516,22 @@ export function patchMaterial(material, {
   return material;
 }
 
-// Shadow-pass material for alpha-tested, swaying foliage on instanced meshes.
-export function foliageDepthMaterial({ key, map, alphaTest = 0.5, sway = 0, flutter = 0 }) {
+const treeDefines = (part) => (part === 'leaves' ? { BT_TREE: '', BT_TREE_LEAVES: '' } : { BT_TREE: '' });
+
+// Shadow-pass material for swaying (and alpha-tested) tree parts on
+// instanced meshes. tree: 'leaves' or 'bark', as for patchMaterial.
+export function foliageDepthMaterial({ key, map, alphaTest = 0.5, sway = 0, flutter = 0, tree = null }) {
   const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, ...(map ? { map, alphaTest } : {}) });
-  m.defines = { BT_DEPTH: '' };
+  m.defines = { BT_DEPTH: '', ...(tree ? treeDefines(tree) : {}) };
   if (sway) m.defines.BT_SWAY = sway.toFixed(3);
   if (flutter) m.defines.BT_FLUTTER = flutter.toFixed(3);
   if (map?.image) m.defines.BT_ALPHA_MIP = alphaMipDefine([map.image.width, map.image.height]);
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = VERT_HEAD + shader.vertexShader.replace('#include <project_vertex>', PROJECT);
-    shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n' + ALPHA_MIP);
+    shader.fragmentShader = COMMON + NOISE3 + shader.fragmentShader
+      .replace('#include <map_fragment>', '#include <map_fragment>\n' + ALPHA_MIP)
+      .replace('#include <alphatest_fragment>', '#include <alphatest_fragment>\n' + TREE_DEATH);
   };
   m.customProgramCacheKey = () => 'btd-' + key;
   return m;

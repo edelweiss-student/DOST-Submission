@@ -12,6 +12,7 @@ import { createWater } from './world/water.js';
 import { createSplashes } from './world/splash.js';
 import { createSky } from './world/sky.js';
 import { Weather, WEATHER_KEYS } from './weather/weather.js';
+import { SeaLevel } from './weather/sealevel.js';
 import { createPrecipitation } from './weather/precipitation.js';
 import { Player } from './player/player.js';
 import { HUD } from './ui/hud.js';
@@ -65,6 +66,7 @@ const sky = createSky(scene, renderer, {
   cloudTexture, shadowMap: quality.shadowMap, shadowRange: quality.shadowRange, cloudShadows,
 });
 const weather = new Weather(rng);
+const sea = new SeaLevel(water);
 const precip = createPrecipitation(scene, terrain, rng);
 const player = new Player(camera, renderer.domElement, terrain, vegetation.colliders, water);
 const hud = new HUD();
@@ -82,6 +84,7 @@ const MILESTONES = [
 weather.onChange = () => hud.message(`Weather shifting: ${weather.label}`);
 weather.onMilestone = (m) => hud.message(MILESTONES[m - 1], 7);
 precip.onStrike = (distance) => audio.thunder(distance);
+sea.onSurge = () => hud.message('Storm surge! The sea is pushing inland.', 5);
 player.onMessage = (text) => hud.message(text, 5);
 player.onSplash = (x, y, z, speed) => {
   splashes.emit(x, y, z, speed);
@@ -190,13 +193,14 @@ function step() {
   uniforms.uTime.value = t;
 
   weather.update(sdt);
+  sea.update(sdt, weather, sky.state.time);
   player.update(sdt, t);
   uniforms.uPlayerPos.value.copy(player.pos);
   precip.update(sdt, t, camera, weather);
   const env = sky.update(sdt, camera, weather.current, precip.flash, weather.instability);
   weather.dayF = env.dayF;
   water.update(camera, weather, env, precip.flash, sdt);
-  ocean.update(t, camera, weather.seaLevel);
+  ocean.update(t, camera, sea.level);
   vegetation.update(camera);
   grass.update(camera);
   splashes.update(dt, env.dayF);
@@ -220,7 +224,7 @@ function step() {
   renderer.shadowMap.needsUpdate = sky.sun.intensity > 0.02 && shadowFrame === 0;
 
   audio.update(weather, player.underwater, water.waves.hs);
-  hud.update(dt, { weather, clock: sky.clock(), player, waves: water.waves });
+  hud.update(dt, { weather, sea, clock: sky.clock(), player, waves: water.waves });
   gpuTimer.begin(perf.visible);
   renderer.render(scene, camera);
   gpuTimer.end();
@@ -231,6 +235,7 @@ function step() {
 // Compile every shader before the first frame (in parallel where the
 // browser allows), so nothing stalls when new things come into view.
 playLabel.textContent = 'Loading…';
+sea.update(0, weather, sky.state.time);
 sky.update(0, camera, weather.current, 0, 0);
 renderer.compileAsync(scene, camera).catch(() => {}).finally(() => {
   ready = true;
@@ -240,7 +245,7 @@ renderer.compileAsync(scene, camera).catch(() => {}).finally(() => {
 
 if (import.meta.env.DEV) {
   window.game = {
-    scene, camera, renderer, terrain, weather, player, sky, water, uniforms, vegetation, step,
+    scene, camera, renderer, terrain, weather, sea, player, sky, water, uniforms, vegetation, step,
     counts: vegetation.counts, quality: { tier, gpu, adaptive, gpuTimer },
   };
 }

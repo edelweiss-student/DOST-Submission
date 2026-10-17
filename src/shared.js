@@ -31,6 +31,11 @@ export const uniforms = {
   uDry: { value: 0 },                            // drought 0..1
   uSunlight: { value: 1 },                       // direct light reaching the sea
   uBleach: { value: 0 },                         // coral heat stress 0..1
+  // Flooding (set by weather/sealevel.js). Salt water kills the ground
+  // plants it reaches (they regrow slowly as the salt line drops) and the
+  // trees whose roots it reaches (they stay dead).
+  uSaltLine: { value: 0 },
+  uTreeKillLine: { value: 0 },
 
   // Light and atmosphere (set by world/sky.js).
   uLightDir: { value: new THREE.Vector3(0, 1, 0) },  // towards the sun, or the moon at night

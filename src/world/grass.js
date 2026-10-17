@@ -16,6 +16,7 @@ uniform sampler2D uControl;
 uniform vec3 uControlRect;
 uniform vec2 uPatch;         // patch size, fade radius
 uniform float uWaterLevel;
+uniform float uSaltLine;
 uniform float uSnow;
 uniform vec3 uPlayerPos;
 uniform sampler2D uCloudTex;
@@ -47,8 +48,12 @@ vec4 ctrl = textureLod( uControl, ( gp - uControlRect.xy ) * uControlRect.z, 0.0
 float dist = length( rel );
 // Towards the edge clumps thin out and shrink, so there is no hard ring.
 float thin = 1.0 - smoothstep( uPatch.y * 0.5, uPatch.y, dist );
-float keep = step( aOffset.z, ctrl.b * ( 0.35 + 0.65 * thin ) ) * step( uWaterLevel + 0.35, gh );
+float keep = step( aOffset.z, ctrl.b * ( 0.35 + 0.65 * thin ) ) * step( uWaterLevel + 0.05, gh );
 float fade = 1.0 - smoothstep( uPatch.y * 0.4, uPatch.y, dist );
+fade *= smoothstep( uWaterLevel + 0.05, uWaterLevel + 0.45, gh );   // thins out at the tide line
+// Salt water kills the grass it reaches: short, dead straw.
+float saltKill = 1.0 - smoothstep( uSaltLine - 0.05, uSaltLine + 0.4, gh );
+fade *= 1.0 - 0.55 * saltKill;
 vGrassCanopy = ctrl.g;
 float size = keep * fade * ( 0.65 + 0.6 * fract( aOffset.w * 7.3 ) ) * ( 1.0 - 0.85 * uSnow );
 size *= 0.7 + 0.5 * ctrl.b;
@@ -72,6 +77,7 @@ vec3 objectNormal = normalize( vec3( bend.x * 0.3, 1.0, bend.y * 0.3 ) );
 vec4 macro = textureLod( uCloudTex, gp * ( 1.0 / 900.0 ), 0.0 );
 vGrassTint = vec3( 0.84 + 0.32 * macro.a ) * mix( vec3( 1.0 ), vec3( 1.12, 1.04, 0.72 ), clamp( ( macro.b - 0.5 ) * 1.6, 0.0, 1.0 ) );
 vGrassTint *= 0.85 + 0.3 * fract( aOffset.w * 13.7 );
+vGrassTint = mix( vGrassTint, vec3( 1.5, 0.85, 0.4 ), saltKill * 0.85 );
 `;
 
 const BEGIN = /* glsl */ `

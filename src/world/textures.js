@@ -568,6 +568,68 @@ export function grassSprite(anisotropy, seed = 9) {
   return spriteTexture(pair, anisotropy);
 }
 
+// A seamless, fully opaque mass of leaves or needles, for the dense core
+// inside tree crowns (so a crown is never see-through up close). Shapes near
+// an edge are drawn again on the opposite side, so the texture tiles.
+export function foliageMassTexture(kind, anisotropy) {
+  const rng = mulberry32(kind === 'needle' ? 61 : 62);
+  const S = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = S;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = kind === 'needle' ? hsl(132, 30, 11) : hsl(95, 34, 13);
+  ctx.fillRect(0, 0, S, S);
+  const tiled = (draw) => {
+    for (const dx of [-S, 0, S]) for (const dy of [-S, 0, S]) {
+      ctx.save();
+      ctx.translate(dx, dy);
+      draw();
+      ctx.restore();
+    }
+  };
+  if (kind === 'needle') {
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 5200; i++) {
+      const x = rng() * S, y = rng() * S, a = rng() * Math.PI * 2, l = range(rng, 10, 22);
+      ctx.strokeStyle = hsl(range(rng, 118, 146), range(rng, 22, 40), range(rng, 9, 26));
+      ctx.lineWidth = range(rng, 2, 3.4);
+      tiled(() => {
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l);
+        ctx.stroke();
+      });
+    }
+  } else {
+    for (let i = 0; i < 900; i++) {
+      const x = rng() * S, y = rng() * S, a = rng() * Math.PI * 2;
+      const L = range(rng, 26, 48), W = L * range(rng, 0.38, 0.5);
+      const hue = range(rng, 80, 108), sat = range(rng, 28, 48), lig = range(rng, 12, 28);
+      tiled(() => {
+        ctx.translate(x, y);
+        ctx.rotate(a);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(L * 0.35, -W * 0.75, L, 0);
+        ctx.quadraticCurveTo(L * 0.35, W * 0.75, 0, 0);
+        ctx.fillStyle = hsl(hue, sat, lig);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(L * 0.05, 0);
+        ctx.lineTo(L * 0.9, 0);
+        ctx.strokeStyle = hsl(hue - 6, sat - 8, lig + 9);
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      });
+    }
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = anisotropy;
+  return tex;
+}
+
 // A long ruffled kelp blade, base at the bottom.
 export function kelpSprite(anisotropy) {
   const rng = mulberry32(13);

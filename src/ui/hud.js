@@ -26,7 +26,7 @@ export class HUD {
     this.messageTimer = seconds;
   }
 
-  update(dt, { weather, clock, player, waves }) {
+  update(dt, { weather, sea, clock, player, waves }) {
     if (this.messageTimer > 0 && (this.messageTimer -= dt) <= 0) this.el.message.classList.remove('show');
 
     // Per-frame: underwater tint and bars.
@@ -53,7 +53,11 @@ export class HUD {
     e.forecast.textContent = `Next: ${WEATHER[weather.next].label} in ${Math.floor(s / 60)}:${pad(s % 60)}`;
     e.clock.textContent = `Day ${clock.day} · ${pad(clock.hours)}:${pad(clock.minutes)}`;
     e.solar.textContent = `Solar output +${((weather.solarOutput - 1) * 100).toFixed(2)}%`;
-    e.sea.textContent = `Sea level +${weather.seaLevel.toFixed(2)} m`;
+    // Long-term rise, which way the tide is going, and any storm surge.
+    const turning = Math.abs(sea.tideRate) < 0.0012;
+    const tide = turning ? (sea.tide > 0 ? 'high tide' : 'low tide') : sea.tideRate > 0 ? 'tide rising' : 'tide falling';
+    const surge = sea.surge > 0.1 ? ` · surge +${sea.surge.toFixed(1)} m` : '';
+    e.sea.textContent = `Sea level +${sea.rise.toFixed(2)} m · ${tide}${surge}`;
     e.depth.textContent = player.underwater ? `Depth ${player.depth.toFixed(1)} m` : '';
   }
 }

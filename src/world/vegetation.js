@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { range, smoothstep, uniforms } from '../shared.js';
 import { patchMaterial, foliageDepthMaterial } from './materials.js';
 import { buildConifer, buildBroadleaf, buildBush, buildRock, thinCards } from './trees.js';
-import { leafSprite, needleSprite } from './textures.js';
+import { leafSprite, needleSprite, foliageMassTexture } from './textures.js';
 
 // Uniform grid of circular colliders (tree trunks, boulders).
 export class ColliderGrid {
@@ -187,7 +187,7 @@ function bakeImpostors(renderer, variants, tile, anisotropy) {
     // Wide enough for the tree turned to any side, with a little transparent
     // padding so mipmaps don't bleed between neighbouring views.
     let radius = 0;
-    for (const g of [v.geometry.bark, v.geometry.leaves]) {
+    for (const g of [v.geometry.bark, v.geometry.crown, v.geometry.leaves]) {
       const p = g.attributes.position;
       for (let i = 0; i < p.count; i++) radius = Math.max(radius, Math.hypot(p.getX(i), p.getZ(i)));
     }
@@ -204,11 +204,12 @@ function bakeImpostors(renderer, variants, tile, anisotropy) {
     targets.forEach((target, mode) => {
       const scene = new THREE.Scene();
       const bark = new THREE.Mesh(v.geometry.bark, partMaterial(v.barkMap, false, mode));
+      const crown = new THREE.Mesh(v.geometry.crown, partMaterial(v.massMap, true, mode));
       const leaves = new THREE.Mesh(v.geometry.leaves, partMaterial(v.leafMap, true, mode));
-      scene.add(backgrounds[mode], bark, leaves);
+      scene.add(backgrounds[mode], bark, crown, leaves);
       for (let k = 0; k < cols; k++) {
         // View k shows the tree turned by k steps, seen from +z.
-        bark.rotation.y = leaves.rotation.y = (k / cols) * Math.PI * 2;
+        bark.rotation.y = crown.rotation.y = leaves.rotation.y = (k / cols) * Math.PI * 2;
         const n = row * cols + k;
         target.texture.generateMipmaps = n === 0 || n === lastRender;
         target.viewport.set(k * tw, row * th, tw, th);
@@ -218,8 +219,7 @@ function bakeImpostors(renderer, variants, tile, anisotropy) {
         renderer.clear();
         renderer.render(scene, camera);
       }
-      bark.material.dispose();
-      leaves.material.dispose();
+      for (const part of [bark, crown, leaves]) part.material.dispose();
     });
   });
   renderer.setRenderTarget(prevTarget);
@@ -235,6 +235,7 @@ varying vec3 vImpRight;
 varying vec3 vImpFwd;
 varying vec3 vImpColor;
 varying float vImpLod;
+varying float vImpDead;
 `;
 const IMPOSTOR_BEGIN_NORMAL = /* glsl */ `
 vec3 objectNormal = vec3( 0.0, 1.0, 0.0 );
@@ -258,6 +259,8 @@ vImpRight = impRight;
 vImpFwd = impFwd;
 vImpColor = iColor;
 vImpLod = impLod;
+// Same as the 3D trees: dead once salt water has reached the roots.
+vImpDead = smoothstep( 0.0, 0.9, uTreeKillLine - ( iPos.y - iSize.w ) );
 `;
 const IMPOSTOR_BEGIN = /* glsl */ `
 vec3 transformed = impPos;
@@ -271,11 +274,20 @@ varying vec3 vImpRight;
 varying vec3 vImpFwd;
 varying vec3 vImpColor;
 varying float vImpLod;
+varying float vImpDead;
 vec3 btImpW;
 `;
 const IMPOSTOR_COLOR = /* glsl */ `
 if ( btDither( gl_FragCoord.xy ) < vImpLod ) discard;
 diffuseColor.rgb *= vImpColor;
+if ( vImpDead > 0.0 ) {
+  // A dead tree: the leaves (the green in the picture) drop in patches,
+  // and what is left browns and bleaches.
+  float leafy = clamp( ( diffuseColor.g - max( diffuseColor.r, diffuseColor.b ) ) * 10.0, 0.0, 1.0 );
+  if ( leafy > 0.25 && btValueNoise( vec3( vMapUv * vec2( 90.0, 40.0 ), 0.0 ) ) < vImpDead * 1.25 - 0.2 ) discard;
+  float l = dot( diffuseColor.rgb, vec3( 0.35, 0.5, 0.15 ) );
+  diffuseColor.rgb = mix( diffuseColor.rgb, mix( vec3( l * 1.3 ), vec3( 1.6, 1.15, 0.55 ) * l, leafy ), smoothstep( 0.0, 0.5, vImpDead ) );
+}
 {
   vec3 nb = texture2D( tImpNormal, vMapUv ).xyz * 2.0 - 1.0;
   btImpW = normalize( vImpRight * nb.x + vec3( 0.0, nb.y, 0.0 ) + vImpFwd * nb.z );
@@ -343,21 +355,21 @@ export function createVegetation(scene, terrain, rng, renderer, { quality, groun
   const needleTex = needleSprite(aniso), leafTex = leafSprite(aniso);
   const species = [
     {
-      name: 'pine', list: pines, leafMap: needleTex, barkTex: bark.pine, flutter: 0.4,
+      name: 'pine', list: pines, leafMap: needleTex, massMap: foliageMassTexture('needle', aniso), barkTex: bark.pine, flutter: 0.4,
       geometry: [11, 12, 13].map((seed) => buildConifer(seed, 13)),
       toneA: new THREE.Color(0.82, 0.92, 0.84), toneB: new THREE.Color(1.05, 1.06, 0.92),
     },
     {
-      name: 'oak', list: oaks, leafMap: leafTex, barkTex: bark.oak, flutter: 1,
+      name: 'oak', list: oaks, leafMap: leafTex, massMap: foliageMassTexture('leaf', aniso), barkTex: bark.oak, flutter: 1,
       geometry: [21, 22, 23].map((seed) => buildBroadleaf(seed, 10)),
       toneA: new THREE.Color(0.9, 1.0, 0.85), toneB: new THREE.Color(1.15, 1.08, 0.78),
     },
   ];
 
-  // Leaves cast shadows through thinned stand-ins (half the cards), drawn
-  // only into the shadow map: seen from the sun, the lower layers of a
-  // crown are hidden by the upper ones, so the shadow looks the same at
-  // half the cost. The shadow pass only draws visible objects, so the
+  // Leaves cast shadows through thinned stand-ins (a third of the cards),
+  // drawn only into the shadow map: seen from the sun, the lower layers of
+  // a crown are hidden by the upper ones, and the solid crown core already
+  // shades the middle, so the shadow looks the same at a third of the cost. The shadow pass only draws visible objects, so the
   // stand-ins are switched on just for it.
   const shadowOnly = [];
   if (shadows) {
@@ -376,14 +388,19 @@ export function createVegetation(scene, terrain, rng, renderer, { quality, groun
   for (const sp of species) {
     const leafMat = patchMaterial(
       new THREE.MeshLambertMaterial({ map: sp.leafMap, alphaTest: 0.45, side: THREE.DoubleSide, vertexColors: true, alphaToCoverage: msaa }),
-      { key: 'leaf-' + sp.name, sway: TREE_SWAY, flutter: sp.flutter, foliage: 0.8, lod: true, dry: true, snowMin: 0.35, cloudShadows, hardShadow: true },
+      { key: 'leaf-' + sp.name, sway: TREE_SWAY, flutter: sp.flutter, foliage: 0.8, lod: true, dry: true, snowMin: 0.35, cloudShadows, hardShadow: true, tree: 'leaves' },
+    );
+    const crownMat = patchMaterial(
+      new THREE.MeshLambertMaterial({ map: sp.massMap, vertexColors: true }),
+      { key: 'crown-' + sp.name, sway: TREE_SWAY, foliage: 0.5, lod: true, dry: true, snowMin: 0.35, cloudShadows, tree: 'leaves' },
     );
     const barkMat = patchMaterial(
       new THREE.MeshLambertMaterial({ map: sp.barkTex.albedo, normalMap: sp.barkTex.normal, vertexColors: true }),
-      { key: 'bark-' + sp.name, sway: TREE_SWAY, snowMin: 0.95, lod: true, sqrtMap: true, cloudShadows },
+      { key: 'bark-' + sp.name, sway: TREE_SWAY, snowMin: 0.95, lod: true, sqrtMap: true, cloudShadows, tree: 'bark' },
     );
-    const leafDepth = foliageDepthMaterial({ key: 'leaf-' + sp.name, map: sp.leafMap, alphaTest: 0.45, sway: TREE_SWAY, flutter: sp.flutter });
-    const barkDepth = foliageDepthMaterial({ key: 'bark-' + sp.name, sway: TREE_SWAY });
+    const leafDepth = foliageDepthMaterial({ key: 'leaf-' + sp.name, map: sp.leafMap, alphaTest: 0.45, sway: TREE_SWAY, flutter: sp.flutter, tree: 'leaves' });
+    const crownDepth = foliageDepthMaterial({ key: 'crown-' + sp.name, sway: TREE_SWAY, tree: 'leaves' });
+    const barkDepth = foliageDepthMaterial({ key: 'bark-' + sp.name, sway: TREE_SWAY, tree: 'bark' });
     sp.geometry.forEach((geometry, vi) => {
       const trees = sp.list.filter((t) => t.variant === vi);
       const cap = Math.max(1, trees.length);
@@ -392,24 +409,33 @@ export function createVegetation(scene, terrain, rng, renderer, { quality, groun
       leafMesh.instanceMatrix = barkMesh.instanceMatrix;
       barkMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       leafMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3).setUsage(THREE.DynamicDrawUsage);
-      const leafShadow = new THREE.InstancedMesh(thinCards(geometry.leaves), leafMat, cap);
+      // The dense core inside the crown, so it is never see-through.
+      const crownMesh = new THREE.InstancedMesh(geometry.crown, crownMat, cap);
+      crownMesh.instanceMatrix = barkMesh.instanceMatrix;
+      crownMesh.instanceColor = leafMesh.instanceColor;
+      const leafShadow = new THREE.InstancedMesh(thinCards(geometry.leaves, 3), leafMat, cap);
       leafShadow.instanceMatrix = barkMesh.instanceMatrix;
       leafShadow.instanceColor = leafMesh.instanceColor;
-      for (const mesh of [barkMesh, leafMesh, leafShadow]) {
+      for (const mesh of [barkMesh, crownMesh, leafMesh, leafShadow]) {
         mesh.count = 0;
         mesh.frustumCulled = false;
         mesh.castShadow = shadows;
         mesh.receiveShadow = true;
         scene.add(mesh);
       }
+      // Leaf cards after the solid parts, so cards hidden behind trunks and
+      // crown cores fail the depth test instead of being shaded.
+      leafMesh.renderOrder = 1;
       leafMesh.castShadow = false;
       leafShadow.receiveShadow = false;
       leafShadow.visible = false;
       leafShadow.customDepthMaterial = leafDepth;
+      crownMesh.customDepthMaterial = crownDepth;
       barkMesh.customDepthMaterial = barkDepth;
       shadowOnly.push(leafShadow);
       const variant = {
-        geometry, barkMesh, leafMesh, leafShadow, trees, barkMap: sp.barkTex.albedo, leafMap: sp.leafMap,
+        geometry, barkMesh, crownMesh, leafMesh, leafShadow, trees,
+        barkMap: sp.barkTex.albedo, leafMap: sp.leafMap, massMap: sp.massMap,
         // Per tree: world matrix and leaf tint, ready to copy.
         matrices: new Float32Array(trees.length * 16), colors: new Float32Array(trees.length * 3),
       };
@@ -449,7 +475,7 @@ export function createVegetation(scene, terrain, rng, renderer, { quality, groun
         col.array.set(v.colors.subarray(t.index * 3, t.index * 3 + 3), n * 3);
       });
       const n = picked.length;
-      v.barkMesh.count = v.leafMesh.count = v.leafShadow.count = n;
+      v.barkMesh.count = v.crownMesh.count = v.leafMesh.count = v.leafShadow.count = n;
       mat.clearUpdateRanges();
       mat.addUpdateRange(0, n * 16);
       mat.needsUpdate = true;
@@ -516,9 +542,9 @@ export function createVegetation(scene, terrain, rng, renderer, { quality, groun
   const bushGeos = [buildBush(31), buildBush(32)];
   const bushMat = patchMaterial(
     new THREE.MeshLambertMaterial({ map: leafTex, alphaTest: 0.45, side: THREE.DoubleSide, vertexColors: true, alphaToCoverage: msaa }),
-    { key: 'bush', sway: 2, flutter: 1, foliage: 0.8, dry: true, snowMin: 0.35, cloudShadows, hardShadow: true, fadeOut: [62, 76] },
+    { key: 'bush', sway: 2, flutter: 1, foliage: 0.8, dry: true, snowMin: 0.35, cloudShadows, hardShadow: true, fadeOut: [62, 76], tree: 'leaves' },
   );
-  const bushDepth = foliageDepthMaterial({ key: 'bush', map: leafTex, alphaTest: 0.45, sway: 2, flutter: 1 });
+  const bushDepth = foliageDepthMaterial({ key: 'bush', map: leafTex, alphaTest: 0.45, sway: 2, flutter: 1, tree: 'leaves' });
   const bushTones = [new THREE.Color(0.85, 0.98, 0.8), new THREE.Color(1.1, 1.06, 0.78)];
   const chunks = [];
   bushGeos.forEach((g, vi) => {

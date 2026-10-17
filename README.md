@@ -45,9 +45,41 @@ Add `?seed=1234` to the URL to generate a different island, or
 - The weather leaves traces behind: rain soaks the ground, cold snaps build
   up snow on terrain and trees, heatwaves brown the forest and bleach the
   coral. Each of these fades on its own afterwards.
-- The sea rises up to 2.4 m over a session and slowly drowns the beaches.
 - Every thunderstorm rolls a severity: Thunderstorm, Severe thunderstorm or
   Violent storm. Violent storms get likelier as instability climbs.
+- The sea rises, and storms push it further inland (see below).
+
+## Sea level
+
+The water level is the sum of three parts:
+
+- **Rise.** The long-term climb as the planet warms: up to 2.4 m by the end
+  of the climate ramp, speeding up as instability climbs.
+- **Tide.** ±0.35 m, with two high tides a day.
+- **Storm surge.** Storms pile water against the shore: about 0.3 m in a
+  thunderstorm, up to 1.4 m in a violent storm. A surge builds over about a
+  minute once the wind picks up and drains away over several minutes. A
+  message warns you when one comes in. (Press `4` two or three times to see
+  one.)
+
+The HUD shows the rise so far, whether the tide is rising or falling, and any
+surge. The level moves the whole sea, for the water you see and the water you
+swim in, so the beaches drown and the surf climbs the shore.
+
+Salt water leaves its mark wherever it reaches:
+
+- Grass dies back and the ground turns to brown, salt-burnt soil. Both
+  recover by about a metre every 15 minutes once the water retreats.
+- Trees and bushes whose roots the water reaches die for good. Their leaves
+  brown and fall, leaving bare grey trunks: a ghost forest along the shore.
+
+Structures will wear down the same way. `sea.exposure(x, z, y)` says how the
+sea reaches a point (depth under the water, waves included; surf splash;
+salt spray), and `sea.durabilityLoss(x, z, y, t, resistance)` turns that
+into durability lost per second. Wood (resistance 1) lasts about 2–3
+minutes a metre under water, about 15 minutes in the surf, and a few hours
+in salt spray just above it. Rough seas wear it faster, and sturdier
+materials pass a higher resistance (stone about 4).
 
 ## Graphics
 
@@ -73,10 +105,15 @@ files.
   instead of cross-fading. Each material has detail normals, roughness and
   cavity shading. Sand the waves reach stays dark and glossy, and the seabed
   darkens with depth.
-- **Trees.** Procedural spruces and broadleaf trees: tapered branch tubes
-  with bark textures, and leaf and needle cards whose normals bend outwards
-  from the crown, so a crown shades as one soft volume. Light shows through
-  leaves from behind, leaves flutter, and whole trees sway with the wind.
+- **Trees.** Procedural spruces and broadleaf trees. Spruces have whorls of
+  drooping branches under dense needle sprays. Broadleaf trees fork into
+  limbs that carry leaf clusters through the whole crown. Every crown has a
+  solid core inside, textured with needles or leaves, so a tree never looks
+  see-through or half-loaded up close. Trunks flare out into the ground and
+  darken where they meet it. Leaf and needle cards have normals that bend
+  outwards from the crown, so a crown shades as one soft volume. Light shows
+  through leaves from behind, leaves flutter, and whole trees sway with the
+  wind.
   Trees within 38 m (Medium) are full 3D. Beyond that they are billboards,
   baked at startup from 8 directions with colour and normals so they light
   like the real tree. Each billboard shows the side that matches how its
@@ -168,9 +205,10 @@ How the realistic world stays fast:
   behind other leaves fail the depth test instead of being shaded. Near
   trees and billboards are re-sorted every few metres you move; the sky is
   drawn after everything that covers it.
-- Leaves cast shadows through half-density stand-ins, drawn only into the
-  shadow map. Seen from the sun, the lower layers of a crown are hidden by
-  the upper ones anyway.
+- Leaves cast shadows through stand-ins with a third of the cards, drawn
+  only into the shadow map. Seen from the sun, the lower layers of a crown
+  are hidden by the upper ones anyway, and the solid crown core shades the
+  middle.
 - Shadow lookups read the shadow map 4 times per pixel on Medium (one
   bilinear lookup) instead of three.js's 17, and 16 on High for softer
   edges. Leaves read it once.
@@ -186,10 +224,10 @@ How the realistic world stays fast:
 
 GPU time per frame on Medium, measured on the Intel Graphics (Core 5 210H)
 laptop at 1600×900, clear midday: about 6.5 ms on the beach looking out to
-sea, 10.5–11 ms looking inland or from the summit, and 13.5 ms in dense
-forest with grass. That is 75–150 fps before any resolution scaling. Low
-runs in 3–5 ms. High is meant for dedicated graphics cards: on this
-integrated GPU it takes 12–25 ms. Press `P` to see GPU time (in browsers
+sea, 11–12.5 ms looking inland or from the summit, and 14–15 ms in dense
+forest with grass. That is 65–150 fps before any resolution scaling. Low
+runs in 4–7 ms. High is meant for dedicated graphics cards: on this
+integrated GPU it takes 11–28 ms. Press `P` to see GPU time (in browsers
 that allow GPU timer queries), frame rate, draw calls and triangles.
 
 Render resolution then adjusts automatically. It drops in 10% steps (down to
@@ -208,9 +246,10 @@ src/
   shared.js             world constants, shared shader uniforms, helpers
   core/quality.js       GPU detection, quality tiers, adaptive resolution, GPU timer, perf readout
   world/terrain.js      island heightmap, smooth terrain mesh, biome and canopy map, exact ground height
-  world/textures.js     procedural textures: ground layers, bark, cloud noise, leaf/needle/grass sprites
+  world/textures.js     procedural textures: ground layers, bark, cloud noise, leaf/needle/grass sprites,
+                        foliage for the crown cores
   world/materials.js    shader patches: sway, snow, wetness, drought, caustics, cloud shadows,
-                        fog, LOD dithering, terrain splatting, shadow filtering
+                        fog, LOD dithering, terrain splatting, shadow filtering, salt damage
   world/trees.js        procedural spruce, broadleaf tree, bush and boulder geometry
   world/vegetation.js   tree placement and colliders, near-tree LOD, billboard baking, bushes, rocks
   world/grass.js        GPU grass around the player
@@ -222,7 +261,8 @@ src/
   world/atmosphere.js   atmospheric scattering (GPU sky table, CPU colours)
   world/sky.js          sky dome, swollen sun, moon, stars, cloud layer, sun/sky light,
                         fog colours, shadow placement, exposure
-  weather/weather.js    weather presets, climate instability, sea level
+  weather/weather.js    weather presets, climate instability
+  weather/sealevel.js   sea level rise, tides, storm surge, salt damage lines, structure exposure
   weather/precipitation.js  GPU rain and snow, lightning
   player/player.js      walking, buoyant swimming, oxygen, health
   ui/hud.js             HUD panels and messages

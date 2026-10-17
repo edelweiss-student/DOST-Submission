@@ -3,15 +3,21 @@ import { SimplexNoise } from 'three/addons/math/SimplexNoise.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32, range, clamp, smoothstep } from '../shared.js';
 
-// Procedural plant and rock geometry. Trees are tapered branch tubes for
-// bark plus alpha-tested cards for leaves and needles. Leaf normals are bent
-// outwards from the crown, so a crown shades as one soft volume instead of
-// a pile of flat cards. Vertex colour carries ambient occlusion (darker
-// inside and under the crown).
+// Procedural plant and rock geometry. A tree has three parts:
+// - bark: tapered tubes for trunk and branches. Trunks reach a metre into
+//   the ground and flare at the base, so they meet any slope.
+// - crown: a small, dark, opaque core deep inside the crown, so you can't
+//   see straight through the middle of a tree.
+// - leaves: alpha-tested cards of leaves or needle sprays filling the
+//   crown, which give it its leafy look and outline.
+// Leaf and core normals point outwards from the crown, so a crown shades as
+// one soft volume. Vertex colour carries ambient occlusion (darker inside
+// and under the crown).
 
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _corner = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 const CORNERS = [[-1, -1, 0, 0], [1, -1, 1, 0], [1, 1, 1, 1], [-1, 1, 0, 1]];
+const MASS_TILE = 1.4;   // metres covered by one repeat of the crown-core texture
 
 class Builder {
   constructor() {
@@ -37,7 +43,8 @@ class Builder {
   }
 
   // A tapered tube along a polyline. uRepeat: texture repeats around it;
-  // vScale: repeats per metre along it. ao(t) gives occlusion along it.
+  // vScale: repeats per metre along it. ao(t, point) gives occlusion along
+  // it (t from 0 at the first point to 1 at the last).
   tube(points, radii, sides, uRepeat, vScale, ao) {
     const n = points.length;
     const normal = new THREE.Vector3(), binormal = new THREE.Vector3(), t = new THREE.Vector3();
@@ -53,7 +60,7 @@ class Builder {
         normal.addScaledVector(t, -normal.dot(t)).normalize(); // parallel transport
       }
       binormal.crossVectors(t, normal);
-      const occl = ao(i / (n - 1));
+      const occl = ao(i / (n - 1), points[i]);
       for (let s = 0; s <= sides; s++) {
         const a = (s / sides) * Math.PI * 2;
         dir.copy(normal).multiplyScalar(Math.cos(a)).addScaledVector(binormal, Math.sin(a));
@@ -64,6 +71,52 @@ class Builder {
     for (let i = 0; i < n - 1; i++) {
       for (let s = 0; s < sides; s++) {
         const a = first + i * (sides + 1) + s, b = a + sides + 1;
+        this.idx.push(a, b, a + 1, a + 1, b, b + 1);
+      }
+    }
+  }
+
+  // A surface of revolution around axis(y): profile is [{ y, r }] from the
+  // bottom up. Faces outwards.
+  lathe(axis, profile, sides, uRepeat, vScale, nfn, aofn) {
+    const first = this.pos.length / 3;
+    const c = new THREE.Vector3(), p = new THREE.Vector3();
+    for (const { y, r } of profile) {
+      axis(y, c);
+      for (let s = 0; s <= sides; s++) {
+        const a = (s / sides) * Math.PI * 2;
+        p.set(c.x + Math.cos(a) * r, y, c.z + Math.sin(a) * r);
+        this.vert(p, nfn(p), (s / sides) * uRepeat, y * vScale, aofn(p));
+      }
+    }
+    for (let i = 0; i < profile.length - 1; i++) {
+      for (let s = 0; s < sides; s++) {
+        const a = first + i * (sides + 1) + s, b = a + sides + 1;
+        this.idx.push(a, b, a + 1, a + 1, b, b + 1);
+      }
+    }
+  }
+
+  // A lumpy ellipsoid around c, faces outwards. bump(dir) scales the radius
+  // in each direction.
+  blob(c, rx, ry, rz, segW, segH, nfn, aofn, bump) {
+    const first = this.pos.length / 3;
+    const p = new THREE.Vector3(), d = new THREE.Vector3();
+    const uRep = Math.max(2, Math.round((Math.PI * (rx + rz)) / MASS_TILE));
+    const vRep = Math.max(1, Math.round((Math.PI * ry) / MASS_TILE));
+    for (let j = 0; j <= segH; j++) {
+      const th = (j / segH) * Math.PI;
+      for (let i = 0; i <= segW; i++) {
+        const ph = (i / segW) * Math.PI * 2;
+        d.set(Math.sin(th) * Math.cos(ph), -Math.cos(th), Math.sin(th) * Math.sin(ph));
+        const k = bump(d);
+        p.set(c.x + d.x * rx * k, c.y + d.y * ry * k, c.z + d.z * rz * k);
+        this.vert(p, nfn(p), (i / segW) * uRep, (j / segH) * vRep, aofn(p));
+      }
+    }
+    for (let j = 0; j < segH; j++) {
+      for (let i = 0; i < segW; i++) {
+        const a = first + j * (segW + 1) + i, b = a + segW + 1;
         this.idx.push(a, b, a + 1, a + 1, b, b + 1);
       }
     }
@@ -105,38 +158,49 @@ function bentNormal(cardN, outward, amount, out) {
   return out.copy(cardN).lerp(outward, amount).normalize();
 }
 
-// A spruce/fir: straight trunk, whorls of drooping branches covered in
-// needle sprays, narrowing to a point.
+// Trunk rings from a metre underground (so the trunk meets any slope) up
+// through a flared root collar: [height, radius as a multiple of r0]. The
+// radius only ever grows downwards, so no edge shows where the ground dips.
+const ROOT_FLARE = [[-1, 1.75], [-0.2, 1.65], [0.25, 1.32], [0.9, 1.1]];
+// Bark darkens where it meets the soil, so trunks sit in the ground.
+const trunkAO = (top) => (t, p) => (p.y < 0.9 ? 0.38 + 0.37 * smoothstep(-0.2, 0.9, p.y) : top(t));
+
+// A spruce/fir: straight trunk, close whorls of branches clothed in fans
+// of needle sprays around a small dark core, narrowing to a point.
 export function buildConifer(seed, height = 13) {
   const rng = mulberry32(seed);
-  const bark = new Builder(), leaves = new Builder();
+  const bark = new Builder(), leaves = new Builder(), crown = new Builder();
   const H = height * range(rng, 0.9, 1.1);
   const r0 = 0.2 + H * 0.013;
   const lean = new THREE.Vector2(range(rng, -0.25, 0.25), range(rng, -0.25, 0.25));
   const trunkAt = (y, out) => {
-    const t = y / H;
+    const t = Math.max(y, 0) / H;
     return out.set(lean.x * t * t, y, lean.y * t * t);
   };
   const trunk = [], radii = [];
-  for (let i = 0; i <= 7; i++) {
-    const t = i / 7;
-    trunk.push(trunkAt(t * H, new THREE.Vector3()));
-    radii.push(r0 * (1 - 0.94 * t) * (i === 0 ? 1.25 : 1));
+  for (const [y, r] of ROOT_FLARE) {
+    trunk.push(trunkAt(y, new THREE.Vector3()));
+    radii.push(r0 * r * 0.92);
   }
-  bark.tube(trunk, radii, 7, 2, 0.45, (t) => 0.75 + 0.25 * t);
+  for (let i = 1; i <= 7; i++) {
+    const t = i / 7;
+    trunk.push(trunkAt(0.9 + t * (H - 0.9), new THREE.Vector3()));
+    radii.push(r0 * (1 - 0.94 * t));
+  }
+  bark.tube(trunk, radii, 8, 2, 0.45, trunkAO((t) => 0.75 + 0.25 * t));
 
   const crownBase = H * range(rng, 0.1, 0.18);
   const maxL = H * 0.25;
   const crownR = (t) => maxL * Math.pow(1 - t, 0.9) + 0.35;
   const n = new THREE.Vector3(), out = new THREE.Vector3(), tan = new THREE.Vector3(), side = new THREE.Vector3();
-  const cardN = new THREE.Vector3(), base = new THREE.Vector3();
-  const normalAt = (p) => {
+  const cardN = new THREE.Vector3(), base = new THREE.Vector3(), fan = new THREE.Vector3();
+  const outward = (p) => {
     trunkAt(p.y, base);
     out.set(p.x - base.x, 0, p.z - base.z);
     if (out.lengthSq() < 1e-4) out.set(0, 1, 0);
-    out.normalize().multiplyScalar(0.85).add(_c.set(0, 0.55, 0)).normalize();
-    return bentNormal(cardN, out, 0.7, n);
+    return out.normalize().multiplyScalar(0.85).add(_c.set(0, 0.55, 0)).normalize();
   };
+  const normalAt = (p) => bentNormal(cardN, outward(p), 0.7, n);
   const aoAt = (p) => {
     const t = clamp((p.y - crownBase) / (H - crownBase), 0, 1);
     trunkAt(p.y, base);
@@ -144,43 +208,68 @@ export function buildConifer(seed, height = 13) {
     return clamp(0.32 + 0.68 * Math.pow(clamp(radial, 0, 1), 0.8) * (0.6 + 0.4 * t) + 0.08 * t, 0.25, 1);
   };
 
+  // Small dark core around the trunk, deep inside the sprays: it only
+  // stops you seeing straight through the middle of the tree.
+  const core = 0.36, yb = crownBase + 0.3, yt = H - 0.6;
+  const profile = [{ y: yb - 0.3, r: 0.05 }];
+  for (let i = 0; i <= 6; i++) {
+    const y = yb + (yt - yb) * (i / 6);
+    profile.push({ y, r: crownR((y - crownBase) / (H - crownBase)) * core });
+  }
+  profile.push({ y: H - 0.25, r: 0.04 });
+  const around = Math.max(2, Math.round((2 * Math.PI * crownR(0) * core) / MASS_TILE));
+  crown.lathe(trunkAt, profile, 10, around, 1 / MASS_TILE, (p) => outward(p), (p) => aoAt(p) * 0.6);
+
   let y = crownBase, whorl = 0;
   while (y < H - 0.6) {
     const t = (y - crownBase) / (H - crownBase);
-    const count = t > 0.8 ? 3 : 4 + Math.floor(rng() * 2);
+    const count = t > 0.85 ? 4 : t > 0.65 ? 5 : 6 + Math.floor(rng() * 2);
     const L = crownR(t) * range(rng, 0.85, 1.1);
     for (let k = 0; k < count; k++) {
-      const a = (k / count) * Math.PI * 2 + whorl * 2.4 + range(rng, -0.3, 0.3);
-      const droop = -0.28 + 0.5 * t + range(rng, -0.08, 0.08);
+      const a = (k / count) * Math.PI * 2 + whorl * 2.4 + range(rng, -0.25, 0.25);
+      const droop = -0.2 + 0.42 * t + range(rng, -0.08, 0.08);
       const d = new THREE.Vector3(Math.cos(a), droop, Math.sin(a)).normalize();
       const start = trunkAt(y, new THREE.Vector3());
-      const mid = start.clone().addScaledVector(d, L * 0.5).add(_a.set(0, -0.06 * L * (1 - t), 0));
-      const end = start.clone().addScaledVector(d, L).add(_a.set(0, -0.18 * L * (1 - t), 0));
+      const mid = start.clone().addScaledVector(d, L * 0.5).add(_a.set(0, -0.05 * L * (1 - t), 0));
+      const end = start.clone().addScaledVector(d, L).add(_a.set(0, -0.14 * L * (1 - t), 0));
       const rb = 0.03 + 0.018 * L;
       bark.tube([start, mid, end], [rb, rb * 0.55, rb * 0.15], 3, 1, 1, () => 0.55 + 0.3 * t);
-      // Overlapping needle sprays along the whole branch. They lie roughly
-      // flat but rolled at random, so the crown looks full from any side;
-      // the tip gets a crossing spray for depth.
+      const along = (f) => (f < 0.5 ? start.clone().lerp(mid, f * 2) : mid.clone().lerp(end, Math.min(1, (f - 0.5) * 2)));
+      // Needle sprays from near the trunk to the tip, widening into a fan
+      // towards the tip like a real spruce branch, rolled at random so the
+      // crown looks full from any side, with crossing sprays for depth.
       const cards = Math.max(2, Math.ceil(L / 0.7));
-      const len = Math.min(0.8, L * 0.32 + 0.3);
+      const len = Math.min(0.85, L * 0.3 + 0.32);
       tan.subVectors(end, start).normalize();
       for (let c = 0; c < cards; c++) {
-        const f = (c + 0.75) / cards;
-        const p = f < 0.5 ? start.clone().lerp(mid, f * 2) : mid.clone().lerp(end, Math.min(1, (f - 0.5) * 2));
+        const f = 0.15 + 0.85 * ((c + 0.75) / cards);
+        const p = along(f);
         side.crossVectors(UP, tan).normalize();
-        side.applyAxisAngle(tan, range(rng, -0.7, 0.7));
+        side.applyAxisAngle(tan, range(rng, -0.8, 0.8));
         cardN.crossVectors(tan, side).normalize();
         if (cardN.y < 0) cardN.negate();
-        const w = 0.44 * (1 - 0.25 * t);
+        const w = (0.3 + 0.28 * f) * (1 - 0.25 * t);
         leaves.card(p, _b.copy(tan).multiplyScalar(len), side.clone().multiplyScalar(w), normalAt, aoAt);
-        if (c === cards - 1) {
+        if (c === cards - 1 || rng() < 0.25) {
           const side2 = side.clone().applyAxisAngle(tan, Math.PI / 2 + range(rng, -0.3, 0.3));
           cardN.crossVectors(tan, side2).normalize();
           leaves.card(p, _b.copy(tan).multiplyScalar(len * 0.85), side2.multiplyScalar(w * 0.8), normalAt, aoAt);
         }
       }
+      // Side shoots fanning out either side of the outer branch.
+      if (L > 1.1) {
+        for (const s of [-1, 1]) {
+          const p = along(range(rng, 0.62, 0.8));
+          fan.copy(tan).applyAxisAngle(UP, s * range(rng, 0.45, 0.65));
+          side.crossVectors(UP, fan).normalize().applyAxisAngle(fan, range(rng, -0.5, 0.5));
+          cardN.crossVectors(fan, side).normalize();
+          if (cardN.y < 0) cardN.negate();
+          p.addScaledVector(fan, len * 0.6);
+          leaves.card(p, _b.copy(fan).multiplyScalar(len * 0.75), side.clone().multiplyScalar(0.36 * (1 - 0.25 * t)), normalAt, aoAt);
+        }
+      }
     }
-    y += range(rng, 0.42, 0.56);
+    y += range(rng, 0.46, 0.6);
     whorl++;
   }
   // Leader: a few upright sprays at the top.
@@ -191,25 +280,36 @@ export function buildConifer(seed, height = 13) {
     cardN.set(-side.z, 0.2, side.x).normalize();
     leaves.card(tip.clone().add(_a.set(0, -0.55, 0)), _b.set(0, 0.7, 0), side.clone().multiplyScalar(0.3), normalAt, aoAt);
   }
-  return { bark: bark.build(), leaves: leaves.build(), height: H, radius: maxL + 0.4 };
+  return { bark: bark.build(), leaves: leaves.build(), crown: crown.build(), height: H, radius: maxL + 0.4 };
 }
 
-// A broadleaf (oak-like): short trunk forking into curving limbs, each with
-// side branches ending in clusters of leaf cards that form a rounded crown.
+// A broadleaf (oak-like): a trunk that forks into curving limbs and side
+// branches, with leaf clusters at the branch ends and spread through the
+// whole crown, around a small dark core.
 export function buildBroadleaf(seed, height = 10) {
   const rng = mulberry32(seed);
-  const bark = new Builder(), leaves = new Builder();
+  const bark = new Builder(), leaves = new Builder(), crown = new Builder();
   const H = height * range(rng, 0.9, 1.1);
   const r0 = 0.26 + H * 0.014;
   const fork = H * range(rng, 0.28, 0.36);
+  const lx = range(rng, -0.06, 0.06), lz = range(rng, -0.06, 0.06);
+  // Trunk with a root flare, carried on past the fork as a tapering leader
+  // that the limbs grow out of (no open end at the fork).
   const trunk = [], radii = [];
-  for (let i = 0; i <= 4; i++) {
-    const t = i / 4;
-    trunk.push(new THREE.Vector3(range(rng, -0.06, 0.06) * t, fork * t, range(rng, -0.06, 0.06) * t));
-    radii.push(r0 * (1.3 - 0.45 * t) * (i === 0 ? 1.15 : 1));
+  for (const [y, r] of ROOT_FLARE) {
+    trunk.push(new THREE.Vector3(0, y, 0));
+    radii.push(r0 * r);
   }
-  bark.tube(trunk, radii, 8, 2, 0.45, (t) => 0.75 + 0.2 * t);
-  const top = trunk[trunk.length - 1];
+  for (let i = 1; i <= 3; i++) {
+    const t = i / 3;
+    const yy = 0.9 + (fork - 0.9) * t;
+    trunk.push(new THREE.Vector3(lx * (yy / fork), yy, lz * (yy / fork)));
+    radii.push(r0 * (1.1 - 0.25 * t));
+  }
+  const top = trunk[trunk.length - 1].clone();
+  trunk.push(top.clone().add(_a.set(lx * 0.5, 0.45, lz * 0.5)), top.clone().add(_a.set(lx, 0.9, lz)));
+  radii.push(r0 * 0.62, r0 * 0.2);
+  bark.tube(trunk, radii, 8, 2, 0.45, trunkAO((t) => 0.75 + 0.2 * t));
 
   const clusters = [];
   const limbs = 3 + (rng() < 0.6 ? 1 : 0);
@@ -217,7 +317,8 @@ export function buildBroadleaf(seed, height = 10) {
     const a = (k / limbs) * Math.PI * 2 + range(rng, -0.4, 0.4);
     const tilt = range(rng, 0.45, 0.8);
     const Ll = H * range(rng, 0.34, 0.44);
-    const pts = [top.clone()];
+    // Limbs start inside the trunk, below the fork.
+    const pts = [top.clone().add(_a.set(0, -0.35, 0))];
     const d = new THREE.Vector3(Math.sin(tilt) * Math.cos(a), Math.cos(tilt), Math.sin(tilt) * Math.sin(a));
     for (let i = 1; i <= 4; i++) {
       d.x += range(rng, -0.12, 0.12); d.z += range(rng, -0.12, 0.12);
@@ -245,7 +346,7 @@ export function buildBroadleaf(seed, height = 10) {
     }
   }
 
-  // Crown shape from the clusters.
+  // Crown shape from the branch-end clusters.
   const cc = new THREE.Vector3();
   for (const c of clusters) cc.add(c);
   cc.divideScalar(clusters.length);
@@ -257,20 +358,38 @@ export function buildBroadleaf(seed, height = 10) {
   rx += 1.2; ry += 1.2;
   const rz = rx;
   const n = new THREE.Vector3(), out = new THREE.Vector3(), cardN = new THREE.Vector3();
-  const normalAt = (p) => {
-    out.set((p.x - cc.x) / rx, (p.y - cc.y) / ry + 0.25, (p.z - cc.z) / rz).normalize();
-    return bentNormal(cardN, out, 0.75, n);
-  };
+  const outward = (p) => out.set((p.x - cc.x) / rx, (p.y - cc.y) / ry + 0.25, (p.z - cc.z) / rz).normalize();
+  const normalAt = (p) => bentNormal(cardN, outward(p), 0.75, n);
   const aoAt = (p) => {
     const e = Math.hypot((p.x - cc.x) / rx, (p.y - cc.y) / ry, (p.z - cc.z) / rz);
     const vert = clamp((p.y - (cc.y - ry)) / (2 * ry), 0, 1);
     return clamp(0.3 + 0.7 * smoothstep(0.15, 1.0, e) * (0.65 + 0.35 * vert), 0.25, 1);
   };
+
+  // More clusters through the rest of the crown, mostly in its outer half,
+  // so there are no holes between the branch ends.
+  const fill = Math.round(26 * (H / 10));
+  const dir = new THREE.Vector3();
+  for (let k = 0, tries = 0; k < fill && tries < fill * 4; tries++) {
+    randomUnit(rng, dir, 0.2);
+    const r = Math.sqrt(range(rng, 0.2, 0.85));
+    const p = new THREE.Vector3(cc.x + dir.x * rx * r * 0.85, cc.y + dir.y * ry * r * 0.85, cc.z + dir.z * rz * r * 0.85);
+    if (p.y < fork + 0.8) continue;
+    clusters.push(p);
+    k++;
+  }
+
+  // Small dark core deep inside the leaves, so you can't see straight
+  // through the middle of the crown.
+  const lump = (phase) => (d) => 1 + 0.1 * Math.sin(3 * Math.atan2(d.z, d.x) + phase) * Math.sin(2.5 * d.y + phase);
+  // Raised so its underside stays hidden behind the lowest leaves.
+  crown.blob(_a.set(cc.x, cc.y + ry * 0.18, cc.z), rx * 0.33, ry * 0.33, rz * 0.33, 14, 10, (p) => outward(p), (p) => aoAt(p) * 0.75, lump(rng() * 6));
+
   const u = new THREE.Vector3(), w = new THREE.Vector3();
   for (const c of clusters) {
-    const cards = 6 + Math.floor(rng() * 3);
+    const cards = 5 + Math.floor(rng() * 3);
     for (let k = 0; k < cards; k++) {
-      const p = c.clone().add(randomUnit(rng, _a, 0).multiplyScalar(range(rng, 0.1, 1.0)));
+      const p = c.clone().add(randomUnit(rng, _a, 0).multiplyScalar(range(rng, 0.1, 0.95)));
       randomUnit(rng, cardN, 0.6);
       u.crossVectors(cardN, randomUnit(rng, _c)).normalize();
       w.crossVectors(cardN, u).normalize();
@@ -278,7 +397,7 @@ export function buildBroadleaf(seed, height = 10) {
       leaves.card(p, u.clone().multiplyScalar(s), w.clone().multiplyScalar(s), normalAt, aoAt);
     }
   }
-  return { bark: bark.build(), leaves: leaves.build(), height: H, radius: rx };
+  return { bark: bark.build(), leaves: leaves.build(), crown: crown.build(), height: H, radius: rx };
 }
 
 // A shrub: a few short stems and a dome of leaf cards.
