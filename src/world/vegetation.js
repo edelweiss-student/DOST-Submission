@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-import { range, smoothstep, uniforms } from '../shared.js';
+import { range } from '../shared.js';
 import { patchMaterial, foliageDepthMaterial } from './materials.js';
-import { buildConifer, buildBroadleaf, buildBush, buildRock, thinCards } from './trees.js';
-import { leafSprite, needleSprite, foliageMassTexture } from './textures.js';
+import { buildBush, buildRock } from './props.js';
+import { leafSprite } from './textures.js';
 
-// Uniform grid of circular colliders (tree trunks, boulders).
+// Uniform grid of circular colliders (boulders).
 export class ColliderGrid {
   constructor(cell = 8) {
     this.cell = cell;
@@ -28,9 +28,6 @@ export class ColliderGrid {
     return out;
   }
 }
-
-const TREE_SWAY = 0.6;    // bark and leaves must match so leaves stay on their branches
-const LOD_BAND = 5;       // metres over which near trees dither into billboards
 
 // Instanced objects split into square chunks, so the GPU only gets the
 // chunks that are in view (frustum culling per chunk) and within
@@ -129,200 +126,17 @@ export function rockGeometries() {
   return [buildRock(41), buildRock(42), buildRock(43)];
 }
 
-// Billboards for distant trees: each variant is drawn from IMPOSTOR_VIEWS
-// directions around it into an atlas of colour and normals (one row per
-// variant). A billboard turns to face the camera and shows the view that
-// matches how its tree is turned, so it lines up with the 3D tree it hands
-// over to; it is lit with the baked normals, so it shades like the real tree.
-const IMPOSTOR_VIEWS = 8;
-function bakeImpostors(renderer, variants, tile, anisotropy) {
-  const cols = IMPOSTOR_VIEWS, rows = variants.length;
-  const tw = tile, th = tile * 2;
-  const W = cols * tw, H = rows * th;
-  const options = {
-    generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter, anisotropy,
-  };
-  const targets = [new THREE.WebGLRenderTarget(W, H, options), new THREE.WebGLRenderTarget(W, H, options)];
-
-  const partMaterial = (map, isLeaf, mode) => new THREE.ShaderMaterial({
-    uniforms: { map: { value: map }, mode: { value: mode }, leaf: { value: isLeaf } },
-    vertexColors: true,
-    side: THREE.DoubleSide,
-    vertexShader: /* glsl */ `
-      varying vec2 vUv; varying vec3 vN; varying float vAO;
-      void main() {
-        vUv = uv; vN = mat3( modelMatrix ) * normal; vAO = color.r;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-      }`,
-    fragmentShader: /* glsl */ `
-      uniform sampler2D map; uniform int mode; uniform bool leaf;
-      varying vec2 vUv; varying vec3 vN; varying float vAO;
-      void main() {
-        vec4 t = texture2D( map, vUv );
-        if ( leaf && t.a < 0.45 ) discard;
-        vec3 c = leaf ? t.rgb : t.rgb * t.rgb;
-        gl_FragColor = mode == 0 ? vec4( sqrt( c * vAO ), 1.0 ) : vec4( normalize( vN ) * 0.5 + 0.5, 1.0 );
-      }`,
-  });
-  // Background: a leaf colour (or flat normal) with zero alpha, so mipmaps
-  // don't bleed black into the edges.
-  const background = (rgb) => {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
-      vertexShader: 'void main() { gl_Position = vec4( position.xy, 1.0, 1.0 ); }',
-      fragmentShader: `void main() { gl_FragColor = vec4( ${rgb.map((v) => v.toFixed(3)).join(', ')}, 0.0 ); }`,
-      depthWrite: false, depthTest: false,
-    }));
-    m.frustumCulled = false;
-    m.renderOrder = -1;
-    return m;
-  };
-  const backgrounds = [background([0.5, 0.58, 0.4]), background([0.5, 0.5, 1.0])];
-
-  const camera = new THREE.OrthographicCamera();
-  const prevTarget = renderer.getRenderTarget();
-  // Mipmaps are built on the first render (which sets up their storage) and
-  // the last, not after every tile.
-  const lastRender = rows * cols - 1;
-  variants.forEach((v, row) => {
-    // Wide enough for the tree turned to any side, with a little transparent
-    // padding so mipmaps don't bleed between neighbouring views.
-    let radius = 0;
-    for (const g of [v.geometry.bark, v.geometry.crown, v.geometry.leaves]) {
-      const p = g.attributes.position;
-      for (let i = 0; i < p.count; i++) radius = Math.max(radius, Math.hypot(p.getX(i), p.getZ(i)));
-    }
-    const box = new THREE.Box3().union(v.geometry.bark.boundingBox).union(v.geometry.leaves.boundingBox);
-    let w = 2 * radius * 1.08 + 0.2, h = (box.max.y - box.min.y) * 1.04 + 0.2;
-    if (w * 2 > h) h = w * 2; else w = h / 2;
-    const y0 = box.min.y - 0.1;
-    Object.assign(camera, { left: -w / 2, right: w / 2, bottom: y0, top: y0 + h, near: 0.1, far: 400 });
-    camera.position.set(0, 0, 200);
-    camera.updateProjectionMatrix();
-    // Tile row for this variant; the view (column) is picked per billboard.
-    v.impostor = { w, h, y0, tile: [0, (row * th) / H, tw / W, th / H] };
-
-    targets.forEach((target, mode) => {
-      const scene = new THREE.Scene();
-      const bark = new THREE.Mesh(v.geometry.bark, partMaterial(v.barkMap, false, mode));
-      const crown = new THREE.Mesh(v.geometry.crown, partMaterial(v.massMap, true, mode));
-      const leaves = new THREE.Mesh(v.geometry.leaves, partMaterial(v.leafMap, true, mode));
-      scene.add(backgrounds[mode], bark, crown, leaves);
-      for (let k = 0; k < cols; k++) {
-        // View k shows the tree turned by k steps, seen from +z.
-        bark.rotation.y = crown.rotation.y = leaves.rotation.y = (k / cols) * Math.PI * 2;
-        const n = row * cols + k;
-        target.texture.generateMipmaps = n === 0 || n === lastRender;
-        target.viewport.set(k * tw, row * th, tw, th);
-        target.scissor.set(k * tw, row * th, tw, th);
-        target.scissorTest = true;
-        renderer.setRenderTarget(target);
-        renderer.clear();
-        renderer.render(scene, camera);
-      }
-      for (const part of [bark, crown, leaves]) part.material.dispose();
-    });
-  });
-  renderer.setRenderTarget(prevTarget);
-  return { albedo: targets[0].texture, normal: targets[1].texture };
-}
-
-const IMPOSTOR_VERTEX_HEAD = /* glsl */ `
-attribute vec3 iPos;     // tree base x, y, z
-attribute vec4 iSize;    // width, height, how the tree is turned (radians), quad bottom relative to the tree base
-attribute vec4 iTile;    // atlas row: offset, tile size
-attribute vec3 iColor;
-varying vec3 vImpRight;
-varying vec3 vImpFwd;
-varying vec3 vImpColor;
-varying float vImpLod;
-varying float vImpDead;
-`;
-const IMPOSTOR_BEGIN_NORMAL = /* glsl */ `
-vec3 objectNormal = vec3( 0.0, 1.0, 0.0 );
-vec3 impBase = iPos.xyz;
-vec2 toCam = cameraPosition.xz - impBase.xz;
-float camDist = max( length( toCam ), 1e-3 );
-vec3 impFwd = vec3( toCam.x, 0.0, toCam.y ) / camDist;
-vec3 impRight = vec3( impFwd.z, 0.0, -impFwd.x );
-float impLod = 1.0 - smoothstep( uLodRange.x, uLodRange.y, camDist );
-float impH = position.y * iSize.y;
-vec3 impPos = impBase + impRight * ( position.x * iSize.x ) + vec3( 0.0, impH, 0.0 );
-// Same wind sway as the 3D trees.
-float ph = impBase.x * 0.07 + impBase.z * 0.05;
-float gust = sin( uTime * ( 1.3 + uWind * 2.0 ) + ph ) * 0.6 + sin( uTime * 3.1 + ph * 1.7 ) * 0.4;
-float swayH = max( impH + iSize.w, 0.0 );
-impPos.xz += uWindDir * ( ${TREE_SWAY.toFixed(2)} * swayH * swayH * 0.008 ) * ( uWind * 0.8 + gust * ( 0.2 + 0.6 * uWind ) );
-if ( impLod > 0.999 ) impPos = impBase;   // the 3D tree is fully shown here
-// The baked view that shows the tree from the side the camera sees it.
-float impView = mod( floor( ( iSize.z - atan( toCam.x, toCam.y ) ) * ${(IMPOSTOR_VIEWS / (Math.PI * 2)).toFixed(6)} + 0.5 ), ${IMPOSTOR_VIEWS.toFixed(1)} );
-vImpRight = impRight;
-vImpFwd = impFwd;
-vImpColor = iColor;
-vImpLod = impLod;
-// Same as the 3D trees: dead once salt water has reached the roots.
-vImpDead = smoothstep( 0.0, 0.9, uTreeKillLine - ( iPos.y - iSize.w ) );
-`;
-const IMPOSTOR_BEGIN = /* glsl */ `
-vec3 transformed = impPos;
-#ifdef USE_MAP
-  vMapUv = iTile.xy + vec2( impView + uv.x, uv.y ) * iTile.zw;
-#endif
-`;
-const IMPOSTOR_FRAGMENT_HEAD = /* glsl */ `
-uniform sampler2D tImpNormal;
-varying vec3 vImpRight;
-varying vec3 vImpFwd;
-varying vec3 vImpColor;
-varying float vImpLod;
-varying float vImpDead;
-vec3 btImpW;
-`;
-const IMPOSTOR_COLOR = /* glsl */ `
-if ( btDither( gl_FragCoord.xy ) < vImpLod ) discard;
-diffuseColor.rgb *= vImpColor;
-if ( vImpDead > 0.0 ) {
-  // A dead tree: the leaves (the green in the picture) drop in patches,
-  // and what is left browns and bleaches.
-  float leafy = clamp( ( diffuseColor.g - max( diffuseColor.r, diffuseColor.b ) ) * 10.0, 0.0, 1.0 );
-  if ( leafy > 0.25 && btValueNoise( vec3( vMapUv * vec2( 90.0, 40.0 ), 0.0 ) ) < vImpDead * 1.25 - 0.2 ) discard;
-  float l = dot( diffuseColor.rgb, vec3( 0.35, 0.5, 0.15 ) );
-  diffuseColor.rgb = mix( diffuseColor.rgb, mix( vec3( l * 1.3 ), vec3( 1.6, 1.15, 0.55 ) * l, leafy ), smoothstep( 0.0, 0.5, vImpDead ) );
-}
-{
-  vec3 nb = texture2D( tImpNormal, vMapUv ).xyz * 2.0 - 1.0;
-  btImpW = normalize( vImpRight * nb.x + vec3( 0.0, nb.y, 0.0 ) + vImpFwd * nb.z );
-  btUpN = btImpW.y;
-}
-`;
-const IMPOSTOR_NORMAL = /* glsl */ `
-float faceDirection = 1.0;
-vec3 normal = normalize( ( viewMatrix * vec4( btImpW, 0.0 ) ).xyz );
-vec3 nonPerturbedNormal = normal;
-`;
-
-export function createVegetation(scene, terrain, rng, renderer, { quality, ground, bark, cloudShadows }) {
+// Bushes and boulders. There are no trees for now: a tree asset will take
+// their place.
+export function createVegetation(scene, terrain, rng, { quality, ground, cloudShadows }) {
   const colliders = new ColliderGrid();
-  const near = [];
-  const pines = [], oaks = [], bushes = [], rocks = [];
+  const found = [];
+  const bushes = [], rocks = [];
   const shadows = quality.shadowMap > 0;
   const msaa = quality.antialias;
 
   const spacingOk = (x, z, min) =>
-    colliders.query(x, z, near).every((c) => (c.x - x) ** 2 + (c.z - z) ** 2 > min * min);
-
-  // Trees: dense where the forest noise is high, thinning toward meadows.
-  for (let k = 0; k < 40000 && pines.length + oaks.length < 2200; k++) {
-    const x = range(rng, -300, 300), z = range(rng, -300, 300);
-    const h = terrain.heightAt(x, z);
-    if (h < 2.6 || h > 42 || terrain.slopeAt(x, z) > 0.12) continue;
-    const f = terrain.forestDensity(x, z);
-    if (rng() > smoothstep(-0.35, 0.3, f) * 0.92 + 0.03) continue;
-    if (!spacingOk(x, z, 3.6)) continue;
-    const s = range(rng, 0.8, 1.25);
-    const tree = { x, y: h - 0.15, z, rot: rng() * Math.PI * 2, s, sy: range(rng, 0.92, 1.12), tone: rng(), variant: Math.floor(rng() * 3) };
-    (h > 18 || f > 0.25 || rng() < 0.45 ? pines : oaks).push(tree);
-    colliders.add(x, z, 0.4 * s);
-  }
+    colliders.query(x, z, found).every((c) => (c.x - x) ** 2 + (c.z - z) ** 2 > min * min);
 
   for (let k = 0; k < 6000 && bushes.length < 1000; k++) {
     const x = range(rng, -300, 300), z = range(rng, -300, 300);
@@ -345,200 +159,15 @@ export function createVegetation(scene, terrain, rng, renderer, { quality, groun
     if (s > 0.9) colliders.add(x, z, s * 0.95);
   }
 
-  // Crowns shade the ground beneath them.
-  for (const t of pines) terrain.addCanopy(t.x, t.z, 3.4 * t.s, 0.9);
-  for (const t of oaks) terrain.addCanopy(t.x, t.z, 4.4 * t.s, 1);
+  // Bushes shade the ground beneath them.
   for (const b of bushes) terrain.addCanopy(b.x, b.z, 1.3 * b.s, 0.4);
   terrain.commitCanopy();
 
-  const aniso = quality.anisotropy;
-  const needleTex = needleSprite(aniso), leafTex = leafSprite(aniso);
-  const species = [
-    {
-      name: 'pine', list: pines, leafMap: needleTex, massMap: foliageMassTexture('needle', aniso), barkTex: bark.pine, flutter: 0.4,
-      geometry: [11, 12, 13].map((seed) => buildConifer(seed, 13)),
-      toneA: new THREE.Color(0.82, 0.92, 0.84), toneB: new THREE.Color(1.05, 1.06, 0.92),
-    },
-    {
-      name: 'oak', list: oaks, leafMap: leafTex, massMap: foliageMassTexture('leaf', aniso), barkTex: bark.oak, flutter: 1,
-      geometry: [21, 22, 23].map((seed) => buildBroadleaf(seed, 10)),
-      toneA: new THREE.Color(0.9, 1.0, 0.85), toneB: new THREE.Color(1.15, 1.08, 0.78),
-    },
-  ];
+  const tone = new THREE.Color();
+  const chunks = [];
 
-  // Leaves cast shadows through thinned stand-ins (a third of the cards),
-  // drawn only into the shadow map: seen from the sun, the lower layers of
-  // a crown are hidden by the upper ones, and the solid crown core already
-  // shades the middle, so the shadow looks the same at a third of the cost. The shadow pass only draws visible objects, so the
-  // stand-ins are switched on just for it.
-  const shadowOnly = [];
-  if (shadows) {
-    const renderShadows = renderer.shadowMap.render;
-    renderer.shadowMap.render = function (...args) {
-      for (const m of shadowOnly) m.visible = true;
-      renderShadows.apply(this, args);
-      for (const m of shadowOnly) m.visible = false;
-    };
-  }
-
-  // --- Near trees: full 3D, rebuilt as the player moves.
-  const variants = [];
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3();
-  const up = new THREE.Vector3(0, 1, 0), tone = new THREE.Color();
-  for (const sp of species) {
-    const leafMat = patchMaterial(
-      new THREE.MeshLambertMaterial({ map: sp.leafMap, alphaTest: 0.45, side: THREE.DoubleSide, vertexColors: true, alphaToCoverage: msaa }),
-      { key: 'leaf-' + sp.name, sway: TREE_SWAY, flutter: sp.flutter, foliage: 0.8, lod: true, dry: true, snowMin: 0.35, cloudShadows, hardShadow: true, tree: 'leaves' },
-    );
-    const crownMat = patchMaterial(
-      new THREE.MeshLambertMaterial({ map: sp.massMap, vertexColors: true }),
-      { key: 'crown-' + sp.name, sway: TREE_SWAY, foliage: 0.5, lod: true, dry: true, snowMin: 0.35, cloudShadows, tree: 'leaves' },
-    );
-    const barkMat = patchMaterial(
-      new THREE.MeshLambertMaterial({ map: sp.barkTex.albedo, normalMap: sp.barkTex.normal, vertexColors: true }),
-      { key: 'bark-' + sp.name, sway: TREE_SWAY, snowMin: 0.95, lod: true, sqrtMap: true, cloudShadows, tree: 'bark' },
-    );
-    const leafDepth = foliageDepthMaterial({ key: 'leaf-' + sp.name, map: sp.leafMap, alphaTest: 0.45, sway: TREE_SWAY, flutter: sp.flutter, tree: 'leaves' });
-    const crownDepth = foliageDepthMaterial({ key: 'crown-' + sp.name, sway: TREE_SWAY, tree: 'leaves' });
-    const barkDepth = foliageDepthMaterial({ key: 'bark-' + sp.name, sway: TREE_SWAY, tree: 'bark' });
-    sp.geometry.forEach((geometry, vi) => {
-      const trees = sp.list.filter((t) => t.variant === vi);
-      const cap = Math.max(1, trees.length);
-      const barkMesh = new THREE.InstancedMesh(geometry.bark, barkMat, cap);
-      const leafMesh = new THREE.InstancedMesh(geometry.leaves, leafMat, cap);
-      leafMesh.instanceMatrix = barkMesh.instanceMatrix;
-      barkMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      leafMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3).setUsage(THREE.DynamicDrawUsage);
-      // The dense core inside the crown, so it is never see-through.
-      const crownMesh = new THREE.InstancedMesh(geometry.crown, crownMat, cap);
-      crownMesh.instanceMatrix = barkMesh.instanceMatrix;
-      crownMesh.instanceColor = leafMesh.instanceColor;
-      const leafShadow = new THREE.InstancedMesh(thinCards(geometry.leaves, 3), leafMat, cap);
-      leafShadow.instanceMatrix = barkMesh.instanceMatrix;
-      leafShadow.instanceColor = leafMesh.instanceColor;
-      for (const mesh of [barkMesh, crownMesh, leafMesh, leafShadow]) {
-        mesh.count = 0;
-        mesh.frustumCulled = false;
-        mesh.castShadow = shadows;
-        mesh.receiveShadow = true;
-        scene.add(mesh);
-      }
-      // Leaf cards after the solid parts, so cards hidden behind trunks and
-      // crown cores fail the depth test instead of being shaded.
-      leafMesh.renderOrder = 1;
-      leafMesh.castShadow = false;
-      leafShadow.receiveShadow = false;
-      leafShadow.visible = false;
-      leafShadow.customDepthMaterial = leafDepth;
-      crownMesh.customDepthMaterial = crownDepth;
-      barkMesh.customDepthMaterial = barkDepth;
-      shadowOnly.push(leafShadow);
-      const variant = {
-        geometry, barkMesh, crownMesh, leafMesh, leafShadow, trees,
-        barkMap: sp.barkTex.albedo, leafMap: sp.leafMap, massMap: sp.massMap,
-        // Per tree: world matrix and leaf tint, ready to copy.
-        matrices: new Float32Array(trees.length * 16), colors: new Float32Array(trees.length * 3),
-      };
-      trees.forEach((t, i) => {
-        q.setFromAxisAngle(up, t.rot);
-        m.compose(p.set(t.x, t.y, t.z), q, sc.set(t.s, t.s * t.sy, t.s));
-        m.toArray(variant.matrices, i * 16);
-        tone.copy(sp.toneA).lerp(sp.toneB, t.tone).toArray(variant.colors, i * 3);
-        t.index = i;
-      });
-      variants.push(variant);
-    });
-  }
-
-  // Trees are written nearest first, so leaves behind already-drawn leaves
-  // are rejected by the depth test instead of being shaded (big savings in
-  // dense forest, where many layers of leaves overlap).
-  const nearRadius = quality.nearTrees;
-  uniforms.uLodRange.value.set(nearRadius - LOD_BAND, nearRadius);
-  const last = new THREE.Vector2(1e9, 1e9);
-  const picked = [];
-  function updateNear(camera) {
-    const cx = camera.position.x, cz = camera.position.z;
-    if ((cx - last.x) ** 2 + (cz - last.y) ** 2 < 4) return;
-    last.set(cx, cz);
-    const r2 = (nearRadius + 3) ** 2;
-    for (const v of variants) {
-      const mat = v.barkMesh.instanceMatrix, col = v.leafMesh.instanceColor;
-      picked.length = 0;
-      for (const t of v.trees) {
-        t.d2 = (t.x - cx) ** 2 + (t.z - cz) ** 2;
-        if (t.d2 <= r2) picked.push(t);
-      }
-      picked.sort((a, b) => a.d2 - b.d2);
-      picked.forEach((t, n) => {
-        mat.array.set(v.matrices.subarray(t.index * 16, t.index * 16 + 16), n * 16);
-        col.array.set(v.colors.subarray(t.index * 3, t.index * 3 + 3), n * 3);
-      });
-      const n = picked.length;
-      v.barkMesh.count = v.crownMesh.count = v.leafMesh.count = v.leafShadow.count = n;
-      mat.clearUpdateRanges();
-      mat.addUpdateRange(0, n * 16);
-      mat.needsUpdate = true;
-      col.clearUpdateRanges();
-      col.addUpdateRange(0, n * 3);
-      col.needsUpdate = true;
-    }
-  }
-
-  // --- Far trees: one draw call of billboards for the whole island, also
-  // kept sorted nearest first (re-sorted every few metres of movement).
-  const atlas = bakeImpostors(renderer, variants, quality.impostorTile, aniso);
-  const all = variants.flatMap((v) => v.trees.map((t) => ({ t, v, d2: 0 })));
-  const iPos = new Float32Array(all.length * 3), iSize = new Float32Array(all.length * 4);
-  const iTile = new Float32Array(all.length * 4), iColor = new Float32Array(all.length * 3);
-  const impLast = new THREE.Vector2(1e9, 1e9);
-  function sortImpostors(camera) {
-    const cx = camera.position.x, cz = camera.position.z;
-    if ((cx - impLast.x) ** 2 + (cz - impLast.y) ** 2 < 36) return;
-    impLast.set(cx, cz);
-    for (const e of all) e.d2 = (e.t.x - cx) ** 2 + (e.t.z - cz) ** 2;
-    all.sort((a, b) => a.d2 - b.d2);
-    all.forEach(({ t, v }, i) => {
-      const imp = v.impostor, sy = t.s * t.sy;
-      iPos[i * 3] = t.x; iPos[i * 3 + 1] = t.y + imp.y0 * sy; iPos[i * 3 + 2] = t.z;
-      // Width, height, the tree's turn (to pick the matching view), and the
-      // height of the quad's base above the tree's base (for sway).
-      iSize[i * 4] = imp.w * t.s; iSize[i * 4 + 1] = imp.h * sy;
-      iSize[i * 4 + 2] = t.rot; iSize[i * 4 + 3] = imp.y0 * sy;
-      iTile.set(imp.tile, i * 4);
-      iColor.set(v.colors.subarray(t.index * 3, t.index * 3 + 3), i * 3);
-    });
-    for (const name of ['iPos', 'iSize', 'iTile', 'iColor']) impGeo.attributes[name].needsUpdate = true;
-  }
-  const quad = new THREE.BufferGeometry();
-  quad.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0], 3));
-  quad.setAttribute('normal', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], 3));
-  quad.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2));
-  quad.setIndex([0, 1, 2, 0, 2, 3]);
-  const impGeo = new THREE.InstancedBufferGeometry().copy(quad);
-  impGeo.instanceCount = all.length;
-  impGeo.setAttribute('iPos', new THREE.InstancedBufferAttribute(iPos, 3));
-  impGeo.setAttribute('iSize', new THREE.InstancedBufferAttribute(iSize, 4));
-  impGeo.setAttribute('iTile', new THREE.InstancedBufferAttribute(iTile, 4));
-  impGeo.setAttribute('iColor', new THREE.InstancedBufferAttribute(iColor, 3));
-  const impMat = new THREE.MeshLambertMaterial({ map: atlas.albedo, alphaTest: 0.5, alphaToCoverage: msaa });
-  impMat.defines = { BT_CUSTOM_UP: '' };
-  patchMaterial(impMat, {
-    key: 'impostor', foliage: 0.6, dry: true, snowMin: 0.35, sqrtMap: true, cloudShadows, hardShadow: true,
-    custom: {
-      uniforms: { tImpNormal: { value: atlas.normal } },
-      vertexHead: IMPOSTOR_VERTEX_HEAD, beginNormal: IMPOSTOR_BEGIN_NORMAL, begin: IMPOSTOR_BEGIN,
-      fragmentHead: IMPOSTOR_FRAGMENT_HEAD, color: IMPOSTOR_COLOR, normal: IMPOSTOR_NORMAL,
-    },
-  });
-  const impostors = new THREE.Mesh(impGeo, impMat);
-  impostors.frustumCulled = false;
-  // Within shadow range, billboards take the same crown shadows as the 3D
-  // trees they hand over to, so the two match during the hand-over.
-  impostors.receiveShadow = shadows;
-  scene.add(impostors);
-
-  // --- Bushes: always 3D (they're small), two shapes, in culled chunks.
+  // --- Bushes: two shapes, in culled chunks.
+  const leafTex = leafSprite(quality.anisotropy);
   const bushGeos = [buildBush(31), buildBush(32)];
   const bushMat = patchMaterial(
     new THREE.MeshLambertMaterial({ map: leafTex, alphaTest: 0.45, side: THREE.DoubleSide, vertexColors: true, alphaToCoverage: msaa }),
@@ -546,7 +175,6 @@ export function createVegetation(scene, terrain, rng, renderer, { quality, groun
   );
   const bushDepth = foliageDepthMaterial({ key: 'bush', map: leafTex, alphaTest: 0.45, sway: 2, flutter: 1, tree: 'leaves' });
   const bushTones = [new THREE.Color(0.85, 0.98, 0.8), new THREE.Color(1.1, 1.06, 0.78)];
-  const chunks = [];
   bushGeos.forEach((g, vi) => {
     const c = new InstanceChunks(scene, g.leaves, bushMat, bushes.filter((b) => b.variant === vi), {
       maxDistance: 78, castShadow: quality.shadowMap >= 2048,
@@ -568,10 +196,8 @@ export function createVegetation(scene, terrain, rng, renderer, { quality, groun
 
   return {
     colliders,
-    counts: { pines: pines.length, oaks: oaks.length, bushes: bushes.length, rocks: rocks.length },
+    counts: { bushes: bushes.length, rocks: rocks.length },
     update(camera) {
-      updateNear(camera);
-      sortImpostors(camera);
       for (const c of chunks) c.update(camera);
     },
   };

@@ -146,7 +146,7 @@ export function createSky(scene, renderer, { cloudTexture, shadowMap = 0, shadow
   );
   dome.frustumCulled = false;
   // Drawn after everything else that's opaque, so sky pixels hidden behind
-  // terrain and trees fail the depth test instead of being shaded.
+  // terrain and rocks fail the depth test instead of being shaded.
   dome.renderOrder = 1000;
   scene.add(dome);
 

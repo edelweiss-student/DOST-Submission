@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { mulberry32, range } from '../shared.js';
 
 // Procedural textures, made once at startup so the game ships no image
-// files. Ground, rock and bark textures are tileable noise drawn on the GPU;
-// leaves, needles and grass blades are drawn with canvas 2D.
+// files. Ground and rock textures are tileable noise drawn on the GPU;
+// leaves, grass blades and kelp are drawn with canvas 2D.
 //
 // Baked colour textures store sqrt(albedo) in RGB (cheap gamma that keeps
 // dark tones precise in 8 bits); shaders square it back to linear.
@@ -227,46 +227,14 @@ void main() {
   gl_FragColor = vec4( sqrt( c ), clamp( h, 0.0, 1.0 ) );
 }`;
 
-// Bark: u runs around the trunk, v along it.
-const PINE_BARK = /* glsl */ `
-void main() {
-  vec2 uv = vUv;
-  float n = fbm( uv, vec2( 4.0, 8.0 ), 4, 1.0 );
-  // Small flaky scales in vertical rows, with irregular dark fissures.
-  vec3 v = voronoi( uv + vec2( n * 0.04, n * 0.08 ), vec2( 14.0, 9.0 ), 2.0 );
-  float fissure = 1.0 - smoothstep( 0.0, 0.07, v.y - v.x );
-  fissure *= 0.6 + 0.4 * smoothstep( -0.3, 0.3, fbm( uv, vec2( 6.0, 4.0 ), 3, 5.0 ) );
-  float plate = fbm( uv, vec2( 24.0, 16.0 ), 4, 3.0 );
-  float h = 0.62 + 0.18 * plate + 0.08 * ( v.z - 0.5 ) - 0.5 * fissure;
-  vec3 c = mix( srgb( vec3( 0.42, 0.32, 0.25 ) ), srgb( vec3( 0.56, 0.44, 0.34 ) ), v.z * 0.7 + 0.3 * smoothstep( -0.4, 0.4, n ) );
-  c *= 0.85 + 0.3 * plate;
-  c = mix( c, srgb( vec3( 0.20, 0.15, 0.12 ) ), fissure * 0.8 );
-  gl_FragColor = vec4( sqrt( c ), clamp( h, 0.0, 1.0 ) );
-}`;
-
-const OAK_BARK = /* glsl */ `
-void main() {
-  vec2 uv = vUv;
-  float warp = fbm( uv, vec2( 3.0, 2.0 ), 3, 1.0 );
-  float ridges = abs( gnoise( vec2( uv.x * 14.0 + warp * 2.0, uv.y * 3.0 ), vec2( 14.0, 3.0 ), 2.0 ) );
-  float grainN = fbm( uv, vec2( 10.0, 20.0 ), 3, 3.0 );
-  float h = 0.3 + 0.6 * smoothstep( 0.0, 0.6, ridges ) + 0.12 * grainN;
-  vec3 c = mix( srgb( vec3( 0.42, 0.39, 0.35 ) ), srgb( vec3( 0.66, 0.62, 0.56 ) ), smoothstep( 0.05, 0.7, ridges ) );
-  c *= 0.85 + 0.3 * grainN;
-  float moss = smoothstep( 0.25, 0.6, fbm( uv, vec2( 4.0, 3.0 ), 3, 6.0 ) ) * ( 1.0 - uv.y * 0.5 );
-  c = mix( c, srgb( vec3( 0.24, 0.32, 0.12 ) ), moss * 0.5 );
-  gl_FragColor = vec4( sqrt( c ), clamp( h, 0.0, 1.0 ) );
-}`;
-
 // Normals from the height in alpha. Packed: RG = normal xy, B = roughness,
-// A = cavity occlusion; or a standard RGB normal map (A = occlusion).
+// A = cavity occlusion.
 const NORMALS = /* glsl */ `
 uniform sampler2D tSrc;
 uniform float uStrength;
 uniform float uRough;
 uniform float uRoughVar;
 uniform float uAO;
-uniform bool uStandard;
 float H( ivec2 c ) {
   ivec2 s = textureSize( tSrc, 0 );
   return texelFetch( tSrc, ivec2( ( c.x + s.x ) % s.x, ( c.y + s.y ) % s.y ), 0 ).a;
@@ -283,7 +251,7 @@ void main() {
   }
   float ao = clamp( 1.0 - max( avg / 8.0 - h0, 0.0 ) * uAO, 0.35, 1.0 );
   float rough = clamp( uRough + ( 0.5 - h0 ) * uRoughVar, 0.05, 1.0 );
-  gl_FragColor = uStandard ? vec4( n * 0.5 + 0.5, ao ) : vec4( n.xy * 0.5 + 0.5, rough, ao );
+  gl_FragColor = vec4( n.xy * 0.5 + 0.5, rough, ao );
 }`;
 
 // Cloud and variation noise: R billowy cloud shapes, G cloud detail,
@@ -338,13 +306,13 @@ export class TextureBaker {
 
   // Colour+height texture plus its normal/roughness/occlusion texture.
   // strength is the height relief: metres of height range per metre of texture.
-  layer(fragment, size, { strength, rough = 0.9, roughVar = 0.2, ao = 3, standard = false, anisotropy = 1 }) {
+  layer(fragment, size, { strength, rough = 0.9, roughVar = 0.2, ao = 3, anisotropy = 1 }) {
     const albedo = this.bake(fragment, size, { anisotropy });
     const normal = this.bake(NORMALS, size, {
       anisotropy,
       uniforms: {
         tSrc: { value: albedo }, uStrength: { value: strength * size / 2 }, uRough: { value: rough },
-        uRoughVar: { value: roughVar }, uAO: { value: ao }, uStandard: { value: standard },
+        uRoughVar: { value: roughVar }, uAO: { value: ao },
       },
     });
     return { albedo, normal };
@@ -359,14 +327,6 @@ export function bakeGround(baker, size, anisotropy) {
     grass: baker.layer(GRASS, size, { strength: 0.03 / 2.5, rough: 0.92, roughVar: 0.1, ao: 3, anisotropy }),
     forest: baker.layer(FOREST, size, { strength: 0.03 / 3, rough: 0.88, roughVar: 0.2, ao: 3, anisotropy }),
     rock: baker.layer(ROCK, size, { strength: 0.08 / 4, rough: 0.78, roughVar: 0.3, ao: 2.5, anisotropy }),
-  };
-}
-
-export function bakeBark(baker, size, anisotropy) {
-  const s = Math.max(128, size / 2);
-  return {
-    pine: baker.layer(PINE_BARK, s, { strength: 0.05, standard: true, ao: 2, anisotropy }),
-    oak: baker.layer(OAK_BARK, s, { strength: 0.05, standard: true, ao: 2, anisotropy }),
   };
 }
 
@@ -504,43 +464,6 @@ export function leafSprite(anisotropy, seed = 3) {
   return spriteTexture(pair, anisotropy);
 }
 
-// A conifer spray: a twig running along the card (u) with side twigs, all
-// covered in short needles pointing towards the tip.
-export function needleSprite(anisotropy, seed = 5) {
-  const rng = mulberry32(seed);
-  const W = 512, H = 256;
-  const pair = canvasPair(W, H, hsl(128, 28, 22));
-  const { draw } = pair;
-  const mid = H * 0.5;
-  const twigs = [{ x0: 4, y0: mid, x1: W - 6, y1: mid + range(rng, -10, 10), w: 4 }];
-  // Side twigs on both sides, shorter towards the tip so the spray tapers.
-  for (let x = 24; x < W - 40; x += range(rng, 22, 30)) {
-    for (const side of [-1, 1]) {
-      const f = x / W;
-      const len = range(rng, 80, 120) * (1 - f * 0.6);
-      const ang = side * range(rng, 0.5, 0.75);
-      twigs.push({ x0: x, y0: mid, x1: x + Math.cos(ang) * len, y1: mid + Math.sin(ang) * len, w: 2.5 });
-    }
-  }
-  for (const t of twigs) draw((ctx) => { ctx.moveTo(t.x0, t.y0); ctx.lineTo(t.x1, t.y1); }, null, hsl(25, 30, 22), t.w);
-  // Needles all along every twig, pointing forwards.
-  for (const t of twigs) {
-    const dx = t.x1 - t.x0, dy = t.y1 - t.y0, len = Math.hypot(dx, dy);
-    const ux = dx / len, uy = dy / len;
-    for (let s = 0; s < len; s += 3.2) {
-      const px = t.x0 + ux * s, py = t.y0 + uy * s;
-      for (const side of [-1, 1]) {
-        const a = Math.atan2(uy, ux) + side * range(rng, 0.6, 1.05);
-        const nl = range(rng, 18, 30) * (1 - 0.35 * (s / len));
-        const hue = range(rng, 115, 145), sat = range(rng, 22, 38), lig = range(rng, 15, 30);
-        draw((ctx) => { ctx.moveTo(px, py); ctx.lineTo(px + Math.cos(a) * nl, py + Math.sin(a) * nl); },
-          null, hsl(hue, sat, lig), range(rng, 2.5, 3.6));
-      }
-    }
-  }
-  return spriteTexture(pair, anisotropy);
-}
-
 // A clump of grass blades rising from the bottom centre.
 export function grassSprite(anisotropy, seed = 9) {
   const rng = mulberry32(seed);
@@ -566,68 +489,6 @@ export function grassSprite(anisotropy, seed = 9) {
     pair.draw(shape, grad);
   }
   return spriteTexture(pair, anisotropy);
-}
-
-// A seamless, fully opaque mass of leaves or needles, for the dense core
-// inside tree crowns (so a crown is never see-through up close). Shapes near
-// an edge are drawn again on the opposite side, so the texture tiles.
-export function foliageMassTexture(kind, anisotropy) {
-  const rng = mulberry32(kind === 'needle' ? 61 : 62);
-  const S = 512;
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = S;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = kind === 'needle' ? hsl(132, 30, 11) : hsl(95, 34, 13);
-  ctx.fillRect(0, 0, S, S);
-  const tiled = (draw) => {
-    for (const dx of [-S, 0, S]) for (const dy of [-S, 0, S]) {
-      ctx.save();
-      ctx.translate(dx, dy);
-      draw();
-      ctx.restore();
-    }
-  };
-  if (kind === 'needle') {
-    ctx.lineCap = 'round';
-    for (let i = 0; i < 5200; i++) {
-      const x = rng() * S, y = rng() * S, a = rng() * Math.PI * 2, l = range(rng, 10, 22);
-      ctx.strokeStyle = hsl(range(rng, 118, 146), range(rng, 22, 40), range(rng, 9, 26));
-      ctx.lineWidth = range(rng, 2, 3.4);
-      tiled(() => {
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l);
-        ctx.stroke();
-      });
-    }
-  } else {
-    for (let i = 0; i < 900; i++) {
-      const x = rng() * S, y = rng() * S, a = rng() * Math.PI * 2;
-      const L = range(rng, 26, 48), W = L * range(rng, 0.38, 0.5);
-      const hue = range(rng, 80, 108), sat = range(rng, 28, 48), lig = range(rng, 12, 28);
-      tiled(() => {
-        ctx.translate(x, y);
-        ctx.rotate(a);
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.quadraticCurveTo(L * 0.35, -W * 0.75, L, 0);
-        ctx.quadraticCurveTo(L * 0.35, W * 0.75, 0, 0);
-        ctx.fillStyle = hsl(hue, sat, lig);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(L * 0.05, 0);
-        ctx.lineTo(L * 0.9, 0);
-        ctx.strokeStyle = hsl(hue - 6, sat - 8, lig + 9);
-        ctx.lineWidth = 1.2;
-        ctx.stroke();
-      });
-    }
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.anisotropy = anisotropy;
-  return tex;
 }
 
 // A long ruffled kelp blade, base at the bottom.

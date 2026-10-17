@@ -9,8 +9,8 @@ import { uniforms, clamp, smoothstep } from '../shared.js';
 //
 // The sea level moves the water (rendering and physics) and floods the
 // beaches. Salt water leaves its mark: grass it reaches dies back and the
-// ground browns (both recover slowly once it retreats), and trees and
-// bushes whose roots it reaches die for good.
+// ground browns (both recover slowly once it retreats), and bushes whose
+// roots it reaches die for good.
 //
 // For structures: exposure() says how the sea reaches a point, and
 // durabilityLoss() turns that into wear, so anything built near the shore
@@ -30,7 +30,7 @@ export class SeaLevel {
     this.rate = 0;         // metres per second (positive while the water is coming up)
     this.tideRate = 0;     // metres per second, the tide alone
     this.saltLine = 0;     // ground plants below this are dead (drops back slowly)
-    this.killLine = 0;     // highest the water has ever reached: trees below are dead
+    this.killLine = 0;     // highest the water has ever reached: bushes below are dead
     this.surging = false;
     this.onSurge = null;   // called when a storm surge starts coming in
     this._s = {};
@@ -52,7 +52,7 @@ export class SeaLevel {
     this.level = level;
 
     // Salt marks the highest water, then fades back as plants recover
-    // (about a metre in fifteen minutes). Dead trees stay dead.
+    // (about a metre in fifteen minutes). Dead bushes stay dead.
     this.saltLine = Math.max(level + 0.1, this.saltLine - dt / 900);
     this.killLine = Math.max(this.killLine, level);
 

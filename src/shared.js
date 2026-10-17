@@ -33,7 +33,7 @@ export const uniforms = {
   uBleach: { value: 0 },                         // coral heat stress 0..1
   // Flooding (set by weather/sealevel.js). Salt water kills the ground
   // plants it reaches (they regrow slowly as the salt line drops) and the
-  // trees whose roots it reaches (they stay dead).
+  // bushes whose roots it reaches (they stay dead).
   uSaltLine: { value: 0 },
   uTreeKillLine: { value: 0 },
 
@@ -62,8 +62,6 @@ export const uniforms = {
   uShadowCenter: { value: new THREE.Vector2() },
   uShadowRange: { value: 60 },
 
-  // Vegetation level of detail: near meshes fade into billboards over this range.
-  uLodRange: { value: new THREE.Vector2(55, 65) },
   // Player position, for grass pushed aside underfoot.
   uPlayerPos: { value: new THREE.Vector3() },
 };

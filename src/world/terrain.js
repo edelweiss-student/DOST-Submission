@@ -112,7 +112,7 @@ export function createTerrain(rng, { ground, cloudShadows = false, castShadow = 
   geometry.setIndex(new THREE.BufferAttribute(index, 1));
   geometry.computeBoundingSphere();
 
-  // --- Biome map: R forest floor, G tree canopy (filled in by the
+  // --- Biome map: R forest floor, G canopy (filled in by the
   // vegetation), B grass density for the 3D grass.
   const C = CONTROL_SIZE;
   const cstep = WORLD.size / C;
@@ -139,8 +139,8 @@ export function createTerrain(rng, { ground, cloudShadows = false, castShadow = 
   controlTex.needsUpdate = true;
   const controlRect = new THREE.Vector3(-half, -half, 1 / WORLD.size);
 
-  // Tree crowns darken the ground below them (ambient occlusion, and a
-  // stand-in for their shadows past the shadow map's range).
+  // Plants (bushes for now) darken the ground below them (ambient
+  // occlusion, and a stand-in for their shadows past the shadow map's range).
   function addCanopy(x, z, radius, strength = 1) {
     const ci = (x + half) / cstep - 0.5, cj = (z + half) / cstep - 0.5;
     const r = radius / cstep;

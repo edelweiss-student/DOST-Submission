@@ -144,7 +144,7 @@ export function createGrass(scene, terrain, { radius, spacing, anisotropy, msaa,
         },
         vertexHead: VERTEX_HEAD, beginNormal: BEGIN_NORMAL, begin: BEGIN,
         fragmentHead: 'varying vec3 vGrassTint;\nvarying float vGrassCanopy;\n',
-        // Same shade under the trees as the ground around it.
+        // Same shade under bushes as the ground around it.
         color: 'diffuseColor.rgb *= vGrassTint;\nbtAO = 1.0 - 0.6 * vGrassCanopy;\nbtFarShadow = 1.0 - 0.75 * vGrassCanopy;\n',
       },
     },

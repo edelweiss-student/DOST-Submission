@@ -5,8 +5,8 @@ import { uniforms, CLOUD_HEIGHT } from '../shared.js';
 // needs: wind sway and leaf flutter, snow on upward faces, wet darkening,
 // drought browning, coral bleaching, underwater caustics, cloud shadows,
 // shadows that fade out at the edge of the shadow map, fog that glows
-// towards the sun, dithered level-of-detail fades, and optional terrain
-// texture splatting. Works for plain and instanced meshes.
+// towards the sun, dithered distance fades, and optional terrain texture
+// splatting. Works for plain and instanced meshes.
 
 // Cloud cover from the cloud noise texture. Shared with the sky and water,
 // so cloud shadows on the ground line up with the clouds overhead.
@@ -22,7 +22,6 @@ uniform float uTime;
 uniform float uWind;
 uniform vec2 uWindDir;
 uniform float uWave;
-uniform vec2 uLodRange;
 uniform float uTreeKillLine;
 varying vec3 btWorldPos;
 varying vec3 btWorldNormal;
@@ -31,7 +30,7 @@ varying vec3 btWorldNormal;
 #endif
 #ifdef BT_TREE
   varying float btDead;   // 0 healthy .. 1 killed by salt water at the roots
-  varying vec3 btObj;     // position in the tree's own space
+  varying vec3 btObj;     // position in the plant's own space
 #endif
 `;
 
@@ -53,8 +52,8 @@ float btValueNoise( vec3 x ) {
 }
 `;
 
-// A tree whose roots salt water has reached dies: leaves brown and drop
-// away in patches, then the bare wood bleaches grey.
+// A bush (or tree) whose roots salt water has reached dies: leaves brown
+// and drop away in patches, then the bare wood bleaches grey.
 const TREE_DEATH = /* glsl */ `
 #ifdef BT_TREE
   if ( btDead > 0.0 ) {
@@ -108,14 +107,10 @@ btWorldNormal = normalize( mat3( modelMatrix ) * wNrm );
   wPos.xyz += vec3( uWindDir.x, 0.4, uWindDir.y ) * fl * ( 0.015 + 0.06 * uWind ) * BT_FLUTTER;
 #endif
 #ifdef BT_LOD
-  #ifdef BT_FADE_RANGE
-    btLod = 1.0 - smoothstep( BT_FADE_RANGE.x, BT_FADE_RANGE.y, distance( wBase.xz, cameraPosition.xz ) );
-  #else
-    btLod = 1.0 - smoothstep( uLodRange.x, uLodRange.y, distance( wBase.xz, cameraPosition.xz ) );
-  #endif
+  btLod = 1.0 - smoothstep( BT_FADE_RANGE.x, BT_FADE_RANGE.y, distance( wBase.xz, cameraPosition.xz ) );
 #endif
 #ifdef BT_TREE
-  // How far salt water has climbed above the tree's base (see weather/sealevel.js).
+  // How far salt water has climbed above the plant's base (see weather/sealevel.js).
   btDead = smoothstep( 0.0, 0.9, uTreeKillLine - wBase.y );
   btObj = transformed;
 #endif
@@ -175,7 +170,7 @@ float btShadowFade( float s ) {
 // Weather on the base colour, after the material's own colour is known.
 const COLOR = /* glsl */ `
 #include <color_fragment>
-#if !defined( BT_TERRAIN ) && !defined( BT_CUSTOM_UP )
+#ifndef BT_TERRAIN
   btUpN = normalize( btWorldNormal ).y;
 #endif
 float btAbove = smoothstep( uWaterLevel + 0.2, uWaterLevel + 1.2, btWorldPos.y );
@@ -385,7 +380,7 @@ const TERRAIN_MAP = /* glsl */ `
     * smoothstep( uWaterLevel - 0.3, uWaterLevel + 0.1, h );
   alb = mix( alb, vec3( 1.45, 1.1, 0.6 ) * dot( alb, vec3( 0.4, 0.45, 0.15 ) ), salt * ( b.y + b.z ) * 0.9 );
 
-  // Ground under trees: darker in the open sky light, and in place of the
+  // Ground under bushes: darker in the open sky light, and in place of the
   // shadow map beyond its range.
   btAO = 1.0 - 0.6 * ctrl.g;
   btFarShadow = 1.0 - 0.75 * ctrl.g;
@@ -446,7 +441,6 @@ const NORMAL_BEGIN_FOLIAGE = THREE.ShaderChunk.normal_fragment_begin.replace('no
 //   sway, kelp     wind sway (height-squared bend), kelp follows the waves instead
 //   flutter        leaf trembling amplitude
 //   foliage        translucency strength; also keeps leaf normals un-flipped on back faces
-//   lod            near mesh that dithers out over uniforms.uLodRange
 //   fadeOut        [start, end] metres: dithers out with distance (small props)
 //   tree           'leaves' or 'bark': dies when salt water reaches the roots
 //   dry, snowMin, caustics, bleach   weather reactions
@@ -456,7 +450,7 @@ const NORMAL_BEGIN_FOLIAGE = THREE.ShaderChunk.normal_fragment_begin.replace('no
 //   custom         { uniforms, vertexHead, beginNormal, begin, fragmentHead, map, color, normal, normalMaps }
 //                  shader code replacing or extending the matching three.js chunks
 export function patchMaterial(material, {
-  key, sway = 0, kelp = false, flutter = 0, foliage = 0, lod = false, dry = false, snowMin = 0.5,
+  key, sway = 0, kelp = false, flutter = 0, foliage = 0, dry = false, snowMin = 0.5,
   caustics = false, bleach = false, terrain = null, sqrtMap = false, cloudShadows = false, hardShadow = false,
   fadeOut = null, tree = null, custom = null,
 } = {}) {
@@ -471,7 +465,6 @@ export function patchMaterial(material, {
   if (kelp) d.BT_KELP = '';
   if (flutter) d.BT_FLUTTER = flutter.toFixed(3);
   if (foliage) d.BT_FOLIAGE = foliage.toFixed(3);
-  if (lod) d.BT_LOD = '';
   // Dither out between fadeOut[0] and fadeOut[1] metres from the camera.
   if (fadeOut) {
     d.BT_LOD = '';
@@ -518,8 +511,8 @@ export function patchMaterial(material, {
 
 const treeDefines = (part) => (part === 'leaves' ? { BT_TREE: '', BT_TREE_LEAVES: '' } : { BT_TREE: '' });
 
-// Shadow-pass material for swaying (and alpha-tested) tree parts on
-// instanced meshes. tree: 'leaves' or 'bark', as for patchMaterial.
+// Shadow-pass material for swaying (and alpha-tested) plants on instanced
+// meshes. tree: 'leaves' or 'bark', as for patchMaterial.
 export function foliageDepthMaterial({ key, map, alphaTest = 0.5, sway = 0, flutter = 0, tree = null }) {
   const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, ...(map ? { map, alphaTest } : {}) });
   m.defines = { BT_DEPTH: '', ...(tree ? treeDefines(tree) : {}) };

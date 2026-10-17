@@ -1,29 +1,28 @@
 // Picks graphics settings for the GPU the browser actually gives us, then
 // trims render resolution at runtime if the frame rate drops.
 
-// texSize: procedural ground/bark texture resolution. shadowMap: sun shadow
-// map size (0 = no shadows), covering shadowRange metres around the player,
-// redrawn every shadowEvery frames. nearTrees: radius of full 3D trees;
-// farther ones are billboards. grass: radius and spacing of the 3D grass
-// around the player (radius 0 = none).
+// texSize: procedural ground texture resolution. shadowMap: sun shadow map
+// size (0 = no shadows), covering shadowRange metres around the player,
+// redrawn every shadowEvery frames. grass: radius and spacing of the 3D
+// grass around the player (radius 0 = none).
 export const TIERS = {
   // Old or software GPUs.
   low: {
     label: 'Low', pixelRatio: 0.8, antialias: false, minScale: 0.6,
     texSize: 256, anisotropy: 2, shadowMap: 0, shadowRange: 0, shadowTaps: 1, shadowEvery: 1,
-    nearTrees: 26, grass: { radius: 0, spacing: 1 }, cloudShadows: false, impostorTile: 96,
+    grass: { radius: 0, spacing: 1 }, cloudShadows: false,
   },
   // Integrated graphics such as Intel Graphics / Iris Xe.
   medium: {
     label: 'Medium', pixelRatio: 1.25, antialias: true, minScale: 0.7,
     texSize: 512, anisotropy: 4, shadowMap: 1024, shadowRange: 38, shadowTaps: 1, shadowEvery: 2,
-    nearTrees: 38, grass: { radius: 16, spacing: 0.46 }, cloudShadows: true, impostorTile: 160,
+    grass: { radius: 16, spacing: 0.46 }, cloudShadows: true,
   },
   // Dedicated GPUs such as GeForce RTX.
   high: {
     label: 'High', pixelRatio: 1.5, antialias: true, minScale: 0.75,
     texSize: 1024, anisotropy: 8, shadowMap: 2048, shadowRange: 64, shadowTaps: 4, shadowEvery: 1,
-    nearTrees: 64, grass: { radius: 28, spacing: 0.36 }, cloudShadows: true, impostorTile: 192,
+    grass: { radius: 28, spacing: 0.36 }, cloudShadows: true,
   },
 };
 

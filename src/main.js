@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import './style.css';
 import { mulberry32, uniforms } from './shared.js';
 import { TIERS, detectGPU, pickTier, shortGPU, AdaptiveResolution, GpuTimer, createPerfOverlay } from './core/quality.js';
-import { TextureBaker, bakeGround, bakeBark, bakeCloudNoise } from './world/textures.js';
+import { TextureBaker, bakeGround, bakeCloudNoise } from './world/textures.js';
 import { installShadowFilter } from './world/materials.js';
 import { createTerrain } from './world/terrain.js';
 import { createVegetation } from './world/vegetation.js';
@@ -46,14 +46,13 @@ const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 20
 // Procedural textures, drawn on the GPU once at startup.
 const baker = new TextureBaker(renderer);
 const ground = bakeGround(baker, quality.texSize, quality.anisotropy);
-const bark = bakeBark(baker, quality.texSize, quality.anisotropy);
 const cloudTexture = bakeCloudNoise(baker);
 uniforms.uCloudTex.value = cloudTexture;
 const cloudShadows = quality.cloudShadows;
 
 const terrain = createTerrain(rng, { ground, cloudShadows, castShadow: tier === 'high' });
 scene.add(terrain.mesh);
-const vegetation = createVegetation(scene, terrain, rng, renderer, { quality, ground, bark, cloudShadows });
+const vegetation = createVegetation(scene, terrain, rng, { quality, ground, cloudShadows });
 const grass = createGrass(scene, terrain, { ...quality.grass, anisotropy: quality.anisotropy, msaa: quality.antialias, cloudShadows });
 const ocean = createOcean(scene, terrain, rng, { ground, anisotropy: quality.anisotropy, cloudShadows });
 // Water quality is its own setting (on the pause screen), remembered between visits.

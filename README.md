@@ -1,7 +1,7 @@
 # Borrowed Time
 
 The sun is swelling and Earth is running out of time. A survival and
-exploration game built with three.js: a realistic forested island, a smooth
+exploration game built with three.js: a realistic island, a smooth
 wave-driven ocean with a reef and kelp forest to dive into, and a climate that
 keeps shifting and gets worse the longer you survive.
 
@@ -43,7 +43,7 @@ Add `?seed=1234` to the URL to generate a different island, or
   rising output. As it climbs, the weather changes more often, flips faster,
   and leans toward storms, heatwaves and cold snaps.
 - The weather leaves traces behind: rain soaks the ground, cold snaps build
-  up snow on terrain and trees, heatwaves brown the forest and bleach the
+  up snow on the ground and plants, heatwaves brown the land and bleach the
   coral. Each of these fades on its own afterwards.
 - Every thunderstorm rolls a severity: Thunderstorm, Severe thunderstorm or
   Violent storm. Violent storms get likelier as instability climbs.
@@ -70,8 +70,8 @@ Salt water leaves its mark wherever it reaches:
 
 - Grass dies back and the ground turns to brown, salt-burnt soil. Both
   recover by about a metre every 15 minutes once the water retreats.
-- Trees and bushes whose roots the water reaches die for good. Their leaves
-  brown and fall, leaving bare grey trunks: a ghost forest along the shore.
+- Bushes whose roots the water reaches die for good: their leaves brown and
+  drop away.
 
 Structures will wear down the same way. `sea.exposure(x, z, y)` says how the
 sea reaches a point (depth under the water, waves included; surf splash;
@@ -92,10 +92,10 @@ files.
   changes. The CPU runs the same maths for a handful of directions to set the
   sunlight colour, the sky light and the fog colour. Clouds are a moving
   layer 1,400 m up, lit from the sun's side. Their shadows sweep across the
-  ground, trees and water.
+  ground and water.
 - **Light.** The sun casts shadows within 38 m (Medium) or 64 m (High) of the
   player. Shadows fade into a baked stand-in further out: the ground under
-  tree crowns is darker. AgX tone mapping and a gentle eye adaptation keep
+  bushes is darker. AgX tone mapping and a gentle eye adaptation keep
   noon, night, storms and fog readable. Fog is measured by true distance and
   glows towards the sun, so the land fades into the horizon colour.
 - **Ground.** A smooth 2 m terrain mesh. The terrain shader blends four
@@ -104,24 +104,13 @@ files.
   blending follows each texture's height, so grass grows between stones
   instead of cross-fading. Each material has detail normals, roughness and
   cavity shading. Sand the waves reach stays dark and glossy, and the seabed
-  darkens with depth.
-- **Trees.** Procedural spruces and broadleaf trees. Spruces have whorls of
-  drooping branches under dense needle sprays. Broadleaf trees fork into
-  limbs that carry leaf clusters through the whole crown. Every crown has a
-  solid core inside, textured with needles or leaves, so a tree never looks
-  see-through or half-loaded up close. Trunks flare out into the ground and
-  darken where they meet it. Leaf and needle cards have normals that bend
-  outwards from the crown, so a crown shades as one soft volume. Light shows
-  through leaves from behind, leaves flutter, and whole trees sway with the
-  wind.
-  Trees within 38 m (Medium) are full 3D. Beyond that they are billboards,
-  baked at startup from 8 directions with colour and normals so they light
-  like the real tree. Each billboard shows the side that matches how its
-  tree is turned and takes the same crown shadows, so the 5 m dithered
-  hand-over from 3D to billboard lines up instead of leaving see-through
-  gaps.
+  darkens with depth. The forest floor still marks where the forest was.
+- **Trees.** None for now: the procedural trees were removed, and a tree
+  asset will take their place.
 - **Grass, bushes and rocks.** 3D grass clumps around the player, placed
   entirely on the GPU, bend in rolling gusts and part around your feet.
+  Bushes are domes of leaf cards that sway, flutter and let light through
+  from behind.
   Boulders are noise-shaped and cut into facets, with rock texture and moss
   on top. Snow drifts, drought browning, wet darkening and coral bleaching
   work on every surface.
@@ -183,11 +172,11 @@ files.
 At startup the game checks which GPU the browser is using and picks a
 graphics tier:
 
-| Tier | Typical GPU | Pixel ratio cap | Antialiasing | Sun shadows | 3D trees within | 3D grass | Textures |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Low | Old or software GPUs | 0.8 | Off | None (baked stand-in) | 26 m | None | 256² |
-| Medium | Intel / AMD integrated | 1.25 | On | 1024², 38 m, every other frame | 38 m | 16 m | 512² |
-| High | GeForce RTX / Radeon RX | 1.5 | On | 2048², 64 m, softer edges | 64 m | 28 m, denser | 1024² |
+| Tier | Typical GPU | Pixel ratio cap | Antialiasing | Sun shadows | 3D grass | Textures |
+| --- | --- | --- | --- | --- | --- | --- |
+| Low | Old or software GPUs | 0.8 | Off | None (baked stand-in) | None | 256² |
+| Medium | Intel / AMD integrated | 1.25 | On | 1024², 38 m, every other frame | 16 m | 512² |
+| High | GeForce RTX / Radeon RX | 1.5 | On | 2048², 64 m, softer edges | 28 m, denser | 1024² |
 
 Water quality is a separate setting on the pause screen (Esc), remembered
 between visits. It defaults to High unless the GPU is in the Low tier.
@@ -200,35 +189,29 @@ between visits. It defaults to High unless the GPU is in the Low tier.
 
 How the realistic world stays fast:
 
-- Distant trees are billboards: one draw call for the whole island.
-- Near trees, billboards and grass are drawn nearest first, so leaves hidden
-  behind other leaves fail the depth test instead of being shaded. Near
-  trees and billboards are re-sorted every few metres you move; the sky is
-  drawn after everything that covers it.
-- Leaves cast shadows through stand-ins with a third of the cards, drawn
-  only into the shadow map. Seen from the sun, the lower layers of a crown
-  are hidden by the upper ones anyway, and the solid crown core shades the
-  middle.
+- Grass is drawn nearest first (re-sorted every couple of metres you move),
+  so blades hidden behind other blades fail the depth test instead of being
+  shaded. The sky is drawn after everything that covers it.
 - Shadow lookups read the shadow map 4 times per pixel on Medium (one
   bilinear lookup) instead of three.js's 17, and 16 on High for softer
-  edges. Leaves read it once.
+  edges. Bushes read it once.
 - Grass is placed, bent and faded entirely on the GPU. Its cards are trimmed
   to the blades' outline, so less empty space gets shaded.
 - Seabed life, rocks and bushes are split into chunks, skipped when out of
   view or farther than you can see. Bushes dither out with distance.
 - The terrain skips detail textures where they're too far to see.
-- Alpha-tested leaves keep their coverage at a distance, so trees don't thin
-  out and need extra cards to look full.
+- Alpha-tested leaves and blades keep their coverage at a distance, so
+  bushes and grass don't thin out and need extra cards to look full.
 - Every shader is compiled before the first frame, so new things coming
   into view don't stall the game.
 
 GPU time per frame on Medium, measured on the Intel Graphics (Core 5 210H)
-laptop at 1600×900, clear midday: about 6.5 ms on the beach looking out to
-sea, 11–12.5 ms looking inland or from the summit, and 14–15 ms in dense
-forest with grass. That is 65–150 fps before any resolution scaling. Low
-runs in 4–7 ms. High is meant for dedicated graphics cards: on this
-integrated GPU it takes 11–28 ms. Press `P` to see GPU time (in browsers
-that allow GPU timer queries), frame rate, draw calls and triangles.
+laptop at 1600×900, clear midday: about 5.5–6 ms on the beach or looking
+inland, 9 ms from the summit, and 10.5 ms standing in thick grass. That is
+95–180 fps before any resolution scaling. Low runs in about 4 ms. High is
+meant for dedicated graphics cards: on this integrated GPU it takes 7–19 ms.
+Press `P` to see GPU time (in browsers that allow GPU timer queries), frame
+rate, draw calls and triangles.
 
 Render resolution then adjusts automatically. It drops in 10% steps (down to
 60–75%) if the frame rate falls under 50 fps, and climbs back when there is
@@ -246,12 +229,11 @@ src/
   shared.js             world constants, shared shader uniforms, helpers
   core/quality.js       GPU detection, quality tiers, adaptive resolution, GPU timer, perf readout
   world/terrain.js      island heightmap, smooth terrain mesh, biome and canopy map, exact ground height
-  world/textures.js     procedural textures: ground layers, bark, cloud noise, leaf/needle/grass sprites,
-                        foliage for the crown cores
+  world/textures.js     procedural textures: ground layers, cloud noise, leaf/grass/kelp sprites
   world/materials.js    shader patches: sway, snow, wetness, drought, caustics, cloud shadows,
-                        fog, LOD dithering, terrain splatting, shadow filtering, salt damage
-  world/trees.js        procedural spruce, broadleaf tree, bush and boulder geometry
-  world/vegetation.js   tree placement and colliders, near-tree LOD, billboard baking, bushes, rocks
+                        fog, distance dithering, terrain splatting, shadow filtering, salt damage
+  world/props.js        procedural bush and boulder geometry
+  world/vegetation.js   bush and boulder placement, colliders, culled instancing
   world/grass.js        GPU grass around the player
   world/waves.js        Gerstner wave spectrum, CPU surface sampling for physics
   world/water.js        water surface mesh, depth and ripple textures, uniforms
