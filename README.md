@@ -24,16 +24,62 @@ Open http://localhost:5173 in Chrome, Edge or Firefox and click to play.
 | Shift | Sprint / swim fast (uses stamina) |
 | Space | Jump / swim up |
 | C | Dive |
+| E | Gather from what you're looking at, or pick up an item |
+| 1–9 / mouse wheel | Choose a hotbar slot |
+| I / Tab | Open or close the inventory |
+| Q | Drop one of the selected item |
+| Right-click | Eat the selected item |
 | M | Mute |
 | P | Performance readout (fps, quality, render scale, GPU) |
-| Esc | Pause |
+| Esc | Pause (or close the inventory) |
 
-Dev keys: `1`–`7` force a weather type (clear, overcast, rain, thunderstorm,
-fog, heatwave, cold snap); press `4` again during a storm to make it worse.
-`G` sends a rogue wave set at you, `T` skips an hour, `K` fast-forwards the
-climate.
+Dev keys: `` ` `` then `1`–`7` forces a weather type (clear, overcast, rain,
+thunderstorm, fog, heatwave, cold snap); `` ` `` then `4` again during a storm
+makes it worse. `G` sends a rogue wave set at you, `T` skips an hour, `K`
+fast-forwards the climate.
 Add `?seed=1234` to the URL to generate a different island, or
 `?quality=low|medium|high` to override the graphics tier.
+
+## Inventory and gathering
+
+You carry a **hotbar** of 9 slots along the bottom of the screen and a
+**bag** of 27 more. Pick a hotbar slot with `1`–`9` or the mouse wheel; the
+item's name shows above the hotbar when you switch.
+
+Look at something within reach and press `E`:
+
+| Source | Gives | Gathers before it runs out | One gather comes back every |
+| --- | --- | --- | --- |
+| Tree | 1–2 sticks | 3 | 90 s |
+| Bush | 1–2 plant fibre, often 1–2 berries | 3 | 2 min |
+| Boulder | 1–2 stones | 4 | 5 min |
+| Fallen trunk | 1 wood | 5 | 10 min |
+
+Sources regrow in game time, so not while paused. Bushes the sea has killed
+give only fibre. A message tells you when your bag is full; anything that
+doesn't fit is left behind.
+
+Items stack (sticks and stones 32, wood 16, fibre 48, berries 24). Berries
+are food: right-click with them selected to get back 25 stamina and 6
+health.
+
+`Q` throws one of the selected item in front of you. Items in the world can
+be picked up again with `E`. Stones sink; everything else floats, riding the
+waves and drifting with the surf and wind, so dropped things can wash away
+(or wash ashore). Up to 150 items lie around at once; the oldest disappear
+first.
+
+`I` or `Tab` opens the inventory screen. It frees the mouse but doesn't
+pause the game:
+
+- Click a stack to pick it up, click a slot to put it down. Clicking a
+  matching stack tops it up; a different one swaps with it.
+- Right-click picks up half a stack, or puts down one at a time.
+- Shift-click sends a stack between the bag and the hotbar.
+- Hover a slot and press `1`–`9` to swap it with that hotbar slot.
+- Click outside the panel to drop what you're holding.
+- `I` or `Tab` closes it and goes back to the game; `Esc` closes it and
+  pauses. Anything still in your hand goes back in the bag.
 
 ## How the climate works
 
@@ -336,8 +382,12 @@ src/
   weather/weather.js    weather presets, humidity and heat index, climate instability
   weather/sealevel.js   sea level rise, tides, storm surge, salt damage lines, structure exposure
   weather/precipitation.js  GPU rain and snow, lightning
-  player/player.js      walking, buoyant swimming, oxygen, health, stamina, heat strain
+  player/player.js      walking, buoyant swimming, oxygen, health, stamina, heat strain, eating
+  items/items.js        item definitions and their icons (drawn at startup)
+  items/inventory.js    hotbar and bag slots: stacking, splitting, swapping, quick-move
+  world/gathering.js    gathering from trees, bushes, boulders and fallen trunks; items in the world
   ui/hud.js             HUD panels, bars, messages and heat warnings
+  ui/inventoryUI.js     hotbar, inventory screen, pickup feed and the E prompt
   audio/ambience.js     synthesized wind, rain, surf, underwater, thunder, splashes
 scripts/
   import-trees.mjs      packs the tree pack's .glb files into public/models/trees

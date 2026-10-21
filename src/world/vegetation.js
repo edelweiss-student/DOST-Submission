@@ -144,7 +144,7 @@ function placeLogs(terrain, rng, colliders, spacingOk, lengths) {
     if (!spacingOk(x, z, 2) || !spacingOk(x + dx * len * 0.5, z + dz * len * 0.5, 2.5) || !spacingOk(ex, ez, 2)) continue;
     const he = terrain.heightAt(ex, ez);
     if (Math.abs(he - h) > len * 0.25) continue;
-    logs.push({ x, y: h - 0.25 * s, z, yaw, pitch: Math.atan2(he - h, len), s, variant });
+    logs.push({ x, y: h - 0.25 * s, z, yaw, pitch: Math.atan2(he - h, len), s, variant, dx, dz, len });
     for (let d = 0.6; d < len - 0.3; d += 1.1) colliders.add(x + dx * d, z + dz * d, (variant === 0 ? 0.6 : 0.45) * s);
   }
   return logs;
@@ -247,6 +247,8 @@ export function createVegetation(scene, terrain, rng, { quality, ground, cloudSh
 
   return {
     colliders,
+    // Where things grow and lie, for gathering (see gathering.js).
+    sources: { trees, bushes, rocks, logs },
     counts: { trees: trees.length, ...bySpecies, logs: logs.length, bushes: bushes.length, rocks: rocks.length },
     update(camera) {
       for (const c of chunks) c.update(camera);

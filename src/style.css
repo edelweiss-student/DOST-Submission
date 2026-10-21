@@ -55,7 +55,7 @@ html, body {
 }
 
 #bars {
-  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+  position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%);
   display: flex; flex-direction: column; gap: 6px; width: min(320px, 80vw);
   pointer-events: none;
 }
@@ -71,7 +71,7 @@ html, body {
 @keyframes pulse { from { opacity: 1; } to { opacity: 0.35; } }
 
 #message {
-  position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%);
+  position: fixed; left: 50%; bottom: 168px; transform: translateX(-50%);
   max-width: 80vw; padding: 8px 16px; border-radius: 8px;
   background: var(--panel); font-size: 15px; text-align: center;
   opacity: 0; transition: opacity 0.5s; pointer-events: none;
@@ -85,6 +85,80 @@ html, body {
   display: none; pointer-events: none;
 }
 #perf.show { display: block; }
+
+/* Hotbar and inventory */
+.slot {
+  position: relative; width: 48px; height: 48px; border-radius: 7px;
+  background: rgba(255, 255, 255, 0.06); border: 2px solid rgba(255, 255, 255, 0.12);
+}
+.slot img { position: absolute; inset: 5px; width: calc(100% - 10px); height: calc(100% - 10px); pointer-events: none; }
+.slot img[hidden] { display: none; }
+.slot .count { position: absolute; right: 4px; bottom: 1px; font-size: 13px; font-weight: 700; text-shadow: 0 1px 2px #000, 0 0 3px #000; }
+.slot .key { position: absolute; left: 4px; top: 0; font-size: 10px; color: var(--muted); }
+
+#hotbar {
+  position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
+  display: flex; gap: 4px; padding: 4px; border-radius: 10px;
+  background: var(--panel); backdrop-filter: blur(4px); pointer-events: none;
+}
+#hotbar .slot.selected { border-color: var(--accent); background: rgba(255, 178, 91, 0.18); }
+#hotbar-name {
+  position: fixed; left: 50%; bottom: 74px; transform: translateX(-50%);
+  font-size: 14px; font-weight: 600; text-shadow: 0 1px 3px #000;
+  opacity: 0; transition: opacity 0.4s; pointer-events: none;
+}
+#hotbar-name.show { opacity: 1; }
+
+#prompt {
+  position: fixed; left: 50%; top: calc(50% + 26px); transform: translateX(-50%);
+  padding: 4px 10px; border-radius: 6px; background: var(--panel);
+  font-size: 13px; pointer-events: none; display: none;
+}
+#prompt.show { display: block; }
+#prompt.dim { color: var(--muted); }
+#prompt kbd {
+  display: inline-block; min-width: 18px; margin-right: 7px; padding: 0 5px;
+  border: 1px solid var(--accent); border-radius: 4px; color: var(--accent);
+  font: 600 12px/17px system-ui, sans-serif; text-align: center;
+}
+#prompt.dim kbd { border-color: var(--muted); color: var(--muted); }
+
+#feed {
+  position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+  pointer-events: none;
+}
+#feed div { padding: 3px 10px; border-radius: 6px; background: var(--panel); font-size: 13px; animation: feed 2.6s forwards; }
+@keyframes feed {
+  0% { opacity: 0; transform: translateX(10px); }
+  10%, 75% { opacity: 1; transform: none; }
+  100% { opacity: 0; }
+}
+
+#inventory {
+  position: fixed; inset: 0; z-index: 9;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(5, 8, 14, 0.45);
+  user-select: none; -webkit-user-select: none;   /* shift-click would select the slots */
+}
+#inventory.hidden { display: none; }
+.inv-panel {
+  padding: 16px 18px 12px; border-radius: 12px;
+  background: rgba(10, 16, 24, 0.88); border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.inv-panel h2 { margin: 0 0 10px; font-size: 16px; letter-spacing: 0.06em; color: var(--accent); }
+.inv-grid { display: grid; grid-template-columns: repeat(9, 48px); gap: 4px; }
+#inv-hotbar { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+.inv-panel .slot { cursor: pointer; }
+.inv-panel .slot:hover { border-color: rgba(255, 255, 255, 0.45); }
+.inv-help { margin: 10px 0 0; max-width: 470px; font-size: 11px; line-height: 1.5; color: var(--muted); }
+#inv-cursor { position: fixed; z-index: 11; transform: translate(-50%, -50%); pointer-events: none; }
+#inv-cursor .slot { background: none; border-color: transparent; }
+#inv-tooltip {
+  position: fixed; z-index: 12; max-width: 220px; padding: 6px 10px; border-radius: 6px;
+  background: rgba(10, 16, 24, 0.95); font-size: 12px; line-height: 1.45; pointer-events: none;
+}
+#inv-tooltip b { display: block; color: var(--accent); }
+[hidden] { display: none !important; }
 
 #gpu-tip { margin-top: 12px; font-size: 12px; color: var(--accent); max-width: 440px; margin-inline: auto; }
 #gpu-tip:empty { display: none; }
@@ -122,4 +196,8 @@ html, body {
 @media (max-width: 600px) {
   #climate-panel { top: auto; bottom: 16px; right: 16px; }
   .card h1 { font-size: 32px; }
+  .slot { width: 34px; height: 34px; }
+  .inv-grid { grid-template-columns: repeat(9, 34px); gap: 3px; }
+  #bars { bottom: 74px; }
+  #hotbar-name { bottom: 56px; }
 }

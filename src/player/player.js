@@ -53,11 +53,12 @@ export class Player {
     this.heat = 20;        // how hot you feel, °C
     this.strain = 0;       // 0..1, how hard the heat is on you
     this.dragLook = false;
+    this.inputEnabled = true;   // off while a menu (the inventory) has the keys
     this.onMessage = null;
     this.onSplash = null;
     this.edgeWarned = 0;
     this.tiredWarned = -Infinity;
-    addEventListener('keydown', (e) => this.keys.add(e.code));
+    addEventListener('keydown', (e) => { if (this.inputEnabled) this.keys.add(e.code); });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => this.keys.clear());
     this.spawn = terrain.findSpawn();
@@ -68,12 +69,26 @@ export class Player {
   enableDragLook(dom) {
     const euler = new THREE.Euler(0, 0, 0, 'YXZ');
     dom.addEventListener('mousemove', (e) => {
-      if (!this.dragLook || !(e.buttons & 1)) return;
+      if (!this.dragLook || !this.inputEnabled || !(e.buttons & 1)) return;
       euler.setFromQuaternion(this.camera.quaternion);
       euler.y -= e.movementX * 0.004;
       euler.x = Math.max(-1.5, Math.min(1.5, euler.x - e.movementY * 0.004));
       this.camera.quaternion.setFromEuler(euler);
     });
+  }
+
+  // Movement keys and drag-to-look on or off (a menu is open). Keys held
+  // down are let go, so you don't keep walking behind the menu.
+  setInput(enabled) {
+    this.inputEnabled = enabled;
+    this.keys.clear();
+  }
+
+  // Eating gives back stamina and health (see `eat` in items/items.js).
+  eat({ stamina = 0, health = 0 }) {
+    this.stamina = Math.min(MAX_STAMINA, this.stamina + stamina);
+    this.health = Math.min(100, this.health + health);
+    if (this.stamina >= RECOVERED) this.exhausted = false;
   }
 
   respawn() {

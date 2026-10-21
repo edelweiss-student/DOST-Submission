@@ -18,6 +18,10 @@ import { createPrecipitation } from './weather/precipitation.js';
 import { Player } from './player/player.js';
 import { HUD } from './ui/hud.js';
 import { Ambience } from './audio/ambience.js';
+import { ITEMS } from './items/items.js';
+import { Inventory } from './items/inventory.js';
+import { InventoryUI } from './ui/inventoryUI.js';
+import { createGathering } from './world/gathering.js';
 
 const seed = Number(new URLSearchParams(location.search).get('seed')) || 1337;
 const rng = mulberry32(seed);
@@ -81,6 +85,21 @@ const adaptive = new AdaptiveResolution(renderer, basePixelRatio, quality.minSca
 const gpuTimer = new GpuTimer(renderer);
 const perf = createPerfOverlay(document.getElementById('perf'), { renderer, adaptive, gpuTimer, tier, gpu, water });
 
+// Items: the bag with its hotbar and screen, and gathering from the world.
+// Gathering has its own random numbers, so it doesn't change the weather's.
+const inventory = new Inventory();
+const gathering = createGathering(scene, { terrain, water, vegetation, inventory, rng: mulberry32(seed + 1) });
+const throwDir = new THREE.Vector3();
+function throwStack(stack) {
+  camera.getWorldDirection(throwDir);
+  const from = camera.position.clone().addScaledVector(throwDir, 0.6);
+  from.y -= 0.3;
+  const velocity = throwDir.clone().multiplyScalar(3.2).add(player.vel);
+  velocity.y += 1.4;
+  gathering.drop(stack, from, velocity);
+}
+const inventoryUI = new InventoryUI(inventory, { onDrop: throwStack });
+
 const MILESTONES = [
   'Solar output is climbing. The weather is getting harder to predict.',
   'The sea is rising. The beaches won’t last.',
@@ -110,7 +129,8 @@ const overlay = document.getElementById('overlay');
 const playLabel = overlay.querySelector('.play');
 let ready = false;
 let started = false;
-const isPlaying = () => player.controls.isLocked || player.dragLook;
+// The inventory frees the mouse but doesn't pause: the world keeps going.
+const isPlaying = () => player.controls.isLocked || player.dragLook || inventoryUI.open;
 player.enableDragLook(renderer.domElement);
 
 function onPlay() {
@@ -136,9 +156,46 @@ overlay.addEventListener('click', () => {
     startDragLook();
   }
 });
-document.addEventListener('pointerlockerror', startDragLook);
-player.controls.addEventListener('lock', onPlay);
-player.controls.addEventListener('unlock', () => overlay.classList.remove('hidden'));
+// Opening the inventory gives the mouse back; closing it takes it again
+// (or, if the browser refuses, pauses instead).
+let leavingForInventory = false;
+let relocking = false;
+function openInventory() {
+  player.setInput(false);
+  inventoryUI.show();
+  if (player.controls.isLocked) {
+    leavingForInventory = true;
+    document.exitPointerLock();
+  }
+}
+function pauseInstead() {
+  if (!relocking) return;
+  relocking = false;
+  overlay.classList.remove('hidden');
+}
+function closeInventory({ resume = true } = {}) {
+  inventoryUI.hide();
+  player.setInput(true);
+  if (!resume) {
+    overlay.classList.remove('hidden');
+  } else if (!player.dragLook) {
+    relocking = true;
+    try {
+      renderer.domElement.requestPointerLock()?.catch?.(pauseInstead);
+    } catch {
+      pauseInstead();
+    }
+  }
+}
+document.addEventListener('pointerlockerror', () => (relocking ? pauseInstead() : startDragLook()));
+player.controls.addEventListener('lock', () => {
+  relocking = false;
+  onPlay();
+});
+player.controls.addEventListener('unlock', () => {
+  if (leavingForInventory) leavingForInventory = false;
+  else overlay.classList.remove('hidden');
+});
 
 const waterButtons = document.querySelectorAll('[data-water]');
 const markWater = () => waterButtons.forEach((b) => b.classList.toggle('active', b.dataset.water === water.quality));
@@ -150,18 +207,75 @@ waterButtons.forEach((button) => button.addEventListener('click', (e) => {
 }));
 markWater();
 
-// P toggles the performance readout. Dev keys: 1-7 force weather,
-// T skips an hour, K fast-forwards the climate, G sends a rogue wave set, M mutes.
+// E: gather from what you're looking at, or pick up an item.
+let lastGather = 0;
+function gather() {
+  if (performance.now() - lastGather < 300) return;
+  lastGather = performance.now();
+  const result = gathering.interact(weather.elapsed);
+  if (!result) return;
+  for (const { id, count } of result.got) inventoryUI.notify(`+${count} ${ITEMS[id].name}`);
+  if (result.empty) hud.message('Nothing left to gather here. It grows back with time.', 3);
+  else if (result.full) hud.message('Your bag is full.', 3);
+}
+
+// Right-click: eat the selected item, if it's food.
+function useSelected() {
+  const stack = inventory.current;
+  const food = stack && ITEMS[stack.id].eat;
+  if (!food) return;
+  inventory.take(inventory.selected, 1);
+  player.eat(food);
+  inventoryUI.notify(`Ate ${ITEMS[stack.id].name.toLowerCase()}`);
+}
+
+// Keys: 1-9 or the mouse wheel pick a hotbar slot, I or Tab open the
+// inventory, E gathers, Q drops one of the selected item, P toggles the
+// performance readout, M mutes. Dev keys: ` then 1-7 forces a weather type,
+// T skips an hour, K fast-forwards the climate, G sends a rogue wave set.
+let devArmed = -Infinity;
 addEventListener('keydown', (e) => {
   if (e.code === 'KeyP') perf.toggle();
-  if (e.code === 'Escape' && player.dragLook) {
-    player.dragLook = false;
-    overlay.classList.remove('hidden');
+  if (e.code === 'Tab') e.preventDefault();
+  if (e.code === 'Escape') {
+    if (inventoryUI.open) {
+      closeInventory({ resume: false });
+      return;
+    }
+    if (player.dragLook) {
+      player.dragLook = false;
+      overlay.classList.remove('hidden');
+    }
   }
   if (!isPlaying()) return;
-  if (e.code.startsWith('Digit')) {
-    const key = WEATHER_KEYS[Number(e.code.slice(5)) - 1];
+  if (e.code === 'KeyI' || e.code === 'Tab') {
+    if (inventoryUI.open) closeInventory();
+    else openInventory();
+    return;
+  }
+  const digit = e.code.startsWith('Digit') ? Number(e.code.slice(5)) : 0;
+  if (e.code === 'Backquote') {
+    devArmed = performance.now();
+    return;
+  }
+  if (digit && performance.now() - devArmed < 1500) {
+    devArmed = -Infinity;
+    const key = WEATHER_KEYS[digit - 1];
     if (key) weather.force(key);
+    return;
+  }
+  if (inventoryUI.open) {
+    // Over a slot, a number swaps it with that hotbar slot.
+    if (digit >= 1 && inventoryUI.hover >= 0) inventory.swap(inventoryUI.hover, digit - 1);
+    return;
+  }
+  if (digit >= 1) {
+    inventory.select(digit - 1);
+  } else if (e.code === 'KeyE') {
+    gather();
+  } else if (e.code === 'KeyQ') {
+    const stack = inventory.take(inventory.selected, 1);
+    if (stack) throwStack(stack);
   } else if (e.code === 'KeyT') {
     sky.skip(1);
   } else if (e.code === 'KeyK') {
@@ -173,6 +287,14 @@ addEventListener('keydown', (e) => {
     water.waves.spawnRogue(camera.position);
     hud.message('A rogue wave set is rolling in from upwind.', 4);
   }
+});
+
+addEventListener('wheel', (e) => {
+  if (isPlaying() && !inventoryUI.open && e.deltaY) inventory.select(inventory.selected + Math.sign(e.deltaY));
+}, { passive: true });
+renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+renderer.domElement.addEventListener('mousedown', (e) => {
+  if (e.button === 2 && isPlaying() && !inventoryUI.open) useSelected();
 });
 
 addEventListener('resize', () => {
@@ -202,6 +324,9 @@ function step() {
   sea.update(sdt, weather, sky.state.time);
   player.update(sdt, t, weather.heatIndex);
   uniforms.uPlayerPos.value.copy(player.pos);
+  const prompt = gathering.update(sdt, t, weather.elapsed, player, camera, isPlaying() && !inventoryUI.open);
+  inventoryUI.setPrompt(inventoryUI.open ? null : prompt?.text ?? null, prompt?.dim);
+  inventoryUI.update(dt);
   precip.update(sdt, t, camera, weather);
   const env = sky.update(sdt, camera, weather.current, precip.flash, weather.instability);
   weather.dayF = env.dayF;
@@ -251,7 +376,7 @@ renderer.compileAsync(scene, camera).catch(() => {}).finally(() => {
 
 if (import.meta.env.DEV) {
   window.game = {
-    scene, camera, renderer, terrain, weather, sea, player, sky, water, uniforms, vegetation, step,
+    scene, camera, renderer, terrain, weather, sea, player, sky, water, uniforms, vegetation, step, inventory, gathering,
     counts: vegetation.counts, quality: { tier, gpu, adaptive, gpuTimer },
   };
 }
