@@ -4,4 +4,6 @@ export default defineConfig({
   // Keep file paths as given instead of resolving them to their real
   // location, which can differ for folders under a packaged app's AppData.
   resolve: { preserveSymlinks: true },
+  // main.js waits for the tree models at the top level (top-level await).
+  build: { target: 'es2022' },
 });

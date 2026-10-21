@@ -4,25 +4,29 @@
 // texSize: procedural ground texture resolution. shadowMap: sun shadow map
 // size (0 = no shadows), covering shadowRange metres around the player,
 // redrawn every shadowEvery frames. grass: radius and spacing of the 3D
-// grass around the player (radius 0 = none).
+// grass around the player (radius 0 = none). trees: full 3D trees within
+// near metres, dithering over band metres into billboards, drawn out to far metres.
 export const TIERS = {
   // Old or software GPUs.
   low: {
     label: 'Low', pixelRatio: 0.8, antialias: false, minScale: 0.6,
     texSize: 256, anisotropy: 2, shadowMap: 0, shadowRange: 0, shadowTaps: 1, shadowEvery: 1,
     grass: { radius: 0, spacing: 1 }, cloudShadows: false,
+    trees: { near: 26, band: 4, far: 260 },
   },
   // Integrated graphics such as Intel Graphics / Iris Xe.
   medium: {
     label: 'Medium', pixelRatio: 1.25, antialias: true, minScale: 0.7,
     texSize: 512, anisotropy: 4, shadowMap: 1024, shadowRange: 38, shadowTaps: 1, shadowEvery: 2,
     grass: { radius: 16, spacing: 0.46 }, cloudShadows: true,
+    trees: { near: 36, band: 5, far: 400 },
   },
   // Dedicated GPUs such as GeForce RTX.
   high: {
     label: 'High', pixelRatio: 1.5, antialias: true, minScale: 0.75,
     texSize: 1024, anisotropy: 8, shadowMap: 2048, shadowRange: 64, shadowTaps: 4, shadowEvery: 1,
     grass: { radius: 28, spacing: 0.36 }, cloudShadows: true,
+    trees: { near: 95, band: 8, far: 1000 },
   },
 };
 

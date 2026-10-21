@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import { range } from '../shared.js';
+import { range, smoothstep } from '../shared.js';
 import { patchMaterial, foliageDepthMaterial } from './materials.js';
 import { buildBush, buildRock } from './props.js';
 import { leafSprite } from './textures.js';
+import { SPECIES, placeTrees, createForest } from './trees.js';
 
-// Uniform grid of circular colliders (boulders).
+// Uniform grid of circular colliders (tree trunks, fallen trunks, boulders).
 export class ColliderGrid {
   constructor(cell = 8) {
     this.cell = cell;
@@ -126,9 +127,31 @@ export function rockGeometries() {
   return [buildRock(41), buildRock(42), buildRock(43)];
 }
 
-// Bushes and boulders. There are no trees for now: a tree asset will take
-// their place.
-export function createVegetation(scene, terrain, rng, { quality, ground, cloudShadows }) {
+// Fallen trunks lie in the forest, roughly following the ground.
+function placeLogs(terrain, rng, colliders, spacingOk, lengths) {
+  const logs = [];
+  for (let k = 0; k < 5000 && logs.length < 45; k++) {
+    const x = range(rng, -300, 300), z = range(rng, -300, 300);
+    const h = terrain.heightAt(x, z);
+    if (h < 3.6 || terrain.slopeAt(x, z) > 0.18) continue;
+    if (smoothstep(-0.12, 0.3, terrain.forestDensity(x, z)) < 0.5) continue;
+    const variant = rng() < 0.3 ? 0 : 1;
+    const s = range(rng, 0.8, 1.05);
+    const len = lengths[variant] * s;
+    // The trunk runs along its own +X axis.
+    const yaw = rng() * Math.PI * 2, dx = Math.cos(yaw), dz = -Math.sin(yaw);
+    const ex = x + dx * len, ez = z + dz * len;
+    if (!spacingOk(x, z, 2) || !spacingOk(x + dx * len * 0.5, z + dz * len * 0.5, 2.5) || !spacingOk(ex, ez, 2)) continue;
+    const he = terrain.heightAt(ex, ez);
+    if (Math.abs(he - h) > len * 0.25) continue;
+    logs.push({ x, y: h - 0.25 * s, z, yaw, pitch: Math.atan2(he - h, len), s, variant });
+    for (let d = 0.6; d < len - 0.3; d += 1.1) colliders.add(x + dx * d, z + dz * d, (variant === 0 ? 0.6 : 0.45) * s);
+  }
+  return logs;
+}
+
+// Trees, fallen trunks, bushes and boulders.
+export function createVegetation(scene, terrain, rng, { quality, ground, cloudShadows, treeModels }) {
   const colliders = new ColliderGrid();
   const found = [];
   const bushes = [], rocks = [];
@@ -138,10 +161,15 @@ export function createVegetation(scene, terrain, rng, { quality, ground, cloudSh
   const spacingOk = (x, z, min) =>
     colliders.query(x, z, found).every((c) => (c.x - x) ** 2 + (c.z - z) ** 2 > min * min);
 
+  // Trees first: everything else keeps clear of their trunks.
+  const trees = placeTrees(terrain, rng, colliders, spacingOk);
+  const logLengths = treeModels.deadwood.map((v) => v.parts[0].geometry.boundingBox.max.x);
+  const logs = placeLogs(terrain, rng, colliders, spacingOk, logLengths);
+
   for (let k = 0; k < 6000 && bushes.length < 1000; k++) {
     const x = range(rng, -300, 300), z = range(rng, -300, 300);
     const h = terrain.heightAt(x, z);
-    if (h < 2.2 || h > 34 || terrain.slopeAt(x, z) > 0.2) continue;
+    if (h < 2.2 || h > 34 || terrain.slopeAt(x, z) > 0.2 || !spacingOk(x, z, 1.2)) continue;
     const s = range(rng, 0.6, 1.3);
     bushes.push({ x, y: h - 0.1, z, rot: rng() * 6.28, s, sy: range(rng, 0.8, 1.2), tone: rng(), variant: Math.floor(rng() * 2) });
   }
@@ -159,7 +187,8 @@ export function createVegetation(scene, terrain, rng, { quality, ground, cloudSh
     if (s > 0.9) colliders.add(x, z, s * 0.95);
   }
 
-  // Bushes shade the ground beneath them.
+  // Tree crowns and bushes shade the ground beneath them (and you, see player.js).
+  for (const t of trees) terrain.addCanopy(t.x, t.z, SPECIES[t.species].crown * t.s, SPECIES[t.species].shade);
   for (const b of bushes) terrain.addCanopy(b.x, b.z, 1.3 * b.s, 0.4);
   terrain.commitCanopy();
 
@@ -194,11 +223,34 @@ export function createVegetation(scene, terrain, rng, { quality, ground, cloudSh
     }));
   });
 
+  // --- Fallen trunks: tilted to follow the ground along their length.
+  const logMat = patchMaterial(
+    // Brightened like the oak bark it comes from (see SPECIES.oak.bark in trees.js).
+    new THREE.MeshLambertMaterial({ map: treeModels.deadwood[0].parts[0].map, color: new THREE.Color().setScalar(1.5), side: THREE.DoubleSide }),
+    { key: 'deadwood', snowMin: 0.6, cloudShadows },
+  );
+  const qa = new THREE.Quaternion(), qb = new THREE.Quaternion(), mat = new THREE.Matrix4(), pos = new THREE.Vector3(), scl = new THREE.Vector3();
+  const Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
+  treeModels.deadwood.forEach((model, vi) => {
+    chunks.push(new InstanceChunks(scene, model.parts[0].geometry, logMat, logs.filter((l) => l.variant === vi), {
+      maxDistance: 160, castShadow: shadows,
+      fill: (mesh, items) => items.forEach((l, i) => {
+        qa.setFromAxisAngle(Y, l.yaw).multiply(qb.setFromAxisAngle(Z, l.pitch));
+        mesh.setMatrixAt(i, mat.compose(pos.set(l.x, l.y, l.z), qa, scl.setScalar(l.s)));
+      }),
+    }));
+  });
+
+  // --- Trees.
+  const forest = createForest(scene, treeModels, trees, { quality, cloudShadows });
+  const bySpecies = Object.fromEntries(Object.keys(SPECIES).map((s) => [s, trees.filter((t) => t.species === s).length]));
+
   return {
     colliders,
-    counts: { bushes: bushes.length, rocks: rocks.length },
+    counts: { trees: trees.length, ...bySpecies, logs: logs.length, bushes: bushes.length, rocks: rocks.length },
     update(camera) {
       for (const c of chunks) c.update(camera);
+      forest.update(camera);
     },
   };
 }

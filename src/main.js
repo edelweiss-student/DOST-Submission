@@ -6,6 +6,7 @@ import { TextureBaker, bakeGround, bakeCloudNoise } from './world/textures.js';
 import { installShadowFilter } from './world/materials.js';
 import { createTerrain } from './world/terrain.js';
 import { createVegetation } from './world/vegetation.js';
+import { loadTreeModels } from './world/trees.js';
 import { createGrass } from './world/grass.js';
 import { createOcean } from './world/ocean.js';
 import { createWater } from './world/water.js';
@@ -43,6 +44,11 @@ scene.fog = fog;
 scene.background = fog.color;
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 2000);
 
+// The tree models are the game's only asset files. Start loading them now,
+// so they download and decode while the island is generated.
+document.querySelector('#overlay .play').textContent = 'Loading…';
+const treeModelsLoading = loadTreeModels(quality.anisotropy);
+
 // Procedural textures, drawn on the GPU once at startup.
 const baker = new TextureBaker(renderer);
 const ground = bakeGround(baker, quality.texSize, quality.anisotropy);
@@ -52,7 +58,8 @@ const cloudShadows = quality.cloudShadows;
 
 const terrain = createTerrain(rng, { ground, cloudShadows, castShadow: tier === 'high' });
 scene.add(terrain.mesh);
-const vegetation = createVegetation(scene, terrain, rng, { quality, ground, cloudShadows });
+const treeModels = await treeModelsLoading;
+const vegetation = createVegetation(scene, terrain, rng, { quality, ground, cloudShadows, treeModels });
 const grass = createGrass(scene, terrain, { ...quality.grass, anisotropy: quality.anisotropy, msaa: quality.antialias, cloudShadows });
 const ocean = createOcean(scene, terrain, rng, { ground, anisotropy: quality.anisotropy, cloudShadows });
 // Water quality is its own setting (on the pause screen), remembered between visits.

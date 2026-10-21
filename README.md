@@ -105,8 +105,8 @@ Heat makes all of this worse:
   54 °C ("extreme danger").
 - How hot it feels to you depends on where you are. The heat index is
   measured in the shade: full sun adds up to 8 °C (less under cloud,
-  nothing at night). Shade blocks the sun: it comes from bushes now, which
-  give only a little, and will come from trees once a tree asset is added.
+  nothing at night). Shade blocks the sun: tree crowns give the most (oaks
+  most, eucalyptus least) and bushes a little.
   Plants the sea has killed give none. The sea is the real relief: water
   cools you to about 26 °C, and your body takes about 15 seconds to warm up
   again, so a swim keeps you cool for a while.
@@ -126,8 +126,8 @@ Heat makes all of this worse:
 
 ## Graphics
 
-Everything is generated when the game starts; there are no image or model
-files.
+Everything except the trees is generated when the game starts. The trees
+are the only model files (see Tree models below).
 
 - **Sky.** A physically based atmosphere (Rayleigh and Mie scattering plus
   ozone) gives the blue day sky, sunsets and twilight. The GPU renders it
@@ -148,8 +148,18 @@ files.
   instead of cross-fading. Each material has detail normals, roughness and
   cavity shading. Sand the waves reach stays dark and glossy, and the seabed
   darkens with depth. The forest floor still marks where the forest was.
-- **Trees.** None for now: the procedural trees were removed, and a tree
-  asset will take their place.
+- **Trees.** Birch, eucalyptus, oak and yerba mate, three variants each,
+  from the 3D Retro World pack, plus fallen trunks on the forest floor.
+  Eucalyptus grows in the lowlands, oaks on open low ground, birches up
+  the hills and yerba mate as understorey and along the forest edges, all
+  on the forest floor plus a few lone trees in the open. Up close each
+  tree is the full model (about 2,000 triangles, alpha-tested leaves);
+  further out it dithers into the model's own billboard. Billboards are lit
+  like a rounded crown facing you, so they match the full trees. Trees sway in the wind (less
+  the taller they are), their leaves flutter, they cast shadows, collect
+  snow, brown in droughts and die when salt water reaches their roots. You
+  can't walk through trunks or fallen trunks, and the crowns shade the
+  ground (less grass grows there) and you.
 - **Grass, bushes and rocks.** 3D grass clumps around the player, placed
   entirely on the GPU, bend in rolling gusts and part around your feet.
   Bushes are domes of leaf cards that sway, flutter and let light through
@@ -245,6 +255,12 @@ How the realistic world stays fast:
 - The terrain skips detail textures where they're too far to see.
 - Alpha-tested leaves and blades keep their coverage at a distance, so
   bushes and grass don't thin out and need extra cards to look full.
+- Trees are full models only near you (26 m on Low, 36 m on Medium, 95 m on
+  High) and the models' own 12-triangle billboards beyond, out to 260, 400
+  or 1,000 m. Both lists are rebuilt nearest first every couple of metres
+  you move, so leaves and billboards hidden behind nearer ones fail the
+  depth test instead of being shaded. Billboards inside the hand-over are
+  skipped before any pixel is shaded.
 - Every shader is compiled before the first frame, so new things coming
   into view don't stall the game.
 
@@ -253,6 +269,9 @@ laptop at 1600×900, clear midday: about 5.5–6 ms on the beach or looking
 inland, 9 ms from the summit, and 10.5 ms standing in thick grass. That is
 95–180 fps before any resolution scaling. Low runs in about 4 ms. High is
 meant for dedicated graphics cards: on this integrated GPU it takes 7–19 ms.
+Those timings are from before the trees. Among the trees, the forest adds
+roughly 3–6 ms (12.5–17 ms in total in dense woods), so on integrated
+graphics the resolution may drop a step or two there.
 Press `P` to see GPU time (in browsers that allow GPU timer queries), frame
 rate, draw calls and triangles.
 
@@ -263,6 +282,32 @@ headroom. Press `P` to watch it.
 On laptops with two GPUs, browsers often use the integrated one. The start
 screen points this out. To use the dedicated GPU, set the browser to "High
 performance" in Windows Settings > System > Display > Graphics.
+
+## Tree models
+
+The trees come from the 3D Retro World pack (version 0.01): Birch, Eucalyptus,
+Mate and Oak (variants A, B and C of each) and the two fallen oak trunks
+(OakBreakA and B). `scripts/import-trees.mjs` packs them into one `.glb` per
+species in `public/models/trees` (93 MB in, 8.4 MB out):
+
+- Each variant keeps its full tree and its billboard, moved to the origin.
+- Textures shared by a species' variants are stored once and shrunk (leaves
+  1024², bark and billboards 512²). The shrinking averages light in linear
+  space and weights it by alpha, so leaf edges don't darken, and leaf colour
+  is spread into the transparent texels so distant mipmaps don't fade to black.
+- Billboards are matched to the brightness of their species' leaves (the
+  oak's were much darker).
+- Leaves and billboards become alpha-tested instead of blended. Wind vertex
+  colours and lightmap UVs are dropped.
+
+To re-import, for example after updating the pack:
+
+```bash
+npm run import-trees -- "<folder with Birch_A.glb, Oak_B.glb, ...>"
+```
+
+The script uses only Node's built-in modules. The download had no licence
+file, so check the pack's terms before publishing the game.
 
 ## Layout
 
@@ -277,7 +322,8 @@ src/
   world/materials.js    shader patches: sway, snow, wetness, drought, caustics, cloud shadows,
                         fog, distance dithering, terrain splatting, shadow filtering, salt damage
   world/props.js        procedural bush and boulder geometry
-  world/vegetation.js   bush and boulder placement, colliders, culled instancing
+  world/trees.js        tree models: loading, where each species grows, near models and billboards
+  world/vegetation.js   tree, fallen trunk, bush and boulder placement, colliders, culled instancing
   world/grass.js        GPU grass around the player
   world/waves.js        Gerstner wave spectrum, CPU surface sampling for physics
   world/water.js        water surface mesh, depth and ripple textures, uniforms
@@ -293,6 +339,9 @@ src/
   player/player.js      walking, buoyant swimming, oxygen, health, stamina, heat strain
   ui/hud.js             HUD panels, bars, messages and heat warnings
   audio/ambience.js     synthesized wind, rain, surf, underwater, thunder, splashes
+scripts/
+  import-trees.mjs      packs the tree pack's .glb files into public/models/trees
+public/models/trees/    the packed tree models: one .glb per species, plus deadwood
 ```
 
 There are no hostile creatures yet. The fish are passive.

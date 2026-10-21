@@ -19,8 +19,8 @@ const RECOVERED = 30;
 const TIRED = 0.7;                  // speed while exhausted
 
 // Heat: the heat index is a shade value. Full sun adds up to SUN_HEAT °C and
-// shade blocks it (from bushes now, and from trees once a tree asset is
-// added). The sea cools you to SEA_TEMP. From 27 °C you
+// shade blocks it (tree crowns, and a little from bushes). The sea cools
+// you to SEA_TEMP. From 27 °C you
 // tire faster and recover slower: sprinting drains stamina twice as fast at
 // 41 °C (the "danger" level), about three times at 54 °C ("extreme danger")
 // and four times from 69 °C, where you recover at a quarter of the rate.

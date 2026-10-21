@@ -107,7 +107,12 @@ btWorldNormal = normalize( mat3( modelMatrix ) * wNrm );
   wPos.xyz += vec3( uWindDir.x, 0.4, uWindDir.y ) * fl * ( 0.015 + 0.06 * uWind ) * BT_FLUTTER;
 #endif
 #ifdef BT_LOD
-  btLod = 1.0 - smoothstep( BT_FADE_RANGE.x, BT_FADE_RANGE.y, distance( wBase.xz, cameraPosition.xz ) );
+  float btFade = smoothstep( BT_FADE_RANGE.x, BT_FADE_RANGE.y, distance( wBase.xz, cameraPosition.xz ) );
+  #ifdef BT_FADE_IN
+    btLod = btFade;   // distant stand-ins appear as the full model dithers out
+  #else
+    btLod = 1.0 - btFade;
+  #endif
 #endif
 #ifdef BT_TREE
   // How far salt water has climbed above the plant's base (see weather/sealevel.js).
@@ -117,6 +122,10 @@ btWorldNormal = normalize( mat3( modelMatrix ) * wNrm );
 btWorldPos = wPos.xyz;
 vec4 mvPosition = viewMatrix * wPos;
 gl_Position = projectionMatrix * mvPosition;
+#if defined( BT_LOD ) && defined( BT_FADE_IN )
+  // Not needed up close: push it out of view so no pixels are shaded.
+  if ( btLod <= 0.0 ) gl_Position = vec4( 0.0, 0.0, 2.0, 1.0 );
+#endif
 `;
 
 // Shadow lookups use the swayed position too.
@@ -203,7 +212,13 @@ ${TREE_DEATH}
 const ALPHA = /* glsl */ `
 #include <alphatest_fragment>
 #ifdef BT_LOD
-  if ( btDither( gl_FragCoord.xy ) >= btLod ) discard;
+  // Fading out keeps the pixels a fading-in stand-in skips, so the two never
+  // overlap or leave holes.
+  #ifdef BT_FADE_IN
+    if ( btDither( gl_FragCoord.xy ) < 1.0 - btLod ) discard;
+  #else
+    if ( btDither( gl_FragCoord.xy ) >= btLod ) discard;
+  #endif
 #endif
 `;
 
@@ -441,7 +456,9 @@ const NORMAL_BEGIN_FOLIAGE = THREE.ShaderChunk.normal_fragment_begin.replace('no
 //   sway, kelp     wind sway (height-squared bend), kelp follows the waves instead
 //   flutter        leaf trembling amplitude
 //   foliage        translucency strength; also keeps leaf normals un-flipped on back faces
-//   fadeOut        [start, end] metres: dithers out with distance (small props)
+//   fadeOut        [start, end] metres: dithers out with distance (small props, full trees)
+//   fadeIn         [start, end] metres: dithers in with distance, not drawn before start
+//                  (tree billboards; pairs pixel for pixel with the same fadeOut range)
 //   tree           'leaves' or 'bark': dies when salt water reaches the roots
 //   dry, snowMin, caustics, bleach   weather reactions
 //   terrain        { textures, control, controlRect, scales } texture splatting
@@ -452,7 +469,7 @@ const NORMAL_BEGIN_FOLIAGE = THREE.ShaderChunk.normal_fragment_begin.replace('no
 export function patchMaterial(material, {
   key, sway = 0, kelp = false, flutter = 0, foliage = 0, dry = false, snowMin = 0.5,
   caustics = false, bleach = false, terrain = null, sqrtMap = false, cloudShadows = false, hardShadow = false,
-  fadeOut = null, tree = null, custom = null,
+  fadeOut = null, fadeIn = null, tree = null, custom = null,
 } = {}) {
   const d = { ...(material.defines || {}), BT_SNOW_MIN: snowMin.toFixed(3) };
   if (tree) Object.assign(d, treeDefines(tree));
@@ -465,10 +482,12 @@ export function patchMaterial(material, {
   if (kelp) d.BT_KELP = '';
   if (flutter) d.BT_FLUTTER = flutter.toFixed(3);
   if (foliage) d.BT_FOLIAGE = foliage.toFixed(3);
-  // Dither out between fadeOut[0] and fadeOut[1] metres from the camera.
-  if (fadeOut) {
+  // Dither out (or in) between the two distances from the camera.
+  const fade = fadeOut || fadeIn;
+  if (fade) {
     d.BT_LOD = '';
-    d.BT_FADE_RANGE = `vec2( ${fadeOut[0].toFixed(1)}, ${fadeOut[1].toFixed(1)} )`;
+    d.BT_FADE_RANGE = `vec2( ${fade[0].toFixed(1)}, ${fade[1].toFixed(1)} )`;
+    if (fadeIn) d.BT_FADE_IN = '';
   }
   if (dry) d.BT_DRY = '';
   if (caustics) d.BT_CAUSTICS = '';
