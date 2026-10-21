@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { uniforms } from '../shared.js';
 import { ITEMS } from '../items/items.js';
+import { lyingGeometry, REST } from '../items/models.js';
 import { patchMaterial } from './materials.js';
 import { SPECIES } from './trees.js';
 
@@ -9,30 +9,39 @@ const REACH = 2.4;          // how far past an object's edge you can reach (m)
 const MAX_DROPPED = 150;    // oldest dropped items vanish past this
 
 // What each kind of source gives. stock: gathers before it runs out;
-// regrow: seconds of game time for one gather to come back; give(rng):
-// the items one gather yields, as [id, count] pairs.
+// regrow: seconds of game time for one gather to come back (grass never
+// runs out). tool: the tool that does better here; label and give(rng,
+// { tool, dead }) depend on whether it's the one selected.
 const SOURCES = {
-  tree: { label: 'Gather sticks', stock: 3, regrow: 90, give: (r) => [['stick', r() < 0.5 ? 2 : 1]] },
-  bush: {
-    label: 'Gather fibre and berries', stock: 3, regrow: 120,
-    give: (r, dead) => [['fibre', r() < 0.4 ? 2 : 1], ...(!dead && r() < 0.6 ? [['berries', r() < 0.3 ? 2 : 1]] : [])],
+  tree: {
+    stock: 3, regrow: 90, tool: 'axe',
+    label: (axe) => (axe ? 'Chop wood' : 'Gather sticks'),
+    give: (r, { tool }) => (tool ? [['wood', r() < 0.5 ? 2 : 1], ['stick', r() < 0.4 ? 1 : 0]] : [['stick', r() < 0.5 ? 2 : 1]]),
   },
-  rock: { label: 'Pick up stones', stock: 4, regrow: 300, give: (r) => [['stone', r() < 0.3 ? 2 : 1]] },
-  log: { label: 'Break off wood', stock: 5, regrow: 600, give: () => [['wood', 1]] },
+  bush: {
+    stock: 3, regrow: 120, tool: 'knife',
+    label: (knife) => (knife ? 'Cut fibre and berries' : 'Gather fibre and berries'),
+    // Bushes the sea has killed have no berries left, only dry stems.
+    give: (r, { tool, dead }) => [
+      ['fibre', (r() < 0.4 ? 2 : 1) * (tool ? 2 : 1)],
+      ...(!dead && r() < 0.6 ? [['berries', r() < 0.3 ? 2 : 1]] : []),
+    ],
+  },
+  rock: {
+    stock: 4, regrow: 300, tool: 'pickaxe',
+    label: (pickaxe) => (pickaxe ? 'Mine stones' : 'Pick up stones'),
+    give: (r, { tool }) => [['stone', (r() < 0.3 ? 2 : 1) * (tool ? 2 : 1)]],
+  },
+  log: {
+    stock: 5, regrow: 600, tool: 'axe',
+    label: (axe) => (axe ? 'Chop wood' : 'Break off wood'),
+    give: (r, { tool }) => [['wood', tool ? 2 : 1]],
+  },
+  grass: {
+    tool: 'knife', label: () => 'Cut grass',
+    give: (r) => [['fibre', r() < 0.35 ? 2 : 1]],
+  },
 };
-
-// Shapes and resting radius of items lying in the world.
-function itemGeometry(id) {
-  switch (id) {
-    case 'stick': return new THREE.CylinderGeometry(0.025, 0.03, 0.6, 5).rotateZ(Math.PI / 2);
-    case 'stone': return new THREE.DodecahedronGeometry(0.08).scale(1, 0.75, 0.9);
-    case 'wood': return new THREE.CylinderGeometry(0.09, 0.1, 0.45, 7).rotateZ(Math.PI / 2);
-    case 'fibre': return new THREE.CylinderGeometry(0.05, 0.035, 0.32, 6).rotateZ(Math.PI / 2);
-    default: return mergeGeometries([[0, 0, 0], [0.06, 0.01, 0.03], [0.02, 0.05, -0.04]].map(
-      ([x, y, z]) => new THREE.IcosahedronGeometry(0.04, 1).translate(x, y, z)));
-  }
-}
-const REST = { stick: 0.03, stone: 0.06, wood: 0.09, fibre: 0.05, berries: 0.04 };
 
 class Grid {
   constructor(cell = 8) { this.cell = cell; this.cells = new Map(); }
@@ -56,9 +65,10 @@ class Grid {
   }
 }
 
-// Gathering from trees, bushes, boulders and fallen trunks, and items
-// lying in the world (dropped, or thrown out of a full bag). Stones sink;
-// everything else floats, drifting with the waves and the wind.
+// Gathering from trees, bushes, boulders, fallen trunks and (with a knife)
+// grass, and items lying in the world (dropped, or thrown out of a full
+// bag). Stones and tools sink; everything else floats, drifting with the
+// waves and the wind.
 export function createGathering(scene, { terrain, water, vegetation, inventory, rng }) {
   const grid = new Grid();
   const { trees, bushes, rocks, logs } = vegetation.sources;
@@ -69,13 +79,14 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
     const source = { kind: 'log', x: l.x, z: l.z, dx: l.dx, dz: l.dz, len: l.len, r: 0.55 * l.s };
     for (let d = 0; d <= l.len; d += 4) grid.add(l.x + l.dx * d, l.z + l.dz * d, source);
   }
+  const grass = { kind: 'grass' };
 
-  // --- Items in the world: one instanced mesh per item type.
+  // --- Items in the world: one instanced mesh per item type, one material.
   const dropped = [];
   const meshes = {};
-  for (const [id, item] of Object.entries(ITEMS)) {
-    const material = patchMaterial(new THREE.MeshLambertMaterial({ color: item.color }), { key: 'world-item', snowMin: 0.6 });
-    const mesh = new THREE.InstancedMesh(itemGeometry(id), material, MAX_DROPPED);
+  const material = patchMaterial(new THREE.MeshLambertMaterial({ vertexColors: true }), { key: 'world-item', snowMin: 0.6 });
+  for (const id of Object.keys(ITEMS)) {
+    const mesh = new THREE.InstancedMesh(lyingGeometry(id), material, MAX_DROPPED);
     mesh.count = 0;
     mesh.frustumCulled = false;
     mesh.castShadow = true;
@@ -84,9 +95,10 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
     meshes[id] = mesh;
   }
 
+  // stack: { id, count } plus a tool's durability, which it keeps.
   function drop(stack, from, velocity) {
     if (dropped.length >= MAX_DROPPED) dropped.shift();
-    dropped.push({ id: stack.id, count: stack.count, pos: from.clone(), vel: velocity.clone(), yaw: rng() * 6.28, spin: 0 });
+    dropped.push({ ...stack, pos: from.clone(), vel: velocity.clone(), yaw: rng() * 6.28, spin: 0 });
   }
 
   const surf = {};
@@ -96,8 +108,8 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
     const wind = uniforms.uWind.value, wd = uniforms.uWindDir.value;
     const counts = {};
     for (const it of dropped) {
-      const p = it.pos, v = it.vel, rest = REST[it.id];
-      const ground = terrain.heightAt(p.x, p.z) + rest;
+      const p = it.pos, v = it.vel;
+      const ground = terrain.heightAt(p.x, p.z) + REST[it.id];
       water.surface(p.x, p.z, t, surf);
       if (p.y < surf.height && ITEMS[it.id].floats && surf.height - 0.02 > ground) {
         // Floating: ride the surface, pushed by the waves and the wind.
@@ -128,6 +140,7 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
   // Gathered sources come back over time (game time, so not while paused).
   function restock(s, t) {
     const kind = SOURCES[s.kind];
+    if (!kind.stock) return;
     if (s.stock === undefined) { s.stock = kind.stock; s.since = t; }
     if (s.stock >= kind.stock) { s.since = t; return; }
     const back = Math.floor((t - s.since) / kind.regrow);
@@ -137,10 +150,11 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
     }
   }
 
-  // What you're looking at within reach: dropped items first, then sources.
+  // What you're looking at within reach: dropped items first, then
+  // sources, then (holding a knife) the grass in front of you.
   const found = [];
   const fwd = new THREE.Vector3();
-  function findTarget(player, camera) {
+  function findTarget(player, camera, tool) {
     camera.getWorldDirection(fwd);
     const fl = Math.hypot(fwd.x, fwd.z) || 1;
     const fx = fwd.x / fl, fz = fwd.z / fl;
@@ -167,6 +181,10 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
       }
       consider({ source: s }, cx, cz, Math.hypot(cx - px, cz - pz) - s.r, 0);
     }
+    if (!best && tool === 'knife' && !player.swimming) {
+      const gx = px + fx * 1.5, gz = pz + fz * 1.5;
+      if (terrain.grassAt(gx, gz) > 0.3 && terrain.heightAt(gx, gz) > uniforms.uWaterLevel.value + 0.3) best = { source: grass };
+    }
     return best;
   }
 
@@ -174,47 +192,53 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
   return {
     drop,
 
-    // Called every frame while playing: finds what E would act on.
-    update(dt, t, simTime, player, camera, playing) {
+    // Called every frame: finds what E would act on, for the prompt.
+    // tool: the selected tool's kind, if any.
+    update(dt, t, simTime, player, camera, playing, tool) {
       updateDropped(dt, t);
-      target = playing ? findTarget(player, camera) : null;
+      target = playing ? findTarget(player, camera, tool) : null;
       if (!target) return null;
       if (target.item) {
         const { id, count } = target.item;
         return { text: `Pick up ${ITEMS[id].name}${count > 1 ? ` ×${count}` : ''}`, dim: false };
       }
-      restock(target.source, simTime);
-      const empty = target.source.stock <= 0;
-      return { text: empty ? 'Nothing left here for now' : SOURCES[target.source.kind].label, dim: empty };
+      const s = target.source, kind = SOURCES[s.kind];
+      restock(s, simTime);
+      const empty = kind.stock && s.stock <= 0;
+      return { text: empty ? 'Nothing left here for now' : kind.label(tool === kind.tool), dim: !!empty };
     },
 
-    // E: pick up or gather. Returns [{ id, count }] of what went into the bag.
-    interact(simTime) {
+    // E: pick up or gather. Returns what went into the bag ([{ id, count }]),
+    // whether the bag was full or the source empty, and whether the
+    // selected tool was used (so it wears).
+    interact(simTime, tool) {
       if (!target) return null;
       const got = [];
       let full = false;
-      const give = (id, count) => {
-        const left = inventory.add(id, count);
-        if (count > left) got.push({ id, count: count - left });
+      const give = (stack) => {
+        const left = inventory.addStack(stack);
+        if (stack.count > left) got.push({ id: stack.id, count: stack.count - left });
         if (left) full = true;
         return left;
       };
       if (target.item) {
         const it = target.item;
-        it.count = give(it.id, it.count);
+        it.count = give({ id: it.id, count: it.count, durability: it.durability });
         if (it.count === 0) dropped.splice(dropped.indexOf(it), 1);
-      } else {
-        const s = target.source;
-        restock(s, simTime);
-        if (s.stock <= 0) return { got, empty: true };
-        // Bushes the sea has killed have no berries left, only dry stems.
-        const dead = s.kind === 'bush' && uniforms.uTreeKillLine.value > s.y;
-        let added = 0;
-        for (const [id, count] of SOURCES[s.kind].give(rng, dead)) added += count - give(id, count);
-        if (added === 0) return { got, full: true };
-        s.stock--;
+        return { got, full };
       }
-      return { got, full };
+      const s = target.source, kind = SOURCES[s.kind];
+      restock(s, simTime);
+      if (kind.stock && s.stock <= 0) return { got, empty: true };
+      const usedTool = tool === kind.tool;
+      const dead = s.kind === 'bush' && uniforms.uTreeKillLine.value > s.y;
+      let added = 0;
+      for (const [id, count] of kind.give(rng, { tool: usedTool, dead })) {
+        if (count > 0) added += count - give({ id, count });
+      }
+      if (added === 0) return { got, full: true };
+      if (kind.stock) s.stock--;
+      return { got, full, usedTool };
     },
 
     get count() { return dropped.length; },

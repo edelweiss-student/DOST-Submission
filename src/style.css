@@ -95,6 +95,8 @@ html, body {
 .slot img[hidden] { display: none; }
 .slot .count { position: absolute; right: 4px; bottom: 1px; font-size: 13px; font-weight: 700; text-shadow: 0 1px 2px #000, 0 0 3px #000; }
 .slot .key { position: absolute; left: 4px; top: 0; font-size: 10px; color: var(--muted); }
+.slot .wear { position: absolute; left: 6px; right: 6px; bottom: 3px; height: 3px; border-radius: 2px; background: rgba(0, 0, 0, 0.65); }
+.slot .wear i { display: block; height: 100%; border-radius: 2px; }
 
 #hotbar {
   position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
@@ -150,7 +152,26 @@ html, body {
 #inv-hotbar { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
 .inv-panel .slot { cursor: pointer; }
 .inv-panel .slot:hover { border-color: rgba(255, 255, 255, 0.45); }
-.inv-help { margin: 10px 0 0; max-width: 470px; font-size: 11px; line-height: 1.5; color: var(--muted); }
+.inv-columns { display: flex; gap: 20px; }
+.inv-craft { width: 240px; }
+.recipe {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px; padding: 6px;
+  border-radius: 8px; background: rgba(255, 255, 255, 0.04);
+}
+.recipe .slot { width: 40px; height: 40px; flex: none; }
+.recipe-info { flex: 1; font-size: 12px; }
+.recipe-info b { display: block; font-size: 13px; font-weight: 600; }
+.needs { display: flex; gap: 10px; margin-top: 2px; color: var(--muted); }
+.need img { width: 16px; height: 16px; margin-right: 3px; vertical-align: -4px; }
+.need.short { color: var(--health); }
+.recipe button {
+  font: inherit; font-size: 12px; padding: 4px 11px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--accent); background: rgba(255, 178, 91, 0.14); color: var(--accent);
+}
+.recipe button:hover:not(:disabled) { background: rgba(255, 178, 91, 0.26); }
+.recipe button:disabled { cursor: default; border-color: rgba(255, 255, 255, 0.15); background: none; color: var(--muted); }
+#inv-tooltip .uses { display: block; margin-top: 3px; color: var(--muted); }
+.inv-help { margin: 10px 0 0; max-width: 760px; font-size: 11px; line-height: 1.5; color: var(--muted); }
 #inv-cursor { position: fixed; z-index: 11; transform: translate(-50%, -50%); pointer-events: none; }
 #inv-cursor .slot { background: none; border-color: transparent; }
 #inv-tooltip {
@@ -192,6 +213,11 @@ html, body {
 }
 .settings button:hover { background: rgba(255, 255, 255, 0.12); }
 .settings button.active { border-color: var(--accent); color: var(--accent); }
+
+@media (max-width: 800px) {
+  .inv-columns { flex-direction: column; gap: 12px; }
+  .inv-craft { width: auto; }
+}
 
 @media (max-width: 600px) {
   #climate-panel { top: auto; bottom: 16px; right: 16px; }

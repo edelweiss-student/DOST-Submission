@@ -41,9 +41,17 @@
 
     <div id="inventory" class="hidden">
       <div class="inv-panel">
-        <h2>Inventory</h2>
-        <div id="inv-backpack" class="inv-grid"></div>
-        <div id="inv-hotbar" class="inv-grid"></div>
+        <div class="inv-columns">
+          <div>
+            <h2>Inventory</h2>
+            <div id="inv-backpack" class="inv-grid"></div>
+            <div id="inv-hotbar" class="inv-grid"></div>
+          </div>
+          <div class="inv-craft">
+            <h2>Crafting</h2>
+            <div id="inv-crafting"></div>
+          </div>
+        </div>
         <p class="inv-help">Click to pick up and put down · Right-click to split a stack or put down one ·
           Shift-click to move between bag and hotbar · 1–9 over a slot to swap it onto the hotbar ·
           Click outside to drop · I, Tab or Esc to close</p>
@@ -65,7 +73,7 @@
           <b>C</b><span>Dive</span>
           <b>E</b><span>Gather / pick up</span>
           <b>1–9 / Wheel</b><span>Choose a hotbar slot</span>
-          <b>I / Tab</b><span>Inventory</span>
+          <b>I / Tab</b><span>Inventory and crafting</span>
           <b>Q</b><span>Drop one of the selected item</span>
           <b>Right-click</b><span>Eat the selected item</span>
           <b>M</b><span>Mute</span>

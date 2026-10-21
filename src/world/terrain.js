@@ -161,11 +161,14 @@ export function createTerrain(rng, { ground, cloudShadows = false, castShadow = 
     controlTex.needsUpdate = true;
   }
   // Canopy at (x, z): 0 open sky .. 1 under dense cover (for shade).
-  function canopyAt(x, z) {
+  // channel 2: grass density, 0 none .. 1 thick (for cutting grass).
+  function controlAt(x, z, channel) {
     const i = clamp(Math.floor((x + half) / cstep), 0, C - 1);
     const j = clamp(Math.floor((z + half) / cstep), 0, C - 1);
-    return control[(i + j * C) * 4 + 1] / 255;
+    return control[(i + j * C) * 4 + channel] / 255;
   }
+  const canopyAt = (x, z) => controlAt(x, z, 1);
+  const grassAt = (x, z) => controlAt(x, z, 2);
 
   const material = patchMaterial(
     new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0 }),
@@ -207,7 +210,7 @@ export function createTerrain(rng, { ground, cloudShadows = false, castShadow = 
   }
 
   return {
-    mesh, heightAt, slopeAt, forestDensity, findSpawn, islet, peak, addCanopy, commitCanopy, canopyAt,
+    mesh, heightAt, slopeAt, forestDensity, findSpawn, islet, peak, addCanopy, commitCanopy, canopyAt, grassAt,
     controlTexture: controlTex, controlRect, heightTexture,
     // Raw height grid: size x size samples, step metres apart, starting at -half.
     grid: { heights, size: V, step, half },

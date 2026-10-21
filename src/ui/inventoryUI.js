@@ -1,5 +1,6 @@
 import { ITEMS, itemIcon } from '../items/items.js';
 import { HOTBAR } from '../items/inventory.js';
+import { RECIPES, canCraft } from '../items/recipes.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -7,7 +8,7 @@ function makeSlot(index, key) {
   const el = document.createElement('div');
   el.className = 'slot';
   el.dataset.index = index;
-  el.innerHTML = '<img alt="" draggable="false" hidden><span class="count"></span>';
+  el.innerHTML = '<img alt="" draggable="false" hidden><span class="count"></span><span class="wear" hidden><i></i></span>';
   if (key) el.insertAdjacentHTML('beforeend', `<span class="key">${key}</span>`);
   return el;
 }
@@ -20,15 +21,53 @@ function fill(el, stack) {
     img.hidden = !stack;
   }
   el.querySelector('.count').textContent = stack && stack.count > 1 ? stack.count : '';
+  // A worn tool shows how much use it has left, green to red.
+  const max = stack && ITEMS[stack.id].durability;
+  const wear = el.querySelector('.wear');
+  wear.hidden = !max || stack.durability >= max;
+  if (!wear.hidden) {
+    const f = stack.durability / max;
+    wear.firstChild.style.width = `${f * 100}%`;
+    wear.firstChild.style.background = `hsl(${Math.round(f * 110)}, 75%, 50%)`;
+  }
+}
+
+function makeRecipe(recipe, index) {
+  const el = document.createElement('div');
+  el.className = 'recipe';
+  el.dataset.recipe = index;
+  const icon = el.appendChild(makeSlot(-1));
+  fill(icon, { id: recipe.makes, count: 1 });
+  const info = el.appendChild(document.createElement('div'));
+  info.className = 'recipe-info';
+  info.appendChild(document.createElement('b')).textContent = ITEMS[recipe.makes].name;
+  const needs = info.appendChild(document.createElement('div'));
+  needs.className = 'needs';
+  for (const id of Object.keys(recipe.needs)) {
+    const need = needs.appendChild(document.createElement('span'));
+    need.className = 'need';
+    need.dataset.id = id;
+    need.title = ITEMS[id].name;
+    const img = need.appendChild(document.createElement('img'));
+    img.src = itemIcon(id);
+    img.alt = ITEMS[id].name;
+    need.appendChild(document.createElement('span'));
+  }
+  const button = el.appendChild(document.createElement('button'));
+  button.type = 'button';
+  button.textContent = 'Craft';
+  return el;
 }
 
 // The hotbar along the bottom of the screen, and the inventory screen (I or
-// Tab) where stacks are moved around with the mouse. onDrop(stack) throws a
-// stack into the world.
+// Tab) where stacks are moved around with the mouse and tools are crafted.
+// onDrop(stack) throws a stack into the world; onCraft(recipe) makes one.
 export class InventoryUI {
-  constructor(inventory, { onDrop }) {
+  constructor(inventory, { onDrop, onCraft }) {
     this.inv = inventory;
     this.onDrop = onDrop;
+    this.onCraft = onCraft;
+    this.hoverRecipe = -1;
     this.open = false;
     this.held = null;      // stack on the mouse cursor
     this.hover = -1;       // slot under the mouse
@@ -37,8 +76,9 @@ export class InventoryUI {
     this.el = {
       hotbar: $('hotbar'), name: $('hotbar-name'), prompt: $('prompt'), feed: $('feed'),
       screen: $('inventory'), bag: $('inv-backpack'), bagHotbar: $('inv-hotbar'),
-      cursor: $('inv-cursor'), tooltip: $('inv-tooltip'), crosshair: $('crosshair'),
+      cursor: $('inv-cursor'), tooltip: $('inv-tooltip'), crosshair: $('crosshair'), crafting: $('inv-crafting'),
     };
+    this.recipeRows = RECIPES.map((recipe, i) => this.el.crafting.appendChild(makeRecipe(recipe, i)));
 
     this.hotbarSlots = [];
     this.screenSlots = [];
@@ -53,6 +93,11 @@ export class InventoryUI {
     screen.addEventListener('contextmenu', (e) => e.preventDefault());
     screen.addEventListener('pointerdown', (e) => {
       e.preventDefault();   // no text selection or focus changes
+      const craftButton = e.target.closest('.recipe button');
+      if (craftButton) {
+        if (!craftButton.disabled) this.onCraft(RECIPES[craftButton.parentElement.dataset.recipe]);
+        return;
+      }
       const slot = e.target.closest('.slot[data-index]');
       if (slot && slot.dataset.index >= 0) {
         const i = Number(slot.dataset.index);
@@ -69,6 +114,8 @@ export class InventoryUI {
     screen.addEventListener('pointermove', (e) => {
       const slot = e.target.closest('.slot[data-index]');
       this.hover = slot ? Number(slot.dataset.index) : -1;
+      const recipe = e.target.closest('.recipe');
+      this.hoverRecipe = recipe ? Number(recipe.dataset.recipe) : -1;
       this.el.cursor.style.left = `${e.clientX}px`;
       this.el.cursor.style.top = `${e.clientY}px`;
       this.renderTooltip(e);
@@ -85,6 +132,16 @@ export class InventoryUI {
       el.classList.toggle('selected', i === selected);
     });
     this.screenSlots.forEach((el, i) => fill(el, slots[i]));
+    // Recipes: what you have of each ingredient, and whether it's enough.
+    RECIPES.forEach((recipe, i) => {
+      const row = this.recipeRows[i];
+      for (const need of row.querySelectorAll('.need')) {
+        const have = this.inv.count(need.dataset.id), n = recipe.needs[need.dataset.id];
+        need.lastChild.textContent = `${have}/${n}`;
+        need.classList.toggle('short', have < n);
+      }
+      row.querySelector('button').disabled = !canCraft(this.inv, recipe);
+    });
     // Name of the selected item, shown for a moment when it changes.
     const id = this.inv.current?.id ?? null;
     if (id !== this.shownName) {
@@ -102,13 +159,19 @@ export class InventoryUI {
 
   renderTooltip(e) {
     const stack = this.hover >= 0 && !this.held ? this.inv.slots[this.hover] : null;
+    const id = stack?.id ?? (this.hoverRecipe >= 0 && !this.held ? RECIPES[this.hoverRecipe].makes : null);
     const tip = this.el.tooltip;
-    tip.hidden = !stack;
-    if (!stack) return;
+    tip.hidden = !id;
+    if (!id) return;
     tip.innerHTML = '';
     const title = tip.appendChild(document.createElement('b'));
-    title.textContent = ITEMS[stack.id].name;
-    tip.append(ITEMS[stack.id].description);
+    title.textContent = ITEMS[id].name;
+    tip.append(ITEMS[id].description);
+    if (stack?.durability) {
+      const uses = tip.appendChild(document.createElement('span'));
+      uses.className = 'uses';
+      uses.textContent = `${stack.durability} of ${ITEMS[id].durability} uses left`;
+    }
     tip.style.left = `${e.clientX + 16}px`;
     tip.style.top = `${e.clientY + 16}px`;
   }
@@ -128,6 +191,7 @@ export class InventoryUI {
     this.el.crosshair.hidden = false;
     this.el.tooltip.hidden = true;
     this.hover = -1;
+    this.hoverRecipe = -1;
     if (this.held) {
       const left = this.inv.add(this.held.id, this.held.count);
       if (left) this.onDrop({ id: this.held.id, count: left });

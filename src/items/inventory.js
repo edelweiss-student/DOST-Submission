@@ -3,8 +3,13 @@ import { ITEMS } from './items.js';
 export const HOTBAR = 9;
 export const BACKPACK = 27;
 
-// The player's items. A stack is { id, count }; empty slots are null.
-// Slots 0-8 are the hotbar (keys 1-9), 9-35 the backpack.
+// A new stack of an item; tools start at full durability.
+export const newStack = (id, count = 1) =>
+  (ITEMS[id].durability ? { id, count, durability: ITEMS[id].durability } : { id, count });
+
+// The player's items. A stack is { id, count } (tools also carry their
+// durability); empty slots are null. Slots 0-8 are the hotbar (keys 1-9),
+// 9-35 the backpack.
 export class Inventory {
   constructor() {
     this.slots = new Array(HOTBAR + BACKPACK).fill(null);
@@ -44,11 +49,22 @@ export class Inventory {
     for (let i = 0; i < this.slots.length && count > 0; i++) {
       if (this.slots[i]) continue;
       const n = Math.min(count, max);
-      this.slots[i] = { id, count: n };
+      this.slots[i] = newStack(id, n);
       count -= n;
     }
     this.changed();
     return count;
+  }
+
+  // Puts in a stack as it is, so a picked-up tool keeps its wear. Returns
+  // how many didn't fit.
+  addStack(stack) {
+    if (!ITEMS[stack.id].durability) return this.add(stack.id, stack.count);
+    const i = this.slots.indexOf(null);
+    if (i < 0) return stack.count;
+    this.slots[i] = { ...stack };
+    this.changed();
+    return 0;
   }
 
   // Takes up to count from a slot. Returns the stack taken, or null.
@@ -59,7 +75,31 @@ export class Inventory {
     s.count -= n;
     if (s.count === 0) this.slots[index] = null;
     this.changed();
-    return { id: s.id, count: n };
+    return { ...s, count: n };
+  }
+
+  // Removes count of an item wherever it is, bag first, so the hotbar keeps its stacks.
+  remove(id, count) {
+    for (let i = this.slots.length - 1; i >= 0 && count > 0; i--) {
+      const s = this.slots[i];
+      if (s?.id !== id) continue;
+      const n = Math.min(count, s.count);
+      s.count -= n;
+      count -= n;
+      if (s.count === 0) this.slots[i] = null;
+    }
+    this.changed();
+  }
+
+  // One use of the tool in a slot. Returns true if it broke.
+  wear(index) {
+    const s = this.slots[index];
+    if (!s?.durability) return false;
+    s.durability--;
+    const broke = s.durability <= 0;
+    if (broke) this.slots[index] = null;
+    this.changed();
+    return broke;
   }
 
   // A click on the inventory screen, with `held` on the cursor (or null).
@@ -71,18 +111,18 @@ export class Inventory {
     if (!held) {
       if (slot) {
         const n = right ? Math.ceil(slot.count / 2) : slot.count;
-        next = { id: slot.id, count: n };
+        next = { ...slot, count: n };
         slot.count -= n;
         if (slot.count === 0) this.slots[index] = null;
       }
     } else if (!slot) {
       const n = right ? 1 : held.count;
-      this.slots[index] = { id: held.id, count: n };
-      next = held.count > n ? { id: held.id, count: held.count - n } : null;
-    } else if (slot.id === held.id) {
+      this.slots[index] = { ...held, count: n };
+      next = held.count > n ? { ...held, count: held.count - n } : null;
+    } else if (slot.id === held.id && ITEMS[slot.id].stack > 1) {
       const n = Math.min(ITEMS[slot.id].stack - slot.count, right ? 1 : held.count);
       slot.count += n;
-      next = held.count > n ? { id: held.id, count: held.count - n } : null;
+      next = held.count > n ? { ...held, count: held.count - n } : null;
     } else if (!right) {
       this.slots[index] = held;
       next = slot;
@@ -106,7 +146,7 @@ export class Inventory {
     }
     for (let i = from; i < to && s.count > 0; i++) {
       if (this.slots[i]) continue;
-      this.slots[i] = { id: s.id, count: s.count };
+      this.slots[i] = { ...s };
       s.count = 0;
     }
     if (s.count === 0) this.slots[index] = null;

@@ -1,6 +1,8 @@
 // Every item in the game. stack: most per inventory slot. color: the item
 // lying in the world. floats: drifts on the water instead of sinking.
 // eat: what eating one gives back (right-click with it selected).
+// tool: what it does when selected while gathering (see world/gathering.js);
+// durability: gathers before it breaks.
 export const ITEMS = {
   stick: {
     name: 'Stick', description: 'A dry branch. Handles, frames and kindling.',
@@ -22,6 +24,18 @@ export const ITEMS = {
     name: 'Berries', description: 'Right-click to eat: a little stamina and health back.',
     stack: 24, color: '#8e1f3a', floats: true, eat: { stamina: 25, health: 6 },
   },
+  knife: {
+    name: 'Makeshift knife', description: 'A sharp stone flake wedged into a split stick. Cuts twice the fibre from bushes, and fibre from grass anywhere it grows.',
+    stack: 1, color: '#8a8780', floats: false, tool: 'knife', durability: 40,
+  },
+  axe: {
+    name: 'Stone axe', description: 'Chops wood from standing trees, and twice the wood from fallen trunks.',
+    stack: 1, color: '#8a8780', floats: false, tool: 'axe', durability: 50,
+  },
+  pickaxe: {
+    name: 'Stone pickaxe', description: 'Breaks twice the stones off boulders.',
+    stack: 1, color: '#8a8780', floats: false, tool: 'pickaxe', durability: 50,
+  },
 };
 
 // --- Icons, drawn once at startup (the game ships no image files).
@@ -33,6 +47,28 @@ function stroke(ctx, path, width, color) {
   ctx.strokeStyle = color;
   ctx.beginPath();
   path();
+  ctx.stroke();
+}
+
+// A wooden handle from (x0, y0) to (x1, y1).
+function handle(ctx, x0, y0, x1, y1) {
+  const path = () => { ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); };
+  stroke(ctx, path, 8, '#3b2616');
+  stroke(ctx, path, 5, '#8a6440');
+}
+
+// A stone shape from a list of points, shaded from top-left to bottom-right.
+function stoneShape(ctx, points) {
+  ctx.beginPath();
+  points.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.closePath();
+  const g = ctx.createLinearGradient(14, 8, 52, 44);
+  g.addColorStop(0, '#d2cfc8');
+  g.addColorStop(1, '#5f5c57');
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#34322f';
   ctx.stroke();
 }
 
@@ -88,6 +124,22 @@ const DRAW = {
     }
     ctx.fillStyle = '#6b4a2a';
     ctx.fillRect(22, 34, 22, 5);
+  },
+  knife(ctx) {
+    handle(ctx, 12, 52, 28, 36);
+    stoneShape(ctx, [[25, 33], [44, 12], [54, 10], [50, 22], [31, 39]]);
+    stroke(ctx, () => { ctx.moveTo(24, 34); ctx.lineTo(31, 41); }, 3, '#c9a46a');
+  },
+  axe(ctx) {
+    handle(ctx, 16, 56, 44, 14);
+    stoneShape(ctx, [[30, 14], [40, 6], [54, 12], [56, 28], [46, 30], [38, 22]]);
+  },
+  pickaxe(ctx) {
+    handle(ctx, 18, 56, 38, 20);
+    const head = () => { ctx.moveTo(10, 24); ctx.quadraticCurveTo(34, 6, 56, 22); };
+    stroke(ctx, head, 10, '#34322f');
+    stroke(ctx, head, 6, '#a9a59e');
+    stroke(ctx, () => { ctx.moveTo(18, 17); ctx.quadraticCurveTo(34, 9, 48, 15); }, 2, '#d2cfc8');
   },
   berries(ctx) {
     ctx.fillStyle = '#4f8a32';

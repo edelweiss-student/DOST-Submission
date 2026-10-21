@@ -20,8 +20,10 @@ import { HUD } from './ui/hud.js';
 import { Ambience } from './audio/ambience.js';
 import { ITEMS } from './items/items.js';
 import { Inventory } from './items/inventory.js';
+import { craft } from './items/recipes.js';
 import { InventoryUI } from './ui/inventoryUI.js';
 import { createGathering } from './world/gathering.js';
+import { createHeldItem } from './player/heldItem.js';
 
 const seed = Number(new URLSearchParams(location.search).get('seed')) || 1337;
 const rng = mulberry32(seed);
@@ -98,7 +100,21 @@ function throwStack(stack) {
   velocity.y += 1.4;
   gathering.drop(stack, from, velocity);
 }
-const inventoryUI = new InventoryUI(inventory, { onDrop: throwStack });
+// Crafting: the new tool goes in the bag, or on the ground if there's no room.
+function craftItem(recipe) {
+  const stack = craft(inventory, recipe);
+  if (!stack) return;
+  const name = ITEMS[stack.id].name.toLowerCase();
+  if (inventory.addStack(stack)) {
+    throwStack(stack);
+    hud.message(`No room in your bag: the ${name} is on the ground.`, 4);
+  }
+  inventoryUI.notify(`Crafted ${name}`);
+}
+const inventoryUI = new InventoryUI(inventory, { onDrop: throwStack, onCraft: craftItem });
+const held = createHeldItem(scene, camera);
+// The selected tool's kind ('knife', 'axe', 'pickaxe'), if a tool is selected.
+const selectedTool = () => ITEMS[inventory.current?.id]?.tool;
 
 const MILESTONES = [
   'Solar output is climbing. The weather is getting harder to predict.',
@@ -212,9 +228,15 @@ let lastGather = 0;
 function gather() {
   if (performance.now() - lastGather < 300) return;
   lastGather = performance.now();
-  const result = gathering.interact(weather.elapsed);
+  const tool = inventory.current;
+  const result = gathering.interact(weather.elapsed, selectedTool());
   if (!result) return;
   for (const { id, count } of result.got) inventoryUI.notify(`+${count} ${ITEMS[id].name}`);
+  // Using a tool swings it and wears it down.
+  if (result.usedTool) {
+    held.swing();
+    if (inventory.wear(inventory.selected)) hud.message(`Your ${ITEMS[tool.id].name.toLowerCase()} broke.`, 4);
+  }
   if (result.empty) hud.message('Nothing left to gather here. It grows back with time.', 3);
   else if (result.full) hud.message('Your bag is full.', 3);
 }
@@ -324,9 +346,10 @@ function step() {
   sea.update(sdt, weather, sky.state.time);
   player.update(sdt, t, weather.heatIndex);
   uniforms.uPlayerPos.value.copy(player.pos);
-  const prompt = gathering.update(sdt, t, weather.elapsed, player, camera, isPlaying() && !inventoryUI.open);
+  const prompt = gathering.update(sdt, t, weather.elapsed, player, camera, isPlaying() && !inventoryUI.open, selectedTool());
   inventoryUI.setPrompt(inventoryUI.open ? null : prompt?.text ?? null, prompt?.dim);
   inventoryUI.update(dt);
+  held.update(sdt, inventory.current, Math.hypot(player.vel.x, player.vel.z));
   precip.update(sdt, t, camera, weather);
   const env = sky.update(sdt, camera, weather.current, precip.flash, weather.instability);
   weather.dayF = env.dayF;

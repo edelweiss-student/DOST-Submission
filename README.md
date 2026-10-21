@@ -26,7 +26,7 @@ Open http://localhost:5173 in Chrome, Edge or Firefox and click to play.
 | C | Dive |
 | E | Gather from what you're looking at, or pick up an item |
 | 1–9 / mouse wheel | Choose a hotbar slot |
-| I / Tab | Open or close the inventory |
+| I / Tab | Open or close the inventory and crafting |
 | Q | Drop one of the selected item |
 | Right-click | Eat the selected item |
 | M | Mute |
@@ -40,20 +40,22 @@ fast-forwards the climate.
 Add `?seed=1234` to the URL to generate a different island, or
 `?quality=low|medium|high` to override the graphics tier.
 
-## Inventory and gathering
+## Inventory, gathering and crafting
 
 You carry a **hotbar** of 9 slots along the bottom of the screen and a
 **bag** of 27 more. Pick a hotbar slot with `1`–`9` or the mouse wheel; the
 item's name shows above the hotbar when you switch.
 
-Look at something within reach and press `E`:
+Look at something within reach and press `E`. With the right tool selected
+you get more, or something else:
 
-| Source | Gives | Gathers before it runs out | One gather comes back every |
-| --- | --- | --- | --- |
-| Tree | 1–2 sticks | 3 | 90 s |
-| Bush | 1–2 plant fibre, often 1–2 berries | 3 | 2 min |
-| Boulder | 1–2 stones | 4 | 5 min |
-| Fallen trunk | 1 wood | 5 | 10 min |
+| Source | Gives | With the right tool | Gathers before it runs out | One gather comes back every |
+| --- | --- | --- | --- | --- |
+| Tree | 1–2 sticks | Axe: 1–2 wood, sometimes a stick | 3 | 90 s |
+| Bush | 1–2 plant fibre, often 1–2 berries | Knife: twice the fibre | 3 | 2 min |
+| Boulder | 1–2 stones | Pickaxe: twice the stones | 4 | 5 min |
+| Fallen trunk | 1 wood | Axe: 2 wood | 5 | 10 min |
+| Grass | — | Knife: 1–2 fibre, never runs out | — | — |
 
 Sources regrow in game time, so not while paused. Bushes the sea has killed
 give only fibre. A message tells you when your bag is full; anything that
@@ -68,6 +70,23 @@ be picked up again with `E`. Stones sink; everything else floats, riding the
 waves and drifting with the surf and wind, so dropped things can wash away
 (or wash ashore). Up to 150 items lie around at once; the oldest disappear
 first.
+
+**Crafting** is on the inventory screen, next to the bag. Each recipe shows
+how much of each ingredient you have (red when it's not enough); Craft uses
+them up and puts the tool in your bag (or on the ground if the bag is full).
+For now there are three stone tools:
+
+| Tool | Needs | Uses before it breaks |
+| --- | --- | --- |
+| Makeshift knife | 1 stick, 1 stone | 40 |
+| Stone axe | 2 sticks, 2 stones | 50 |
+| Stone pickaxe | 2 sticks, 3 stones | 50 |
+
+A tool is used up one gather at a time, and only where it does better (an
+axe at a bush wears nothing). A bar under its slot shows the uses left, and
+the tooltip gives the exact number. A selected tool is in your hand at the
+lower right; it bobs as you walk and swings when you use it. Tools keep
+their wear when moved, dropped or picked back up, and they sink in water.
 
 `I` or `Tab` opens the inventory screen. It frees the mouse but doesn't
 pause the game:
@@ -384,8 +403,12 @@ src/
   weather/precipitation.js  GPU rain and snow, lightning
   player/player.js      walking, buoyant swimming, oxygen, health, stamina, heat strain, eating
   items/items.js        item definitions and their icons (drawn at startup)
-  items/inventory.js    hotbar and bag slots: stacking, splitting, swapping, quick-move
-  world/gathering.js    gathering from trees, bushes, boulders and fallen trunks; items in the world
+  items/inventory.js    hotbar and bag slots: stacking, splitting, swapping, quick-move, tool wear
+  items/recipes.js      crafting recipes
+  items/models.js       low-poly item and tool models (in the world and in your hand)
+  world/gathering.js    gathering from trees, bushes, boulders, fallen trunks and grass, tool
+                        bonuses; items in the world
+  player/heldItem.js    the selected tool in your hand: bobbing and swinging
   ui/hud.js             HUD panels, bars, messages and heat warnings
   ui/inventoryUI.js     hotbar, inventory screen, pickup feed and the E prompt
   audio/ambience.js     synthesized wind, rain, surf, underwater, thunder, splashes
