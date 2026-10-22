@@ -3,7 +3,7 @@
 The sun is swelling and Earth is running out of time. A survival and
 exploration game built with three.js: a realistic island, a smooth
 wave-driven ocean with a reef and kelp forest to dive into, and a climate that
-keeps shifting and gets worse the longer you survive.
+keeps shifting and answers what you do to the island.
 
 ## Run
 
@@ -40,7 +40,7 @@ Open http://localhost:5173 in Chrome, Edge or Firefox and click to play.
 Dev keys: `` ` `` then `1`–`7` forces a weather type (clear, overcast, rain,
 thunderstorm, fog, heatwave, cold snap); `` ` `` then `4` again during a storm
 makes it worse. `G` sends a rogue wave set at you, `T` skips an hour, `K`
-fast-forwards the climate.
+fast-forwards the swelling sun by 2½ minutes.
 Add `?seed=1234` to the URL to generate a different island, or
 `?quality=low|medium|high` to override the graphics tier.
 
@@ -122,7 +122,9 @@ logs, 1 for a mate up to 4 for a tall eucalyptus. The crown leaves a few
 sticks behind and a stump stays where it stood. The ground under it loses
 its shade (and the grass comes back). If you walk away from a half-chopped
 tree, the cuts stay. The fallen trunks already in the forest give a log for
-each axe cut, 3 before you have to wait for more.
+each axe cut, 3 before you have to wait for more. Every tree you fell takes
+something out of the island's climate for good; dead wood costs it nothing
+(see How the climate works).
 
 **Logs and planks.** These are physical: they lie where they fall, roll to
 rest along the ground, float, and drift with the waves and the wind.
@@ -222,25 +224,75 @@ a floor on top.
 
 ## How the climate works
 
-- Weather blends between seven presets. Each one sets cloud cover, rain,
-  snow, fog, wind, waves, temperature, humidity, haze and lightning.
-- **Instability** climbs from 0 to 1 over 25 minutes, driven by the sun's
-  rising output. As it climbs, the weather changes more often, flips faster,
-  and leans toward storms, heatwaves and cold snaps.
+The climate is an entity that answers what you do to the island
+(`src/climate/entity.js`). The sun still swells on its own, slowly, but how
+far and how fast the climate breaks down is mostly up to you.
+
+- **Regions.** The world is split into a 16 × 16 grid of 45 m regions, 62
+  of them with some land. Each is named for where it lies and what it's
+  like: "South woods", "Central hills", "North-east shore".
+- **What it keeps track of.** A felled tree takes its wood (height × trunk
+  thickness²) out of its region's forest for good, so big eucalyptus and
+  oaks count far more than yerba mate. Mining stones and cutting bushes and
+  grass strip the ground, which recovers by half every 15 minutes. Building
+  covers the ground (a floor 4 m², a wall a strip of it) until it comes
+  down. Dead wood is free: sticks, and logs cut off fallen trunks.
+- **Stress.** A region's stress (0–1) weighs how much of its forest is gone
+  (0.45), how stripped its ground is (0.2) and how built over it is (0.05),
+  scaled to the causes the game has so far (fire and hunting will join
+  them). It spills over a little into the regions around. Past 0.6 a region
+  tips: it recovers half as fast, and its bare ground washes away in the
+  rain, so it keeps getting worse after you leave. Clear-cutting a valley
+  tips it.
+- **Pressure.** The island's stress weighs how much of it is damaged in
+  all (0.6) and its worst-hit region (0.4: one wrecked valley counts). The
+  climate's pressure (0–100%) is 30% the swelling sun, which takes 25
+  minutes to swell fully, and 70% the island's stress. The sun alone
+  unsettles the climate after about 26 minutes; clearing about 30 trees
+  out of one valley does it in 10 to 16, sooner the bigger the trees.
+- **Tiers.** The pressure moves the climate through four tiers: Balanced,
+  Unstable (from 30%), Severe (55%) and Crisis (80%). It has to stay past
+  the threshold for a minute to go up a tier, and below a lower one (22%,
+  47%, 70%) for two minutes to come back down, so it doesn't flicker. A
+  message says when it turns, and why. Once the sun is full size, one
+  clear-cut valley keeps it unstable; a second, or mining out the first,
+  makes it severe; and it takes about five wrecked valleys to bring on a
+  crisis.
+- **Weather.** The weather blends between seven presets, each setting cloud
+  cover, rain, snow, fog, wind, waves, temperature, humidity, haze and
+  lightning. What comes next isn't rolled: each kind comes round in
+  proportion to its share (stride scheduling), so the same choices give the
+  same weather. As the pressure rises, storms, heatwaves and cold snaps take
+  a bigger share, and the weather changes more often and flips faster.
+  Cleared land brings more heatwaves and less rain and fog, built-over
+  ground more heatwaves, and after a heatwave a cold snap is likely, the
+  more so the higher the pressure.
+- **Storms** come as a Thunderstorm, Severe thunderstorm or Violent storm,
+  by the pressure, and worse if the land where you are is stressed.
+- **Temperature.** Warm weather runs 1.5, 3 and 5 °C hotter in the
+  Unstable, Severe and Crisis tiers, and cold snaps colder. Cleared land is
+  up to 4 °C hotter than forest on a warm day: it has lost its shade and
+  holds the heat.
 - The weather leaves traces behind: rain soaks the ground, cold snaps build
   up snow on the ground and plants, heatwaves brown the land and bleach the
   coral. Each of these fades on its own afterwards.
-- Every thunderstorm rolls a severity: Thunderstorm, Severe thunderstorm or
-  Violent storm. Violent storms get likelier as instability climbs.
-- The sea rises, and storms push it further inland (see below).
+- The sea rises with the pressure, and storms push it further inland (see
+  below).
 - Hot, humid weather wears you out faster (see Heat and stamina below).
+
+The climate panel shows the tier and the pressure, with ▲ or ▼ while it's on
+its way to the next tier up or down, and how the region you're in is doing
+(healthy, strained, stressed or degrading) and what's stressing it most.
 
 ## Sea level
 
 The water level is the sum of three parts:
 
-- **Rise.** The long-term climb as the planet warms: up to 2.4 m by the end
-  of the climate ramp, speeding up as instability climbs.
+- **Rise.** The long-term climb as the climate warms. It follows the
+  climate's pressure, steeper as it climbs: about 0.5 m from the sun alone,
+  1.1 m in a severe climate, 1.8 m at the start of a crisis, and 2.4 m with
+  the climate at its worst. It catches up over a couple of minutes, and
+  never comes back down: melted ice stays melted.
 - **Tide.** ±0.35 m, with two high tides a day.
 - **Storm surge.** Storms pile water against the shore: about 0.3 m in a
   thunderstorm, up to 1.4 m in a violent storm. A surge builds over about a
@@ -286,8 +338,9 @@ Heat makes all of this worse:
   snaps dry). Temperature and humidity together give the **heat index**:
   how hot it feels. It uses the US National Weather Service's formula (the
   Rothfusz regression) and is just the air temperature below about 27 °C.
-  A heatwave at 43 °C and 30% humidity feels like 49 °C; once the climate
-  has broken down, like 65 °C. Clear days reach about 32 °C by then.
+  A heatwave at 43 °C and 30% humidity feels like 49 °C; in a climate in
+  crisis, like 62 °C, and on land you've cleared, 74 °C. Clear days reach
+  about 29 °C by then, 33 °C on cleared land.
 - The weather panel shows the heat index next to the temperature
   ("feels 49°C") when it is clearly higher, in red from 41 °C. A message
   warns you when it reaches 41 °C (the NWS "danger" level) and again at
@@ -554,7 +607,10 @@ src/
   world/atmosphere.js   atmospheric scattering (GPU sky table, CPU colours)
   world/sky.js          sky dome, swollen sun, moon, stars, cloud layer, sun/sky light,
                         fog colours, shadow placement, exposure
-  weather/weather.js    weather presets, humidity and heat index, climate instability
+  climate/entity.js     the Climate Entity: regions, what you've done to each, stress, the
+                        climate's pressure and tiers, local warming
+  weather/weather.js    weather presets, humidity and heat index, the weather scheduler, storm
+                        strength
   weather/sealevel.js   sea level rise, tides, storm surge, salt damage lines, structure exposure
   weather/precipitation.js  GPU rain and snow, lightning
   player/player.js      walking, buoyant swimming, ladders, oxygen, health, stamina, heat strain, eating
@@ -566,7 +622,7 @@ src/
   world/gathering.js    gathering from trees, bushes, boulders, fallen trunks and grass, tool
                         bonuses; items in the world
   player/heldItem.js    the selected tool in your hand (bobbing and swinging), or the wood you carry
-  ui/hud.js             HUD panels, bars, messages and heat warnings
+  ui/hud.js             HUD panels, bars, messages, heat warnings and the climate readout
   ui/inventoryUI.js     hotbar, inventory screen, pickup feed, what you carry and the prompt
   ui/buildUI.js         the build bar, its piece icons and what needs repairs
   ui/joinery.js         the joinery mini-game: saw, chisel and pegs

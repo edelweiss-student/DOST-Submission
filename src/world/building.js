@@ -64,6 +64,8 @@ const EXPOSURE = { floor: 0.5, wall: 1, doorway: 1, window: 1.1, roof: 1.4, pili
 const RESIST = { pilings: 5 };
 // Condition back per plank (or log) used in a repair.
 const REPAIR = { plank: 0.4, log: 0.5 };
+// Ground each piece covers (m²), which stresses the land under it (see climate/entity.js).
+const FOOTPRINT = { floor: CELL * CELL, pilings: 0.5, wall: 0.3, doorway: 0.3, window: 0.3, ladder: 0.2, railing: 0.2, roof: 0 };
 
 // Joinery decides how well a piece holds together (q 0..1): from rough
 // joints, which wear about as fast as unjoined ones, to masterful ones that
@@ -73,7 +75,7 @@ export const jointName = (q) => (q == null ? 'Unjoined' : GRADES.find(([max]) =>
 const sturdiness = (piece) => (0.6 + 0.9 * (piece.joints ?? 0.3)) * (RESIST[piece.type] ?? 1);
 
 const cellKey = (i, j) => `${i},${j}`;
-// A cell's edge by side (0 south, 1 east, 2 north, 3 west), keyed so the
+// A cell's edge by side (0 north, 1 east, 2 south, 3 west), keyed so the
 // two cells either side of it share it. (nx, nz) points out of cell (i, j).
 function edgeOf(i, j, side) {
   const x0 = i * CELL, z0 = j * CELL, x1 = x0 + CELL, z1 = z0 + CELL;
@@ -284,7 +286,9 @@ function pushFromRect(p, r, x0, z0, x1, z1) {
 // release([{ x, y, z, yaw, kind, bark }]): planks and logs back into the world.
 // onMessage(text), onSound(name, strength), onChange(): something was
 // built or taken down (things lying on it may need to fall).
-export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, takeWood, release, onMessage, onSound, onChange }) {
+// onImpact({ kind: 'build', x, z, area }): ground built over, in m²
+// (negative when a piece comes down), for the climate (climate/entity.js).
+export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, takeWood, release, onMessage, onSound, onChange, onImpact }) {
   // Grid cells with a floor and/or pilings: { i, j, x0, z0, y (deck top), floor, roof, pilings, top (of the pilings) }.
   const cells = new Map();
   const edges = new Map();   // walls, windows, doorways, ladders and railings by edge key
@@ -598,6 +602,7 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
         piece.segments = [{ ax, az, bx, bz, y0: y, y1: y + WALL_HEIGHT }];
       }
     }
+    onImpact?.({ kind: 'build', x: piece.center.x, z: piece.center.z, area: FOOTPRINT[piece.type] });
     onChange?.();
   }
 
@@ -665,6 +670,7 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
     } else {
       edges.delete(piece.edge.key);
     }
+    if (piece.done) onImpact?.({ kind: 'build', x: piece.center.x, z: piece.center.z, area: -FOOTPRINT[piece.type] });
     dirty = true;
     onChange?.();
   }

@@ -40,7 +40,24 @@ const stormTarget = (s) => ({
   dark: 0.65 + 0.3 * s,
 });
 
-const CLIMATE_RAMP = 1500;   // seconds until the climate is at its most unstable
+const SUN_RAMP = 1500;   // seconds until the sun has swollen to its full size
+
+// How often each kind of weather comes round, by the climate's pressure P
+// (0..1): mostly fair weather in a balanced climate, storms, heatwaves and
+// cold snaps as it breaks down.
+const SHARES = (P) => ({
+  clear: 3 - 2 * P, overcast: 2 - 0.8 * P, rain: 2, storm: 0.6 + 2.6 * P,
+  fog: 1, heatwave: 0.5 + 2.6 * P, snow: 0.35 + 1.4 * P,
+});
+// What the island's damage does to the mix, by how far each cause has gone
+// (climate/entity.js): cleared land has lost its shade and holds the heat,
+// and gives off less moisture, so there are more heatwaves and less rain
+// and fog. Built-over ground holds the heat too.
+const AFFINITY = {
+  heatwave: { felling: 0.6, building: 0.5 },
+  rain: { felling: -0.4 },
+  fog: { felling: -0.4 },
+};
 
 // Heat index: how hot it feels (°C) at a temperature (°C) and relative
 // humidity (%), in the shade. This is the US National Weather Service's
@@ -57,14 +74,17 @@ export function heatIndex(temp, rh) {
   return lerp(temp, (hi - 32) / 1.8, smoothstep(26, 28, temp));
 }
 
-// Climate model: weather keeps shifting, and as the swelling sun's output
-// rises the shifts come faster and more often extreme. The sea level that
-// goes with it is in sealevel.js.
+// The weather keeps shifting, and as the climate's pressure rises (the
+// swelling sun, and what you do to the island: see climate/entity.js) the
+// shifts come faster and more often extreme. The sea level that goes with
+// it is in sealevel.js.
 export class Weather {
-  constructor(rng) {
+  constructor(rng, climate) {
     this.rng = rng;
+    this.climate = climate;
     this.elapsed = 0;
-    this.instability = 0;
+    this.sun = 0;          // how far the sun has swollen (0..1)
+    this.pressure = 0;     // the climate's pressure (0..1)
     this.key = 'clear';
     this.severity = 0;
     this.target = target('clear');
@@ -73,6 +93,8 @@ export class Weather {
     this.targetWater = this.waterColor.clone();
     this.timeLeft = 70;
     this.tau = 8;
+    const shares = this.shares();
+    this.pass = Object.fromEntries(WEATHER_KEYS.map((k) => [k, 1 / shares[k]]));
     this.next = this.pickNext();
     this.windAngle = SEA.windDir;
     this.windPhase = rng() * Math.PI * 2;
@@ -82,39 +104,51 @@ export class Weather {
     this.wetness = 0; this.snowCover = 0; this.dryness = 0; this.bleach = 0;
     this.dayF = 1;
     this.onChange = null;
-    this.onMilestone = null;
-    this.milestone = 0;
   }
 
-  pickNext() {
-    const s = this.instability;
-    const weights = {
-      clear: 3 - 2 * s, overcast: 2 - 0.8 * s, rain: 2, storm: 0.6 + 2.6 * s,
-      fog: 1, heatwave: 0.5 + 2.6 * s, snow: 0.35 + 1.4 * s,
-    };
-    // Cold snaps right after heatwaves are the climate whiplash we want.
-    if (this.key === 'heatwave') weights.snow += s * 2;
-    delete weights[this.key];
-    const total = Object.values(weights).reduce((a, b) => a + b, 0);
-    let r = this.rng() * total;
-    for (const [k, w] of Object.entries(weights)) {
-      if ((r -= w) <= 0) return k;
+  // Each kind's share of the weather now.
+  shares() {
+    const shares = SHARES(this.pressure);
+    for (const [k, affinity] of Object.entries(AFFINITY)) {
+      let f = 1;
+      for (const [cause, a] of Object.entries(affinity)) f += a * (this.climate?.causes[cause] ?? 0);
+      shares[k] *= Math.max(0.1, f);
     }
-    return 'overcast';
+    return shares;
+  }
+
+  // What comes next, without dice (stride scheduling): every kind has a
+  // pass, the lowest goes next, and its pass moves on by one over its
+  // share, so a kind with twice the share comes round twice as often.
+  // Never the same weather twice running.
+  pickNext() {
+    const shares = this.shares();
+    let next = null, lowest = Infinity;
+    for (const k of WEATHER_KEYS) {
+      if (k === this.key) continue;
+      let pass = this.pass[k];
+      // Cold snaps right after heatwaves are the climate whiplash we want.
+      if (this.key === 'heatwave' && k === 'snow') pass -= (2 * this.pressure) / shares.snow;
+      if (pass < lowest) { next = k; lowest = pass; }
+    }
+    this.pass[next] += 1 / shares[next];
+    return next;
   }
 
   setWeather(key, tau, severity) {
     this.key = key;
     if (key === 'storm') {
-      // How bad this storm is. Bad ones get likelier as the climate breaks down.
-      this.severity = severity ?? clamp(this.rng() * 0.75 + this.instability * 0.45 - 0.1, 0, 1);
+      // How bad this storm is: worse as the climate breaks down, and worse
+      // still where you've damaged the land.
+      const local = this.climate?.here.stress ?? 0;
+      this.severity = severity ?? clamp(1.05 * this.pressure - 0.1 + 0.3 * local, 0, 1);
       this.target = stormTarget(this.severity);
     } else {
       this.target = target(key);
     }
     this.targetWater.set(WEATHER[key].water);
-    this.timeLeft = lerp(110, 35, this.instability) * (0.7 + 0.6 * this.rng());
-    this.tau = tau ?? lerp(9, 4, this.instability);
+    this.timeLeft = lerp(110, 35, this.pressure) * (0.7 + 0.6 * this.rng());
+    this.tau = tau ?? lerp(9, 4, this.pressure);
     this.next = this.pickNext();
     this.onChange?.(key);
   }
@@ -139,24 +173,29 @@ export class Weather {
 
   get gustSpeed() { return this.current.wind * (1 + this.gustiness) * MAX_WIND; }
 
-  advanceClimate(seconds) { this.elapsed += seconds; }
+  // Time passing for the swelling sun (the dev key skips ahead with it).
+  advanceSun(seconds) {
+    this.elapsed += seconds;
+    this.sun = clamp(this.elapsed / SUN_RAMP, 0, 1);
+  }
 
+  // The weather's temperature, plus the climate's warming where you are
+  // (or, on cold days, cooling).
   get temperature() {
     const c = this.current;
-    return c.temp + (c.temp > 5 ? 6 * this.instability : 0) - (1 - this.dayF) * 5;
+    const warming = this.climate?.tempOffset(smoothstep(0, 10, c.temp)) ?? 0;
+    return c.temp + warming - (1 - this.dayF) * 5;
   }
 
   get humidity() { return this.current.humidity; }
 
   get heatIndex() { return heatIndex(this.temperature, this.humidity); }
 
-  get solarOutput() { return 1 + this.instability * 0.04; }
+  get solarOutput() { return 1 + this.sun * 0.04; }
 
   update(dt) {
-    this.elapsed += dt;
-    this.instability = clamp(this.elapsed / CLIMATE_RAMP, 0, 1);
-    const m = Math.floor(this.instability * 4);
-    if (m > this.milestone) { this.milestone = m; this.onMilestone?.(m); }
+    this.advanceSun(dt);
+    this.pressure = this.climate?.pressure ?? this.sun;
 
     this.timeLeft -= dt;
     if (this.timeLeft <= 0) this.setWeather(this.next);

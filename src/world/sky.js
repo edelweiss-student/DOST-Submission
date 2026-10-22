@@ -189,7 +189,8 @@ export function createSky(scene, renderer, { cloudTexture, shadowMap = 0, shadow
     setRGB(atm.away, sample(0.05, false), k);
   }
 
-  function update(dt, camera, w, flash, instability) {
+  // swell: how far the sun has swollen (0..1).
+  function update(dt, camera, w, flash, swell) {
     // Nights pass 2.5x faster so the game stays playable.
     const prevElev = Math.sin((state.time - 0.25) * Math.PI * 2);
     state.time += (dt / DAY_LENGTH) * (prevElev < -0.05 ? 2.5 : 1);
@@ -259,7 +260,7 @@ export function createSky(scene, renderer, { cloudTexture, shadowMap = 0, shadow
     uniforms.uFogColor.value.copy(fogColor);
     su.uSunDisc.value.setRGB(t[0], t[1], t[2]).multiplyScalar(SUN_E * 14);
     // The swelling sun: noticeably bigger than ours, growing with solar output.
-    su.uSunCos.value = Math.cos(0.055 * w.sunScale * (1 + 0.35 * instability));
+    su.uSunCos.value = Math.cos(0.055 * w.sunScale * (1 + 0.35 * swell));
     su.uSunVis.value = smoothstep(-0.1, 0.02, elev) * (1 - w.mist * 0.8);
     su.uMoonVis.value = smoothstep(0.0, -0.15, elev) * (1 - w.mist * 0.8);
     su.uStars.value = smoothstep(-0.05, -0.25, elev) * (1 - cover) * (1 - w.mist);

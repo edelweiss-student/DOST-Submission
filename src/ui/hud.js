@@ -1,5 +1,6 @@
 import { WEATHER } from '../weather/weather.js';
 import { MAX_OXYGEN, MAX_STAMINA } from '../player/player.js';
+import { TIERS } from '../climate/entity.js';
 
 const $ = (id) => document.getElementById(id);
 const pad = (n) => String(n).padStart(2, '0');
@@ -15,11 +16,14 @@ const HEAT_WARNINGS = [
   { min: 54, text: 'Extreme heat. Get into the sea or out of the sun.' },
 ];
 
+// What's stressing the land where you are (see climate/entity.js).
+const CAUSES = { felling: 'felling', mining: 'mining and clearing', building: 'building' };
+
 export class HUD {
   constructor() {
     this.el = {
       icon: $('w-icon'), label: $('w-label'), temp: $('w-temp'), feels: $('w-feels'), wind: $('w-wind'), seaState: $('w-sea'),
-      forecast: $('w-forecast'), clock: $('clock'), solar: $('solar'), sea: $('sea'),
+      forecast: $('w-forecast'), clock: $('clock'), solar: $('solar'), sea: $('sea'), climate: $('climate'), region: $('region'),
       oxygen: $('oxygen'), oxygenFill: $('oxygen-fill'), health: $('health'), healthFill: $('health-fill'),
       stamina: $('stamina'), staminaFill: $('stamina-fill'),
       depth: $('depth'), message: $('message'), underwater: $('underwater'),
@@ -35,7 +39,7 @@ export class HUD {
     this.messageTimer = seconds;
   }
 
-  update(dt, { weather, sea, clock, player, waves }) {
+  update(dt, { weather, sea, climate, clock, player, waves }) {
     if (this.messageTimer > 0 && (this.messageTimer -= dt) <= 0) this.el.message.classList.remove('show');
 
     // Per-frame: underwater tint and bars.
@@ -84,6 +88,13 @@ export class HUD {
     const tide = turning ? (sea.tide > 0 ? 'high tide' : 'low tide') : sea.tideRate > 0 ? 'tide rising' : 'tide falling';
     const surge = sea.surge > 0.1 ? ` · surge +${sea.surge.toFixed(1)} m` : '';
     e.sea.textContent = `Sea level +${sea.rise.toFixed(2)} m · ${tide}${surge}`;
+    // The climate's tier and pressure, with an arrow while it's on its way
+    // to the next tier up or down; then how the land you're on is doing.
+    const heading = climate.timers.up > 0 ? ' ▲' : climate.timers.down > 0 ? ' ▼' : '';
+    e.climate.dataset.tier = climate.tier;
+    e.climate.textContent = `Climate: ${TIERS[climate.tier].name} · pressure ${Math.round(climate.pressure * 100)}%${heading}`;
+    const r = climate.here, cause = r.land && climate.causeOf(r);
+    e.region.textContent = r.land ? `${r.name}: ${climate.statusOf(r)}${cause ? ` · ${CAUSES[cause]}` : ''}` : '';
     e.depth.textContent = player.underwater ? `Depth ${player.depth.toFixed(1)} m` : '';
   }
 }

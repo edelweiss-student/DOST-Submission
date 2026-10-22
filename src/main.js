@@ -13,6 +13,7 @@ import { createWater } from './world/water.js';
 import { createSplashes } from './world/splash.js';
 import { createSky } from './world/sky.js';
 import { Weather, WEATHER_KEYS } from './weather/weather.js';
+import { ClimateEntity } from './climate/entity.js';
 import { SeaLevel, MAX_RISE } from './weather/sealevel.js';
 import { createPrecipitation } from './weather/precipitation.js';
 import { Player } from './player/player.js';
@@ -85,7 +86,10 @@ const splashes = createSplashes(scene);
 const sky = createSky(scene, renderer, {
   cloudTexture, shadowMap: quality.shadowMap, shadowRange: quality.shadowRange, cloudShadows,
 });
-const weather = new Weather(rng);
+// The climate answers what you do to the island, on top of the swelling
+// sun, and the weather and the sea follow it.
+const climate = new ClimateEntity({ terrain, sources: vegetation.sources });
+const weather = new Weather(rng, climate);
 const sea = new SeaLevel(water);
 const precip = createPrecipitation(scene, terrain, rng);
 const player = new Player(camera, renderer.domElement, terrain, vegetation.colliders, water);
@@ -108,6 +112,7 @@ const building = createBuilding(scene, {
   onMessage: (text) => hud.message(text, 6),
   onSound: (name, strength) => audio.wood(name, strength),
   onChange: () => timber.wake(),
+  onImpact: (e) => climate.record(e),
 });
 // What things land on: the terrain, or a floor you've built.
 const groundAt = (x, z, y) => Math.max(terrain.heightAt(x, z), building.floorAt(x, z, y + 0.3));
@@ -115,6 +120,7 @@ const timber = createTimber(scene, {
   terrain, water, forest: vegetation.forest, trees: vegetation.sources.trees, wood, groundAt, shadows,
   dropItem: (stack, from, velocity) => gathering.drop(stack, from, velocity),
   onSound: (name, strength) => audio.wood(name, strength),
+  onImpact: (e) => climate.record(e),
   rng: mulberry32(seed + 3),
 });
 player.structures = building;
@@ -123,7 +129,10 @@ player.onBlackout = () => timber.dropAll(player.pos);
 // Items: the bag with its hotbar and screen, and gathering from the world.
 // Gathering has its own random numbers, so it doesn't change the weather's.
 const inventory = new Inventory();
-const gathering = createGathering(scene, { terrain, water, vegetation, inventory, timber, groundAt, rng: mulberry32(seed + 1) });
+const gathering = createGathering(scene, {
+  terrain, water, vegetation, inventory, timber, groundAt, rng: mulberry32(seed + 1),
+  onImpact: (e) => climate.record(e),
+});
 const throwDir = new THREE.Vector3();
 function throwStack(stack) {
   camera.getWorldDirection(throwDir);
@@ -200,14 +209,28 @@ function startJoinery({ name, apply }) {
   });
 }
 
-const MILESTONES = [
-  'Solar output is climbing. The weather is getting harder to predict.',
-  'The sea is rising. The beaches won’t last.',
-  'Storms and heatwaves are coming faster now.',
-  'The climate has broken. Hold on.',
+// What the climate's tiers say as it turns, and why it turned.
+const TIER_UP = [
+  null,
+  'The climate is turning unstable. The weather is getting harder to predict, and the sea is rising.',
+  'The climate has turned severe. Storms and heatwaves are coming harder and faster.',
+  'The climate is in crisis. Hold on.',
 ];
+const TIER_DOWN = [
+  'The climate is settling back into balance.',
+  'The climate is easing, but it’s still unstable.',
+  'The worst has passed, but the climate is still severe.',
+];
+const CAUSES = {
+  felling: 'Too many trees have come down.',
+  mining: 'Too much of the ground has been dug up and stripped bare.',
+  building: 'Too much of the island is built over.',
+  sun: 'The swelling sun is warming the island.',
+};
+climate.onTier = (tier, previous, cause) => {
+  hud.message(tier > previous ? `${TIER_UP[tier]} ${CAUSES[cause ?? 'sun']}` : TIER_DOWN[tier], 8);
+};
 weather.onChange = () => hud.message(`Weather shifting: ${weather.label}`);
-weather.onMilestone = (m) => hud.message(MILESTONES[m - 1], 7);
 precip.onStrike = (distance) => audio.thunder(distance);
 sea.onSurge = () => hud.message('Storm surge! The sea is pushing inland.', 5);
 player.onMessage = (text) => hud.message(text, 5);
@@ -486,8 +509,8 @@ addEventListener('keydown', (e) => {
   } else if (e.code === 'KeyT') {
     sky.skip(1);
   } else if (e.code === 'KeyK') {
-    weather.advanceClimate(150);
-    hud.message(`Climate fast-forwarded: instability ${Math.round(Math.min(1, weather.elapsed / 1500) * 100)}%`, 3);
+    weather.advanceSun(150);
+    hud.message(`Sun fast-forwarded: solar output +${((weather.solarOutput - 1) * 100).toFixed(2)}%`, 3);
   } else if (e.code === 'KeyM') {
     hud.message(audio.toggleMute() ? 'Sound off' : 'Sound on', 2);
   } else if (e.code === 'KeyG') {
@@ -540,6 +563,7 @@ function step() {
   uniforms.uTime.value = t;
 
   weather.update(sdt);
+  climate.update(sdt, { sun: weather.sun, rain: weather.current.rain, x: player.pos.x, z: player.pos.z });
   sea.update(sdt, weather, sky.state.time);
   player.burden = timber.burden;
   player.update(sdt, t, weather.heatIndex);
@@ -569,7 +593,7 @@ function step() {
   inventoryUI.update(dt);
   held.update(sdt, inventory.current, Math.hypot(player.vel.x, player.vel.z), timber.carried);
   precip.update(sdt, t, camera, weather);
-  const env = sky.update(sdt, camera, weather.current, precip.flash, weather.instability);
+  const env = sky.update(sdt, camera, weather.current, precip.flash, weather.sun);
   weather.dayF = env.dayF;
   water.update(camera, weather, env, precip.flash, sdt);
   ocean.update(t, camera, sea.level);
@@ -596,7 +620,7 @@ function step() {
   renderer.shadowMap.needsUpdate = sky.sun.intensity > 0.02 && shadowFrame === 0;
 
   audio.update(weather, player.underwater, water.waves.hs);
-  hud.update(dt, { weather, sea, clock: sky.clock(), player, waves: water.waves });
+  hud.update(dt, { weather, sea, climate, clock: sky.clock(), player, waves: water.waves });
   gpuTimer.begin(perf.visible);
   renderer.render(scene, camera);
   gpuTimer.end();
@@ -618,7 +642,7 @@ renderer.compileAsync(scene, camera).catch(() => {}).finally(() => {
 if (import.meta.env.DEV) {
   window.game = {
     scene, camera, renderer, terrain, weather, sea, player, sky, water, uniforms, vegetation, step, inventory, gathering,
-    timber, building, build, joinery, held,
+    timber, building, build, joinery, held, climate,
     counts: vegetation.counts, quality: { tier, gpu, adaptive, gpuTimer },
   };
 }

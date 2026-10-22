@@ -1,8 +1,10 @@
 import { uniforms, clamp, smoothstep } from '../shared.js';
 
 // Sea level is the sum of three parts:
-// - rise:  the long-term climb as the swelling sun warms the planet,
-//          speeding up as the climate breaks down (up to MAX_RISE);
+// - rise:  the long-term climb as the climate warms (the swelling sun, and
+//          what you do to the island: see climate/entity.js), steeper as
+//          it breaks down (up to MAX_RISE). It never comes back down:
+//          melted ice stays melted;
 // - tide:  two high tides a day;
 // - surge: storms pile water against the shore. Worse storms push harder;
 //          a surge builds over about a minute and drains away more slowly.
@@ -16,7 +18,7 @@ import { uniforms, clamp, smoothstep } from '../shared.js';
 // durabilityLoss() turns that into wear, so anything built near the shore
 // breaks down as the sea climbs and the storms get worse.
 
-export const MAX_RISE = 2.4;   // metres, by the end of the climate ramp
+export const MAX_RISE = 2.4;   // metres, with the climate at its worst
 const TIDE = 0.35;             // metres either side of the mean
 const SURGE = [0.3, 1.4];      // metres, from a thunderstorm to a violent storm
 
@@ -39,8 +41,10 @@ export class SeaLevel {
 
   // dt in seconds (0 while paused), dayTime 0..1 from midnight.
   update(dt, weather, dayTime) {
-    const i = weather.instability;
-    this.rise = MAX_RISE * (0.6 * i + 0.4 * i * i);
+    // The rise catches up with the climate over a couple of minutes.
+    const p = weather.pressure;
+    const rise = MAX_RISE * (0.6 * p + 0.4 * p * p);
+    if (rise > this.rise) this.rise += (rise - this.rise) * (1 - Math.exp(-dt / 120));
     const tide = TIDE * Math.sin(dayTime * Math.PI * 4);
     if (dt > 0) this.tideRate = (tide - this.tide) / dt;
     this.tide = tide;

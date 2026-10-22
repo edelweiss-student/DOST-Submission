@@ -46,7 +46,8 @@ function raySegment(o, u, c, a, h, out) {
 // groundAt(x, z, y): the terrain, or a floor built there below y.
 // dropItem(stack, position, velocity): puts an item in the world (sticks from a crown).
 // onSound(name, strength): chops, cracks and thuds.
-export function createTimber(scene, { terrain, water, forest, trees, wood, groundAt, dropItem, onSound, rng, shadows }) {
+// onImpact({ kind: 'fell', tree }): a tree came down (for the climate, climate/entity.js).
+export function createTimber(scene, { terrain, water, forest, trees, wood, groundAt, dropItem, onSound, onImpact, rng, shadows }) {
   const pieces = [];      // logs and planks lying in the world (or floating)
   const carried = [];     // in your arms, last picked up last
   const stumps = [];
@@ -216,6 +217,7 @@ export function createTimber(scene, { terrain, water, forest, trees, wood, groun
     // Timber! It falls away from you, a little to one side or the other.
     chopping.delete(tree);
     tree.felled = true;
+    onImpact?.({ kind: 'fell', tree });
     const turn = (rng() - 0.5) * 0.6, cos = Math.cos(turn), sin = Math.sin(turn);
     const sp = SPECIES[tree.species];
     terrain.addCanopy(tree.x, tree.z, sp.crown * tree.s, -sp.shade);

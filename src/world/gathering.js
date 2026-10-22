@@ -75,8 +75,10 @@ class Grid {
 // grass, and items lying in the world (dropped, or thrown out of a full
 // bag). Stones and tools sink; everything else floats, drifting with the
 // waves and the wind. groundAt(x, z, y): the terrain, or a floor built
-// there, for items to land on.
-export function createGathering(scene, { terrain, water, vegetation, inventory, timber, groundAt, rng }) {
+// there, for items to land on. onImpact({ kind, x, z, amount }): stones
+// mined ('mine') or bushes and grass cut back ('strip'), for the climate
+// (climate/entity.js). Dead wood is free.
+export function createGathering(scene, { terrain, water, vegetation, inventory, timber, groundAt, rng, onImpact }) {
   const grid = new Grid();
   const { trees, bushes, rocks, logs } = vegetation.sources;
   for (const t of trees) grid.add(t.x, t.z, { kind: 'tree', x: t.x, z: t.z, r: SPECIES[t.species].trunk * t.s, tree: t });
@@ -242,6 +244,9 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
     }
     if (added === 0) return { got, full: true };
     if (kind.stock) s.stock--;
+    if (s.kind === 'rock') onImpact?.({ kind: 'mine', x: s.x, z: s.z, amount: added });
+    else if (s.kind === 'bush') onImpact?.({ kind: 'strip', x: s.x, z: s.z, amount: 1 });
+    else if (s.kind === 'grass') onImpact?.({ kind: 'strip', x: player.pos.x, z: player.pos.z, amount: 0.3 });
     return { got, full, used };
   }
 
