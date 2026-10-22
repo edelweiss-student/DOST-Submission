@@ -24,10 +24,12 @@ Open http://localhost:5173 in Chrome, Edge or Firefox and click to play.
 | Shift | Sprint / swim fast (uses stamina) |
 | Space | Jump / swim up |
 | C | Dive |
-| E | Gather from what you're looking at, or pick up an item |
+| E | Gather from what you're looking at, pick something up, or (with the axe) chop a tree or split a log |
 | 1–9 / mouse wheel | Choose a hotbar slot |
 | I / Tab | Open or close the inventory and crafting |
-| Q | Drop one of the selected item |
+| Q | Drop one of the selected item, or put down the wood you're carrying |
+| B | Build mode: `1`–`4` or the wheel choose a piece, `R` turns a roof, `E` (or left-click) places it, `B` or right-click leaves |
+| Hold X | Take apart something you built, or clear a blueprint |
 | Right-click | Eat the selected item |
 | M | Mute |
 | P | Performance readout (fps, quality, render scale, GPU) |
@@ -51,19 +53,19 @@ you get more, or something else:
 
 | Source | Gives | With the right tool | Gathers before it runs out | One gather comes back every |
 | --- | --- | --- | --- | --- |
-| Tree | 1–2 sticks | Axe: 1–2 wood, sometimes a stick | 3 | 90 s |
+| Tree | 1–2 sticks | Axe: fells it (see Timber and building) | 3 | 90 s |
 | Bush | 1–2 plant fibre, often 1–2 berries | Knife: twice the fibre | 3 | 2 min |
 | Boulder | 1–2 stones | Pickaxe: twice the stones | 4 | 5 min |
-| Fallen trunk | 1 wood | Axe: 2 wood | 5 | 10 min |
+| Fallen trunk | 1–2 sticks | Axe: cuts a log off it | 3 | 10 min |
 | Grass | — | Knife: 1–2 fibre, never runs out | — | — |
 
 Sources regrow in game time, so not while paused. Bushes the sea has killed
 give only fibre. A message tells you when your bag is full; anything that
 doesn't fit is left behind.
 
-Items stack (sticks and stones 32, wood 16, fibre 48, berries 24). Berries
-are food: right-click with them selected to get back 25 stamina and 6
-health.
+Items stack (sticks and stones 32, fibre 48, berries 24). Wood isn't an
+item: it never goes in the bag (see below). Berries are food: right-click
+with them selected to get back 25 stamina and 6 health.
 
 `Q` throws one of the selected item in front of you. Items in the world can
 be picked up again with `E`. Stones sink; everything else floats, riding the
@@ -79,7 +81,7 @@ For now there are three stone tools:
 | Tool | Needs | Uses before it breaks |
 | --- | --- | --- |
 | Makeshift knife | 1 stick, 1 stone | 40 |
-| Stone axe | 2 sticks, 2 stones | 50 |
+| Stone axe | 2 sticks, 2 stones | 150 |
 | Stone pickaxe | 2 sticks, 3 stones | 50 |
 
 A tool is used up one gather at a time, and only where it does better (an
@@ -99,6 +101,64 @@ pause the game:
 - Click outside the panel to drop what you're holding.
 - `I` or `Tab` closes it and goes back to the game; `Esc` closes it and
   pauses. Anything still in your hand goes back in the bag.
+
+## Timber and building
+
+Wood comes from trees, and it's carried in your arms, never in the bag.
+
+**Felling.** Select the axe, look at a tree and press `E` to chop. Each blow
+shakes the tree. It takes 3 blows for a yerba mate, 4 for a birch, 6 for a
+eucalyptus and 8 for an oak, more for a big one; the prompt counts them.
+On the last blow the tree topples away from you, speeding up as it goes,
+and hits the ground with a thud. A moment later the trunk lies there as
+logs, 1 for a mate up to 4 for a tall eucalyptus. The crown leaves a few
+sticks behind and a stump stays where it stood. The ground under it loses
+its shade (and the grass comes back). If you walk away from a half-chopped
+tree, the cuts stay. The fallen trunks already in the forest give a log for
+each axe cut, 3 before you have to wait for more.
+
+**Logs and planks.** These are physical: they lie where they fall, roll to
+rest along the ground, float, and drift with the waves and the wind.
+
+- With the axe selected, `E` on a log splits it. Two blows and it falls
+  apart into 4 planks.
+- With anything else selected (or an empty slot), `E` picks a log or plank
+  up. You can carry 2 logs or 8 planks, one kind at a time.
+- Logs are heavy: one stops you sprinting and two slow you by a third. Your
+  arms are full while you carry wood, so you can't gather or use tools
+  until you put it down.
+- `Q` puts one down in front of you, across your path. If you black out,
+  you drop everything you carry.
+
+**Building.** Press `B` and the hotbar turns into the build bar:
+
+| Piece | Planks | Goes |
+| --- | --- | --- |
+| Floor | 6 | On the ground or out over the water, on posts, snapped to a 2 m grid |
+| Wall | 6 | Along the floor edge nearest the crosshair |
+| Doorway | 4 | Like a wall, with an opening to walk through |
+| Roof | 8 | Over a floor: a pitched roof with boarded gable ends (`R` turns the ridge) |
+
+A see-through preview follows the crosshair: green where the piece fits,
+red (with the reason) where it doesn't. A floor levels itself above the
+highest ground under it, matches the height of a floor next to it, and
+can't go where trunks, stumps or boulders are in the way or where its
+posts would be longer than 5 m. Press `E` to place a **blueprint**.
+
+Then bring planks. With planks in your arms, look at the blueprint and press
+`E` to add one; the piece grows board by board. Once it has all its planks
+it's solid: you stand on floors (and step or climb onto them, even out of
+the water), walls and doorways stop you, and a roof shades you from the sun
+like a tree's crown. Holding `X` for a moment on a piece takes it apart
+and gives all its planks back; on a blueprint it clears it and gives back
+the planks it had. A floor can't be taken apart while walls or a roof stand
+on it.
+
+**The sea wears it down.** Built pieces near the shore use the sea's wear
+(see Sea level below): a low dock lasts hours in calm weather, several
+minutes in a storm's surf, and a couple of minutes under a storm surge. Worn wood greys and darkens, and the
+prompt shows how sound it still is. When a piece wears through, it breaks
+up and its planks float away. Whatever stood on a broken floor goes with it.
 
 ## How the climate works
 
@@ -139,13 +199,15 @@ Salt water leaves its mark wherever it reaches:
 - Bushes whose roots the water reaches die for good: their leaves brown and
   drop away.
 
-Structures will wear down the same way. `sea.exposure(x, z, y)` says how the
-sea reaches a point (depth under the water, waves included; surf splash;
+What you build wears down the same way. `sea.exposure(x, z, y)` says how
+the sea reaches a point (depth under the water, waves included; surf splash;
 salt spray), and `sea.durabilityLoss(x, z, y, t, resistance)` turns that
 into durability lost per second. Wood (resistance 1) lasts about 2–3
 minutes a metre under water, about 15 minutes in the surf, and a few hours
 in salt spray just above it. Rough seas wear it faster, and sturdier
-materials pass a higher resistance (stone about 4).
+materials will pass a higher resistance (stone about 4). Floors are worn
+from the underside of the deck (their posts are meant to stand in water),
+walls and roofs from their base.
 
 ## Heat and stamina
 
@@ -387,8 +449,13 @@ src/
   world/materials.js    shader patches: sway, snow, wetness, drought, caustics, cloud shadows,
                         fog, distance dithering, terrain splatting, shadow filtering, salt damage
   world/props.js        procedural bush and boulder geometry
-  world/trees.js        tree models: loading, where each species grows, near models and billboards
+  world/trees.js        tree models: loading, where each species grows, near models and billboards,
+                        lifting one tree out to shake and fall
   world/vegetation.js   tree, fallen trunk, bush and boulder placement, colliders, culled instancing
+  world/wood.js         wood materials and shapes: bark, plank grain, cut ends, logs, boards
+  world/timber.js       felling, stumps, logs and planks in the world, splitting, carrying
+  world/building.js     floors, walls, doorways and roofs: placing, blueprints, building up,
+                        taking apart, standing and colliding, roof shade, sea wear
   world/grass.js        GPU grass around the player
   world/waves.js        Gerstner wave spectrum, CPU surface sampling for physics
   world/water.js        water surface mesh, depth and ripple textures, uniforms
@@ -408,10 +475,11 @@ src/
   items/models.js       low-poly item and tool models (in the world and in your hand)
   world/gathering.js    gathering from trees, bushes, boulders, fallen trunks and grass, tool
                         bonuses; items in the world
-  player/heldItem.js    the selected tool in your hand: bobbing and swinging
+  player/heldItem.js    the selected tool in your hand (bobbing and swinging), or the wood you carry
   ui/hud.js             HUD panels, bars, messages and heat warnings
-  ui/inventoryUI.js     hotbar, inventory screen, pickup feed and the E prompt
-  audio/ambience.js     synthesized wind, rain, surf, underwater, thunder, splashes
+  ui/inventoryUI.js     hotbar, inventory screen, pickup feed, what you carry and the prompt
+  ui/buildUI.js         the build bar and its piece icons
+  audio/ambience.js     synthesized wind, rain, surf, underwater, thunder, splashes, wood sounds
 scripts/
   import-trees.mjs      packs the tree pack's .glb files into public/models/trees
 public/models/trees/    the packed tree models: one .glb per species, plus deadwood

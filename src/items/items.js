@@ -2,7 +2,8 @@
 // lying in the world. floats: drifts on the water instead of sinking.
 // eat: what eating one gives back (right-click with it selected).
 // tool: what it does when selected while gathering (see world/gathering.js);
-// durability: gathers before it breaks.
+// durability: uses before it breaks.
+// Wood isn't an item: logs and planks are carried in your arms (world/timber.js).
 export const ITEMS = {
   stick: {
     name: 'Stick', description: 'A dry branch. Handles, frames and kindling.',
@@ -11,10 +12,6 @@ export const ITEMS = {
   stone: {
     name: 'Stone', description: 'A fist-sized stone with a good heft.',
     stack: 32, color: '#8a8780', floats: false,
-  },
-  wood: {
-    name: 'Wood', description: 'A chunk broken off a fallen trunk.',
-    stack: 16, color: '#8c6239', floats: true,
   },
   fibre: {
     name: 'Plant fibre', description: 'Tough stems that twist into cordage.',
@@ -29,8 +26,8 @@ export const ITEMS = {
     stack: 1, color: '#8a8780', floats: false, tool: 'knife', durability: 40,
   },
   axe: {
-    name: 'Stone axe', description: 'Chops wood from standing trees, and twice the wood from fallen trunks.',
-    stack: 1, color: '#8a8780', floats: false, tool: 'axe', durability: 50,
+    name: 'Stone axe', description: 'Fells trees, cuts logs off fallen trunks and splits logs into planks for building.',
+    stack: 1, color: '#8a8780', floats: false, tool: 'axe', durability: 150,
   },
   pickaxe: {
     name: 'Stone pickaxe', description: 'Breaks twice the stones off boulders.',
@@ -94,27 +91,6 @@ const DRAW = {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
     ctx.beginPath();
     ctx.moveTo(22, 22); ctx.lineTo(37, 17); ctx.lineTo(30, 28); ctx.closePath();
-    ctx.fill();
-  },
-  wood(ctx) {
-    ctx.fillStyle = '#5e3d22';
-    ctx.fillRect(14, 22, 30, 24);
-    ctx.fillStyle = '#7b5532';
-    ctx.fillRect(14, 22, 30, 7);
-    ctx.beginPath();
-    ctx.ellipse(44, 34, 9, 12, 0, 0, Math.PI * 2);
-    ctx.fillStyle = '#d9b27c';
-    ctx.fill();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = '#a07445';
-    for (const r of [3, 6, 9]) {
-      ctx.beginPath();
-      ctx.ellipse(44, 34, r * 0.75, r, 0, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.beginPath();
-    ctx.ellipse(14, 34, 3, 12, 0, Math.PI / 2, Math.PI * 1.5);
-    ctx.fillStyle = '#4a2f19';
     ctx.fill();
   },
   fibre(ctx) {

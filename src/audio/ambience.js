@@ -113,6 +113,64 @@ export class Ambience {
     src.stop(t + 0.75);
   }
 
+  // A short filtered noise burst: the building block of the wood sounds.
+  burst(buffer, type, freq, q, peak, decay, delay = 0) {
+    const ctx = this.ctx, t = ctx.currentTime + delay;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = type;
+    filter.frequency.value = freq;
+    filter.Q.value = q;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+    src.connect(filter).connect(g).connect(this.master);
+    src.start(t, Math.random());
+    src.stop(t + decay + 0.05);
+  }
+
+  // Wood: an axe biting (chop), a log splitting (split), a tree cracking
+  // as it goes over (crack) and hitting the ground (thud), its crown
+  // breaking up (break), logs and planks knocking down (log, plank), and a
+  // plank going into a build (knock). strength 0..1.
+  wood(kind, strength = 1) {
+    if (!this.ctx) return;
+    const s = Math.max(0.05, strength);
+    switch (kind) {
+      case 'chop':
+        this.burst(this.white, 'bandpass', 1500, 1.4, 0.7 * s, 0.09);
+        this.burst(this.brown, 'lowpass', 320, 0.7, 0.9 * s, 0.16);
+        break;
+      case 'split':
+        this.burst(this.white, 'bandpass', 2600, 0.9, 0.6 * s, 0.25);
+        this.burst(this.brown, 'lowpass', 260, 0.7, 0.8 * s, 0.3, 0.02);
+        break;
+      case 'crack':
+        this.burst(this.white, 'bandpass', 2200, 0.8, 0.8 * s, 0.35);
+        this.burst(this.white, 'bandpass', 1200, 2, 0.5 * s, 0.6, 0.25);
+        break;
+      case 'thud':
+        this.burst(this.brown, 'lowpass', 110, 0.7, 1.6 * s, 1.3);
+        this.burst(this.white, 'bandpass', 2500, 0.6, 0.3 * s, 0.8, 0.05);
+        break;
+      case 'break':
+        this.burst(this.white, 'bandpass', 3200, 0.5, 0.2 * s, 0.6);
+        break;
+      case 'log':
+        this.burst(this.brown, 'lowpass', 220, 0.7, 0.8 * s, 0.3);
+        break;
+      case 'plank':
+        this.burst(this.white, 'bandpass', 900, 2, 0.5 * s, 0.08);
+        break;
+      case 'knock':
+        this.burst(this.white, 'bandpass', 700, 2.5, 0.6 * s, 0.07);
+        this.burst(this.brown, 'lowpass', 240, 0.7, 0.6 * s, 0.12);
+        break;
+    }
+  }
+
   toggleMute() {
     this.muted = !this.muted;
     return this.muted;

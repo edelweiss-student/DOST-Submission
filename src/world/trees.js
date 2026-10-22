@@ -90,6 +90,7 @@ export function placeTrees(terrain, rng, colliders, spacingOk) {
     const s = range(rng, 0.85, 1.15);
     if (!spacingOk(x, z, sp.spacing * s)) continue;
     trees.push({ species, x, y: h - 0.2, z, rot: rng() * Math.PI * 2, s, sy: range(rng, 0.94, 1.08), tone: rng(), variant: Math.floor(rng() * 3) });
+    // The trunk's collider stays behind as the stump's when the tree is felled.
     colliders.add(x, z, sp.trunk * s);
   }
   return trees;
@@ -99,6 +100,8 @@ export function placeTrees(terrain, rng, colliders, spacingOk) {
 // dithering into each other over the band. Both lists are rebuilt nearest
 // first as you move, so leaves and billboards hidden behind nearer ones
 // fail the depth test instead of being shaded (dense forest stacks many).
+// A tree being chopped is taken out of the lists and drawn on its own (see
+// detach), so it can shake and fall; a felled tree never goes back.
 export function createForest(scene, models, trees, { quality, cloudShadows }) {
   const { near: nearRadius, band, far: farRadius } = quality.trees;
   const fade = [nearRadius - band, nearRadius];
@@ -128,29 +131,34 @@ export function createForest(scene, models, trees, { quality, cloudShadows }) {
     models[name].forEach((model, vi) => {
       const list = trees.filter((t) => t.species === name && t.variant === vi);
       const n = Math.max(1, list.length);
+      const barkTop = model.parts.find((part) => part.kind === 'bark').geometry.boundingBox.max.y;
       // Each tree's placement and tint, ready to copy into the near meshes.
       const treeMatrices = new Float32Array(n * 16), treeTones = new Float32Array(n * 3);
       list.forEach((t, i) => {
         m.compose(p.set(t.x, t.y, t.z), q.setFromAxisAngle(up, t.rot), sc.set(t.s, t.s * t.sy, t.s)).toArray(treeMatrices, i * 16);
         tone.copy(toneA).lerp(toneB, t.tone).toArray(treeTones, i * 3);
         t.index = i;
+        t.height = barkTop * t.s * t.sy;
       });
 
       // Near: all parts share one matrix buffer; leaves get the tint.
       const matrices = new THREE.InstancedBufferAttribute(new Float32Array(n * 16), 16).setUsage(THREE.DynamicDrawUsage);
       const colors = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3).setUsage(THREE.DynamicDrawUsage);
-      const meshes = model.parts.map((part) => {
+      const parts = model.parts.map((part) => {
         const leaves = part.kind === 'leaves';
-        const mesh = new THREE.InstancedMesh(part.geometry, leaves ? leafMat : barkMat, n);
+        return { geometry: part.geometry, leaves, material: leaves ? leafMat : barkMat, depth: leaves ? leafDepth : barkDepth };
+      });
+      const meshes = parts.map((part) => {
+        const mesh = new THREE.InstancedMesh(part.geometry, part.material, n);
         mesh.instanceMatrix = matrices;
-        if (leaves) mesh.instanceColor = colors;
+        if (part.leaves) mesh.instanceColor = colors;
         mesh.count = 0;
         mesh.frustumCulled = false;
         mesh.castShadow = shadows;
         mesh.receiveShadow = true;
-        mesh.customDepthMaterial = leaves ? leafDepth : barkDepth;
+        mesh.customDepthMaterial = part.depth;
         // Leaves after the trunk, so leaves behind it fail the depth test.
-        mesh.renderOrder = leaves ? 1 : 0;
+        mesh.renderOrder = part.leaves ? 1 : 0;
         scene.add(mesh);
         return mesh;
       });
@@ -170,7 +178,7 @@ export function createForest(scene, models, trees, { quality, cloudShadows }) {
       far.frustumCulled = false;
       scene.add(far);
 
-      variants.push({ trees: list, treeMatrices, treeTones, matrices, colors, meshes, far });
+      variants.push({ trees: list, treeMatrices, treeTones, matrices, colors, parts, meshes, far });
     });
   }
 
@@ -186,13 +194,61 @@ export function createForest(scene, models, trees, { quality, cloudShadows }) {
     return list.length;
   };
 
+  // Takes a tree out of the instance lists and draws it on its own, so it
+  // can move. Returns a handle: `placed` is where the tree stands,
+  // set(matrix) moves it, and remove() takes it away: back into the forest
+  // if it's still standing, for good once it's felled.
+  function detach(tree) {
+    const v = variants.find((x) => x.trees[tree.index] === tree);
+    tree.detached = true;
+    dirty = true;
+    const meshes = v.parts.map((part) => {
+      // Instanced like the forest, so it uses the shaders already compiled.
+      const mesh = new THREE.InstancedMesh(part.geometry, part.material, 1);
+      if (part.leaves) mesh.instanceColor = new THREE.InstancedBufferAttribute(v.treeTones.slice(tree.index * 3, tree.index * 3 + 3), 3);
+      mesh.frustumCulled = false;
+      mesh.castShadow = shadows;
+      mesh.receiveShadow = true;
+      mesh.customDepthMaterial = part.depth;
+      mesh.renderOrder = part.leaves ? 1 : 0;
+      scene.add(mesh);
+      return mesh;
+    });
+    const handle = {
+      placed: new THREE.Matrix4().fromArray(v.treeMatrices, tree.index * 16),
+      set(matrix) {
+        for (const mesh of meshes) {
+          mesh.instanceMatrix.array.set(matrix.elements);
+          mesh.instanceMatrix.needsUpdate = true;
+        }
+      },
+      remove() {
+        for (const mesh of meshes) {
+          scene.remove(mesh);
+          mesh.dispose();
+        }
+        if (!tree.felled) {
+          tree.detached = false;
+          dirty = true;
+        }
+      },
+    };
+    handle.set(handle.placed);
+    return handle;
+  }
+
   const nearList = [], farList = [];
   const last = new THREE.Vector2(Infinity, Infinity);
+  let dirty = false;
   return {
     count: trees.length,
+    detach,
+    // Within this distance trees are drawn in full; past it they fade to billboards.
+    detailRange: nearRadius - band,
     update(camera) {
       const cx = camera.position.x, cz = camera.position.z;
-      if ((cx - last.x) ** 2 + (cz - last.y) ** 2 < 4) return;
+      if (!dirty && (cx - last.x) ** 2 + (cz - last.y) ** 2 < 4) return;
+      dirty = false;
       last.set(cx, cz);
       const near2 = (nearRadius + 2) ** 2;
       const farMin2 = Math.max(0, nearRadius - band - 2) ** 2, farMax2 = farRadius ** 2;
@@ -200,6 +256,7 @@ export function createForest(scene, models, trees, { quality, cloudShadows }) {
         nearList.length = 0;
         farList.length = 0;
         for (const t of v.trees) {
+          if (t.detached) continue;
           t.d2 = (t.x - cx) ** 2 + (t.z - cz) ** 2;
           if (t.d2 <= near2) nearList.push(t);
           if (t.d2 >= farMin2 && t.d2 <= farMax2) farList.push(t);

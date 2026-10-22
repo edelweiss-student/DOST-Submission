@@ -114,16 +114,28 @@ html, body {
 #prompt {
   position: fixed; left: 50%; top: calc(50% + 26px); transform: translateX(-50%);
   padding: 4px 10px; border-radius: 6px; background: var(--panel);
-  font-size: 13px; pointer-events: none; display: none;
+  font-size: 13px; pointer-events: none; display: none; white-space: nowrap;
 }
-#prompt.show { display: block; }
+#prompt.show { display: flex; flex-direction: column; gap: 3px; }
 #prompt.dim { color: var(--muted); }
-#prompt kbd {
+#prompt kbd, #build-bar kbd {
   display: inline-block; min-width: 18px; margin-right: 7px; padding: 0 5px;
   border: 1px solid var(--accent); border-radius: 4px; color: var(--accent);
   font: 600 12px/17px system-ui, sans-serif; text-align: center;
 }
 #prompt.dim kbd { border-color: var(--muted); color: var(--muted); }
+
+#build-bar {
+  position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none;
+}
+#build-name { font-size: 13px; color: var(--muted); text-shadow: 0 1px 3px #000; }
+#build-name b { color: var(--text); font-size: 14px; }
+#build-pieces { display: flex; gap: 4px; padding: 4px; border-radius: 10px; background: var(--panel); backdrop-filter: blur(4px); }
+#build-pieces .slot.selected { border-color: var(--accent); background: rgba(255, 178, 91, 0.18); }
+.build-help { font-size: 12px; color: var(--muted); text-shadow: 0 1px 3px #000; }
+.build-help kbd { margin-left: 8px; margin-right: 4px; }
+#hotbar-name.carrying { color: var(--accent); }
 
 #feed {
   position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
@@ -226,4 +238,5 @@ html, body {
   .inv-grid { grid-template-columns: repeat(9, 34px); gap: 3px; }
   #bars { bottom: 74px; }
   #hotbar-name { bottom: 56px; }
+  .build-help { display: none; }
 }

@@ -133,14 +133,17 @@ export function createTerrain(rng, { ground, cloudShadows = false, castShadow = 
       control[o + 3] = 255;
     }
   }
+  // Grass before shade thins it, so the canopy can change (felled trees).
+  const baseGrass = control.filter((_, o) => o % 4 === 2);
   const controlTex = new THREE.DataTexture(control, C, C, THREE.RGBAFormat);
   controlTex.magFilter = THREE.LinearFilter;
   controlTex.minFilter = THREE.LinearFilter;
   controlTex.needsUpdate = true;
   const controlRect = new THREE.Vector3(-half, -half, 1 / WORLD.size);
 
-  // Plants (bushes for now) darken the ground below them (ambient
-  // occlusion, and a stand-in for their shadows past the shadow map's range).
+  // Plants darken the ground below them (ambient occlusion, and a stand-in
+  // for their shadows past the shadow map's range). A negative strength
+  // takes a plant's shade away again; commitCanopy() applies the changes.
   function addCanopy(x, z, radius, strength = 1) {
     const ci = (x + half) / cstep - 0.5, cj = (z + half) / cstep - 0.5;
     const r = radius / cstep;
@@ -153,10 +156,10 @@ export function createTerrain(rng, { ground, cloudShadows = false, castShadow = 
   }
   function commitCanopy() {
     for (let p = 0; p < C * C; p++) {
-      const c = Math.min(1, canopy[p] * 0.8);
+      const c = clamp(canopy[p] * 0.8, 0, 1);
       control[p * 4 + 1] = Math.round(c * 255);
       // Little grass grows in deep shade.
-      control[p * 4 + 2] = Math.round(control[p * 4 + 2] * (1 - 0.85 * c));
+      control[p * 4 + 2] = Math.round(baseGrass[p] * (1 - 0.85 * c));
     }
     controlTex.needsUpdate = true;
   }

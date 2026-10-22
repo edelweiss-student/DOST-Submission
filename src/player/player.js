@@ -7,6 +7,8 @@ const BODY = 1.8;
 const WALK = 5.5, SPRINT = 9.5, SWIM = 3.6, SWIM_FAST = 6.2;
 const GRAVITY = 24, JUMP = 7.5;
 const FLOAT_DEPTH = 1.45;       // feet below the surface while treading water
+const STEP = 0.5;               // highest ledge you step up onto (a built floor)
+const CLIMB = 2.2;              // ...or climb onto out of the water
 export const MAX_OXYGEN = 30;   // seconds of breath
 
 // Stamina per second in mild weather: about 12 s of sprinting or 10 s of
@@ -54,8 +56,12 @@ export class Player {
     this.strain = 0;       // 0..1, how hard the heat is on you
     this.dragLook = false;
     this.inputEnabled = true;   // off while a menu (the inventory) has the keys
+    this.burden = 0;            // 0 empty-handed .. 1 carrying all you can (logs)
+    // What you've built (world/building.js): floorAt, collide and shelterAt.
+    this.structures = null;
     this.onMessage = null;
     this.onSplash = null;
+    this.onBlackout = null;
     this.edgeWarned = 0;
     this.tiredWarned = -Infinity;
     addEventListener('keydown', (e) => { if (this.inputEnabled) this.keys.add(e.code); });
@@ -106,17 +112,29 @@ export class Player {
     this.exhausted = false;
   }
 
+  // How high a ledge you can get up onto: a step on land, more out of the water.
+  get climb() { return this.swimming || this.inWater ? CLIMB : STEP; }
+
+  // The ground under you: the terrain, or a floor you've built that you're
+  // on or can get up onto.
+  groundAt(x, z) {
+    const g = this.terrain.heightAt(x, z);
+    if (!this.structures) return g;
+    return Math.max(g, this.structures.floorAt(x, z, this.pos.y + this.climb));
+  }
+
   // heatIndex: the weather's heat index, °C.
   update(dt, t, heatIndex = 20) {
     const k = this.keys, p = this.pos, v = this.vel;
     const ix = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
     const iz = (k.has('KeyW') ? 1 : 0) - (k.has('KeyS') ? 1 : 0);
-    // Too tired to sprint until you've got some stamina back.
-    const sprint = (k.has('ShiftLeft') || k.has('ShiftRight')) && !this.exhausted;
+    // Too tired to sprint until you've got some stamina back, and no
+    // sprinting under a heavy load.
+    const sprint = (k.has('ShiftLeft') || k.has('ShiftRight')) && !this.exhausted && this.burden < 0.5;
 
     this.camera.getWorldDirection(fwd);
     right.set(-fwd.z, 0, fwd.x).normalize();
-    const ground = this.terrain.heightAt(p.x, p.z);
+    const ground = this.groundAt(p.x, p.z);
     const surf = this.water.surface(p.x, p.z, t, bodySample);
     const submerged = (surf.height - p.y) / BODY;
     // Hysteresis so bobbing on a wave doesn't flip between walking and swimming.
@@ -132,7 +150,7 @@ export class Player {
     this.collide(t);
 
     // Ground contact, with snapping so walking downhill doesn't bounce.
-    const g = this.terrain.heightAt(p.x, p.z);
+    const g = this.groundAt(p.x, p.z);
     if (p.y <= g || (this.grounded && !this.swimming && v.y <= 0 && p.y - g < 0.6)) {
       p.y = g;
       v.y = Math.max(v.y, 0);
@@ -159,7 +177,7 @@ export class Player {
 
   swim(dt, sprint, ix, iz, surf) {
     const k = this.keys, p = this.pos, v = this.vel;
-    const speed = (sprint ? SWIM_FAST : SWIM) * (this.exhausted ? TIRED : 1);
+    const speed = (sprint ? SWIM_FAST : SWIM) * (this.exhausted ? TIRED : 1) * (1 - 0.3 * this.burden);
     wish.copy(fwd).multiplyScalar(iz).addScaledVector(right, ix);
     if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(speed);
     const up = k.has('Space'), down = k.has('KeyC');
@@ -201,12 +219,14 @@ export class Player {
     const p = this.pos, v = this.vel;
     const wading = submerged > 0.2;
     wish.set(fwd.x, 0, fwd.z).normalize().multiplyScalar(iz).addScaledVector(right, ix);
-    if (wish.lengthSq() > 0) wish.normalize().multiplyScalar((sprint ? SPRINT : WALK) * (wading ? 0.6 : 1) * (this.exhausted ? TIRED : 1));
+    // Carrying logs slows you down (a third slower with two).
+    const load = 1 - 0.35 * this.burden;
+    if (wish.lengthSq() > 0) wish.normalize().multiplyScalar((sprint ? SPRINT : WALK) * (wading ? 0.6 : 1) * (this.exhausted ? TIRED : 1) * load);
     const accel = Math.min(1, dt * (this.grounded ? 10 : 2));
     v.x += (wish.x - v.x) * accel;
     v.z += (wish.z - v.z) * accel;
     v.y -= GRAVITY * dt;
-    if (this.grounded && this.keys.has('Space')) { v.y = JUMP; this.grounded = false; }
+    if (this.grounded && this.keys.has('Space')) { v.y = JUMP * (1 - 0.2 * this.burden); this.grounded = false; }
     p.addScaledVector(v, dt);
     // The surf pushes and pulls at you while wading.
     if (wading) {
@@ -218,6 +238,7 @@ export class Player {
 
   collide(t) {
     const p = this.pos;
+    this.structures?.collide(p, 0.35, BODY, this.climb);
     for (const c of this.colliders.query(p.x, p.z, near)) {
       const dx = p.x - c.x, dz = p.z - c.z, min = c.r + 0.35;
       const d2 = dx * dx + dz * dz;
@@ -244,18 +265,20 @@ export class Player {
     if (this.oxygen <= 0) this.health -= 12 * dt;
     else this.health = Math.min(100, this.health + 2 * dt);
     if (this.health <= 0) {
+      this.onBlackout?.();
       this.onMessage?.('You blacked out… and woke up on the shore.');
       this.respawn();
     }
   }
 
-  // How hot you feel: the heat index, plus the sun unless plants shade you,
-  // and cooled right down in the water. Your body takes a while to warm up
-  // again, so you stay cool for a bit after a swim.
+  // How hot you feel: the heat index, plus the sun unless plants or a roof
+  // shade you, and cooled right down in the water. Your body takes a while
+  // to warm up again, so you stay cool for a bit after a swim.
   warm(dt, heatIndex, ground, submerged) {
     const p = this.pos;
     // Plants the sea has killed have no leaves left to give shade.
-    const shade = this.terrain.canopyAt(p.x, p.z) * (1 - smoothstep(0, 0.9, uniforms.uTreeKillLine.value - ground));
+    const plants = this.terrain.canopyAt(p.x, p.z) * (1 - smoothstep(0, 0.9, uniforms.uTreeKillLine.value - ground));
+    const shade = Math.max(plants, this.structures?.shelterAt(p.x, p.y + EYE, p.z) ?? 0);
     let felt = heatIndex + SUN_HEAT * uniforms.uSunlight.value * (1 - shade);
     const wet = this.swimming ? 1 : clamp(submerged, 0, 1);
     felt += (Math.min(felt, SEA_TEMP) - felt) * wet;

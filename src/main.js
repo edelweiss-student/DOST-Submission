@@ -22,7 +22,11 @@ import { ITEMS } from './items/items.js';
 import { Inventory } from './items/inventory.js';
 import { craft } from './items/recipes.js';
 import { InventoryUI } from './ui/inventoryUI.js';
+import { BuildUI } from './ui/buildUI.js';
 import { createGathering } from './world/gathering.js';
+import { createWoodMaterials } from './world/wood.js';
+import { createTimber, woodName } from './world/timber.js';
+import { createBuilding, PIECES } from './world/building.js';
 import { createHeldItem } from './player/heldItem.js';
 
 const seed = Number(new URLSearchParams(location.search).get('seed')) || 1337;
@@ -87,10 +91,34 @@ const adaptive = new AdaptiveResolution(renderer, basePixelRatio, quality.minSca
 const gpuTimer = new GpuTimer(renderer);
 const perf = createPerfOverlay(document.getElementById('perf'), { renderer, adaptive, gpuTimer, tier, gpu, water });
 
+// Wood and building: felled trees come down as logs, the axe splits logs
+// into planks where they lie, and you carry planks to blueprints to build.
+// Each part has its own random numbers, so none of it changes the weather's.
+const wood = createWoodMaterials(treeModels, { anisotropy: quality.anisotropy, cloudShadows });
+const shadows = quality.shadowMap > 0;
+const building = createBuilding(scene, {
+  terrain, colliders: vegetation.colliders, wood, rng: mulberry32(seed + 2), shadows,
+  takePlank: () => timber.take('plank'),
+  release: (planks) => timber.release(planks),
+  onMessage: (text) => hud.message(text, 6),
+  onSound: (name, strength) => audio.wood(name, strength),
+  onChange: () => timber.wake(),
+});
+// What things land on: the terrain, or a floor you've built.
+const groundAt = (x, z, y) => Math.max(terrain.heightAt(x, z), building.floorAt(x, z, y + 0.3));
+const timber = createTimber(scene, {
+  terrain, water, forest: vegetation.forest, trees: vegetation.sources.trees, wood, groundAt, shadows,
+  dropItem: (stack, from, velocity) => gathering.drop(stack, from, velocity),
+  onSound: (name, strength) => audio.wood(name, strength),
+  rng: mulberry32(seed + 3),
+});
+player.structures = building;
+player.onBlackout = () => timber.dropAll(player.pos);
+
 // Items: the bag with its hotbar and screen, and gathering from the world.
 // Gathering has its own random numbers, so it doesn't change the weather's.
 const inventory = new Inventory();
-const gathering = createGathering(scene, { terrain, water, vegetation, inventory, rng: mulberry32(seed + 1) });
+const gathering = createGathering(scene, { terrain, water, vegetation, inventory, timber, groundAt, rng: mulberry32(seed + 1) });
 const throwDir = new THREE.Vector3();
 function throwStack(stack) {
   camera.getWorldDirection(throwDir);
@@ -112,9 +140,36 @@ function craftItem(recipe) {
   inventoryUI.notify(`Crafted ${name}`);
 }
 const inventoryUI = new InventoryUI(inventory, { onDrop: throwStack, onCraft: craftItem });
-const held = createHeldItem(scene, camera);
+const held = createHeldItem(scene, camera, wood);
 // The selected tool's kind ('knife', 'axe', 'pickaxe'), if a tool is selected.
 const selectedTool = () => ITEMS[inventory.current?.id]?.tool;
+
+// Build mode (B): the chosen piece follows the crosshair as a see-through
+// preview, and E places it as a blueprint to fill with planks.
+const buildUI = new BuildUI(PIECES);
+const build = { on: false, piece: 0, dir: 0, plan: null };
+buildUI.select(0);
+function setBuilding(on) {
+  build.on = on;
+  build.plan = null;
+  buildUI.show(on);
+  building.preview(null);
+}
+function choosePiece(index) {
+  build.piece = (index + PIECES.length) % PIECES.length;
+  buildUI.select(build.piece);
+}
+function placeBlueprint() {
+  const { plan } = build;
+  if (!plan) return;
+  if (!plan.ok) {
+    hud.message(plan.reason, 2);
+    return;
+  }
+  building.place(plan);
+  const piece = PIECES[build.piece];
+  inventoryUI.notify(`${piece.name} blueprint: ${piece.cost} planks to build`);
+}
 
 const MILESTONES = [
   'Solar output is climbing. The weather is getting harder to predict.',
@@ -223,22 +278,84 @@ waterButtons.forEach((button) => button.addEventListener('click', (e) => {
 }));
 markWater();
 
-// E: gather from what you're looking at, or pick up an item.
-let lastGather = 0;
-function gather() {
-  if (performance.now() - lastGather < 300) return;
-  lastGather = performance.now();
-  const tool = inventory.current;
-  const result = gathering.interact(weather.elapsed, selectedTool());
+// What E and X act on: whichever is most squarely under the crosshair of
+// the plants and items you can gather, the logs and planks lying about,
+// and what you've built. Each offers { score, prompt, dim, act, hold }.
+const aimRay = new THREE.Ray(), aimDir = new THREE.Vector3();
+let focus = null;
+function updateFocus() {
+  const carrying = timber.carrying;
+  const tool = carrying ? null : selectedTool();   // your hands are full
+  focus = null;
+  for (const option of [
+    gathering.focus(player, camera, tool, weather.elapsed),
+    timber.focus(aimRay, tool),
+    building.focus(aimRay, carrying),
+  ]) {
+    if (option && (!focus || option.score > focus.score)) focus = option;
+  }
+  if (focus?.hands && carrying) {
+    focus = { ...focus, dim: true, act: null, prompt: [['E', 'Your arms are full'], ['Q', `Put down a ${woodName(carrying.kind)}`]] };
+  }
+}
+
+// What an action did: items gained, the tool used (it swings and wears
+// down), and anything to tell you.
+function report(result, tool) {
   if (!result) return;
-  for (const { id, count } of result.got) inventoryUI.notify(`+${count} ${ITEMS[id].name}`);
-  // Using a tool swings it and wears it down.
-  if (result.usedTool) {
+  for (const { id, count } of result.got ?? []) inventoryUI.notify(`+${count} ${ITEMS[id].name}`);
+  if (result.used) {
     held.swing();
     if (inventory.wear(inventory.selected)) hud.message(`Your ${ITEMS[tool.id].name.toLowerCase()} broke.`, 4);
   }
   if (result.empty) hud.message('Nothing left to gather here. It grows back with time.', 3);
   else if (result.full) hud.message('Your bag is full.', 3);
+  if (result.message) hud.message(result.message, 4);
+  if (result.notify) inventoryUI.notify(result.notify);
+}
+
+// E: act on what you're looking at, or in build mode place the blueprint.
+let lastUse = 0;
+function interact() {
+  if (performance.now() - lastUse < 300) return;
+  lastUse = performance.now();
+  if (build.on) placeBlueprint();
+  else if (focus?.act) report(focus.act(), inventory.current);
+}
+
+// Holding X takes apart what you built (or clears a blueprint).
+const HOLD_TIME = 0.8;
+const hold = { down: false, key: null, time: 0 };
+function updateHold(dt) {
+  if (!hold.down || !focus?.hold || build.on) {
+    hold.key = null;
+    hold.time = 0;
+    return;
+  }
+  if (focus.key !== hold.key) {
+    hold.key = focus.key;
+    hold.time = 0;
+  }
+  hold.time += dt;
+  if (hold.time >= HOLD_TIME) {
+    report(focus.hold());
+    hold.down = false;
+    hold.time = 0;
+  }
+}
+
+// What the prompt under the crosshair says: [actions, dim].
+function promptFor(playing) {
+  if (!playing) return [null];
+  if (build.on) {
+    const { plan } = build, piece = PIECES[build.piece];
+    if (!plan) return [[['E', piece.id === 'floor' ? 'Aim at the ground or the water' : 'Aim at a floor']], true];
+    if (!plan.ok) return [[['E', plan.reason]], true];
+    return [[['E', `Place ${piece.name.toLowerCase()} blueprint`], ...(piece.id === 'roof' ? [['R', 'Turn']] : [])]];
+  }
+  if (!focus) return [null];
+  if (hold.time > 0) return [[['X', `Taking apart… ${Math.round((hold.time / HOLD_TIME) * 100)}%`]]];
+  return [focus.prompt, focus.dim];
 }
 
 // Right-click: eat the selected item, if it's food.
@@ -252,10 +369,15 @@ function useSelected() {
 }
 
 // Keys: 1-9 or the mouse wheel pick a hotbar slot, I or Tab open the
-// inventory, E gathers, Q drops one of the selected item, P toggles the
+// inventory, E gathers, chops and picks up, Q drops one of the selected
+// item (or puts down wood you're carrying), B builds (1-4 or the wheel pick
+// the piece, R turns a roof), holding X takes apart, P toggles the
 // performance readout, M mutes. Dev keys: ` then 1-7 forces a weather type,
 // T skips an hour, K fast-forwards the climate, G sends a rogue wave set.
 let devArmed = -Infinity;
+addEventListener('keyup', (e) => {
+  if (e.code === 'KeyX') hold.down = false;
+});
 addEventListener('keydown', (e) => {
   if (e.code === 'KeyP') perf.toggle();
   if (e.code === 'Tab') e.preventDefault();
@@ -271,8 +393,12 @@ addEventListener('keydown', (e) => {
   }
   if (!isPlaying()) return;
   if (e.code === 'KeyI' || e.code === 'Tab') {
-    if (inventoryUI.open) closeInventory();
-    else openInventory();
+    if (inventoryUI.open) {
+      closeInventory();
+    } else {
+      setBuilding(false);
+      openInventory();
+    }
     return;
   }
   const digit = e.code.startsWith('Digit') ? Number(e.code.slice(5)) : 0;
@@ -291,13 +417,26 @@ addEventListener('keydown', (e) => {
     if (digit >= 1 && inventoryUI.hover >= 0) inventory.swap(inventoryUI.hover, digit - 1);
     return;
   }
-  if (digit >= 1) {
+  if (digit >= 1 && build.on) {
+    if (digit <= PIECES.length) choosePiece(digit - 1);
+  } else if (digit >= 1) {
     inventory.select(digit - 1);
   } else if (e.code === 'KeyE') {
-    gather();
+    interact();
+  } else if (e.code === 'KeyB') {
+    setBuilding(!build.on);
+  } else if (e.code === 'KeyR') {
+    if (build.on) build.dir = 1 - build.dir;
+  } else if (e.code === 'KeyX') {
+    if (!e.repeat) hold.down = true;
   } else if (e.code === 'KeyQ') {
-    const stack = inventory.take(inventory.selected, 1);
-    if (stack) throwStack(stack);
+    if (timber.carrying) {
+      camera.getWorldDirection(throwDir);
+      timber.putDown(camera.position, throwDir, player.vel);
+    } else {
+      const stack = inventory.take(inventory.selected, 1);
+      if (stack) throwStack(stack);
+    }
   } else if (e.code === 'KeyT') {
     sky.skip(1);
   } else if (e.code === 'KeyK') {
@@ -312,11 +451,21 @@ addEventListener('keydown', (e) => {
 });
 
 addEventListener('wheel', (e) => {
-  if (isPlaying() && !inventoryUI.open && e.deltaY) inventory.select(inventory.selected + Math.sign(e.deltaY));
+  if (!isPlaying() || inventoryUI.open || !e.deltaY) return;
+  if (build.on) choosePiece(build.piece + Math.sign(e.deltaY));
+  else inventory.select(inventory.selected + Math.sign(e.deltaY));
 }, { passive: true });
 renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+// Right-click eats (or leaves build mode); in build mode with the mouse
+// captured, left-click places too.
 renderer.domElement.addEventListener('mousedown', (e) => {
-  if (e.button === 2 && isPlaying() && !inventoryUI.open) useSelected();
+  if (!isPlaying() || inventoryUI.open) return;
+  if (e.button === 2) {
+    if (build.on) setBuilding(false);
+    else useSelected();
+  } else if (e.button === 0 && build.on && player.controls.isLocked) {
+    interact();
+  }
 });
 
 addEventListener('resize', () => {
@@ -344,12 +493,30 @@ function step() {
 
   weather.update(sdt);
   sea.update(sdt, weather, sky.state.time);
+  player.burden = timber.burden;
   player.update(sdt, t, weather.heatIndex);
   uniforms.uPlayerPos.value.copy(player.pos);
-  const prompt = gathering.update(sdt, t, weather.elapsed, player, camera, isPlaying() && !inventoryUI.open, selectedTool());
-  inventoryUI.setPrompt(inventoryUI.open ? null : prompt?.text ?? null, prompt?.dim);
+  gathering.update(sdt, t);
+  timber.update(sdt, t, player);
+  building.update(sdt, sea);
+
+  // What's under the crosshair, or where a blueprint would go.
+  const playing = isPlaying() && !inventoryUI.open;
+  camera.getWorldDirection(aimDir);
+  aimRay.set(camera.position, aimDir);
+  focus = null;
+  if (playing && build.on) {
+    build.plan = building.plan(PIECES[build.piece].id, aimRay, build.dir);
+    building.preview(build.plan);
+  } else if (playing) {
+    updateFocus();
+  }
+  updateHold(sdt);
+  inventoryUI.setPrompt(...promptFor(playing));
+  const carrying = timber.carrying;
+  inventoryUI.setCarrying(carrying && `Carrying ${carrying.count} ${woodName(carrying.kind, carrying.count)} · Q to put down`);
   inventoryUI.update(dt);
-  held.update(sdt, inventory.current, Math.hypot(player.vel.x, player.vel.z));
+  held.update(sdt, inventory.current, Math.hypot(player.vel.x, player.vel.z), timber.carried);
   precip.update(sdt, t, camera, weather);
   const env = sky.update(sdt, camera, weather.current, precip.flash, weather.instability);
   weather.dayF = env.dayF;
@@ -400,6 +567,7 @@ renderer.compileAsync(scene, camera).catch(() => {}).finally(() => {
 if (import.meta.env.DEV) {
   window.game = {
     scene, camera, renderer, terrain, weather, sea, player, sky, water, uniforms, vegetation, step, inventory, gathering,
+    timber, building, build,
     counts: vegetation.counts, quality: { tier, gpu, adaptive, gpuTimer },
   };
 }

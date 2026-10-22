@@ -247,6 +247,7 @@ export function createVegetation(scene, terrain, rng, { quality, ground, cloudSh
 
   return {
     colliders,
+    forest,
     // Where things grow and lie, for gathering (see gathering.js).
     sources: { trees, bushes, rocks, logs },
     counts: { trees: trees.length, ...bySpecies, logs: logs.length, bushes: bushes.length, rocks: rocks.length },

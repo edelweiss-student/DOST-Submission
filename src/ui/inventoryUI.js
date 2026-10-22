@@ -73,6 +73,7 @@ export class InventoryUI {
     this.hover = -1;       // slot under the mouse
     this.nameTimer = 0;
     this.shownName = null;
+    this.carrying = null;
     this.el = {
       hotbar: $('hotbar'), name: $('hotbar-name'), prompt: $('prompt'), feed: $('feed'),
       screen: $('inventory'), bag: $('inv-backpack'), bagHotbar: $('inv-hotbar'),
@@ -142,10 +143,12 @@ export class InventoryUI {
       }
       row.querySelector('button').disabled = !canCraft(this.inv, recipe);
     });
-    // Name of the selected item, shown for a moment when it changes.
+    // Name of the selected item, shown for a moment when it changes (unless
+    // you're carrying wood, which shows there instead).
     const id = this.inv.current?.id ?? null;
     if (id !== this.shownName) {
       this.shownName = id;
+      if (this.carrying) return;
       this.el.name.textContent = id ? ITEMS[id].name : '';
       this.el.name.classList.toggle('show', !!id);
       this.nameTimer = 1.6;
@@ -206,21 +209,35 @@ export class InventoryUI {
     setTimeout(() => line.remove(), 2600);
   }
 
-  // The action under the crosshair, e.g. "E Gather sticks"; dim when there's nothing left.
-  setPrompt(text, dim = false) {
+  // The actions under the crosshair, as [key, text] pairs, e.g.
+  // [['E', 'Gather sticks']]; dim when there's nothing to be done.
+  setPrompt(actions, dim = false) {
     const p = this.el.prompt;
-    const key = text ? `E\u0000${text}\u0000${dim}` : '';
+    const key = actions ? JSON.stringify([actions, dim]) : '';
     if (p.dataset.key === key) return;
     p.dataset.key = key;
-    p.classList.toggle('show', !!text);
+    p.classList.toggle('show', !!actions);
     p.classList.toggle('dim', dim);
     p.innerHTML = '';
-    if (!text) return;
-    p.appendChild(document.createElement('kbd')).textContent = 'E';
-    p.append(text);
+    for (const [k, text] of actions ?? []) {
+      const line = p.appendChild(document.createElement('div'));
+      line.appendChild(document.createElement('kbd')).textContent = k;
+      line.append(text);
+    }
+  }
+
+  // What you're carrying in your arms, in place of the selected item's
+  // name (e.g. "Carrying 2 logs"); null when your arms are empty.
+  setCarrying(text) {
+    if (this.carrying === text) return;
+    this.carrying = text;
+    this.el.name.textContent = text ?? (this.shownName ? ITEMS[this.shownName].name : '');
+    this.el.name.classList.toggle('show', !!text);
+    this.el.name.classList.toggle('carrying', !!text);
+    this.nameTimer = text ? 0 : 1.2;
   }
 
   update(dt) {
-    if (this.nameTimer > 0 && (this.nameTimer -= dt) <= 0) this.el.name.classList.remove('show');
+    if (!this.carrying && this.nameTimer > 0 && (this.nameTimer -= dt) <= 0) this.el.name.classList.remove('show');
   }
 }
