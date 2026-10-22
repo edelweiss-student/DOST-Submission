@@ -249,13 +249,47 @@ html, body {
 .card .credits { margin-top: 14px; font-size: 12px; color: var(--muted); }
 .settings { margin-top: 20px; display: flex; gap: 6px; justify-content: center; align-items: center; font-size: 13px; color: var(--muted); }
 .settings span { margin-right: 6px; }
-.settings button {
+.settings button, .pill {
   font: inherit; color: var(--text); cursor: pointer;
   background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 999px; padding: 4px 12px;
 }
-.settings button:hover { background: rgba(255, 255, 255, 0.12); }
-.settings button.active { border-color: var(--accent); color: var(--accent); }
+.settings button:hover, .pill:hover { background: rgba(255, 255, 255, 0.12); }
+.settings button.active, .pill.active { border-color: var(--accent); color: var(--accent); }
+.pill:disabled { opacity: 0.45; cursor: default; background: rgba(255, 255, 255, 0.06); }
+
+/* Multiplayer: the button on the start screen, and the lobby that takes its place */
+.card .mode { display: block; margin: 14px auto 0; font-size: 13px; }
+#overlay.mp .mode { display: none; }
+#overlay.lobby { cursor: default; }
+#overlay.lobby .play, #overlay.lobby .controls, #overlay.lobby .dev { display: none; }
+#lobby { margin-bottom: 20px; font-size: 14px; }
+#lobby[hidden], #lobby [hidden] { display: none; }
+.lobby-join { display: flex; gap: 8px; justify-content: center; }
+.lobby-join input {
+  font: inherit; color: var(--text); background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 8px; padding: 4px 10px; width: 180px;
+}
+.lobby-join input:focus { outline: none; border-color: var(--accent); }
+.lobby-teams { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; text-align: left; }
+.lobby-team {
+  padding: 8px 12px 10px; border-radius: 10px; background: rgba(255, 255, 255, 0.03);
+  border: 1px solid color-mix(in srgb, var(--team) 40%, transparent);
+}
+.lobby-team header { display: flex; align-items: baseline; gap: 6px; color: var(--team); }
+.lobby-team header small { margin-left: auto; color: var(--muted); font-size: 11px; }
+.lobby-team .dot { align-self: center; width: 8px; height: 8px; border-radius: 50%; background: var(--team); }
+.lobby-team ol { list-style: none; margin: 6px 0 8px; padding: 0; font-size: 13px; }
+.lobby-team li .tags { margin-left: 6px; color: var(--muted); font-size: 11px; }
+.lobby-team li.you .name { font-weight: 700; }
+.lobby-team li.empty { color: #6f8291; font-style: italic; }
+.lobby-team .pill { padding: 2px 10px; font-size: 12px; }
+.lobby-actions { display: flex; gap: 8px; justify-content: center; margin-top: 14px; }
+.lobby-banner { margin: 0 0 6px; font-weight: 600; color: var(--team); }
+.lobby-status { margin: 12px 0 8px; font-size: 13px; color: var(--muted); }
+.lobby-status:empty { display: none; }
+.lobby-status.notice { color: var(--accent); }
+#lobby .leave { font-size: 12px; }
 
 @media (max-width: 800px) {
   .inv-columns { flex-direction: column; gap: 12px; }

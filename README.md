@@ -13,7 +13,68 @@ npm run dev
 ```
 
 Open http://localhost:5173 in Chrome, Edge or Firefox and click to play.
-`npm run build` makes a static build in `dist/`.
+`npm run build` makes a static build in `dist/`. To play with others on the
+same network, see Multiplayer below.
+
+## Multiplayer
+
+A match mode for four teams is being built in phases. Phase 1, the lobby,
+works: players join a match on a game server, are put on teams, and spawn at
+their team's base when the host starts it.
+
+**On a LAN.** On the computer that hosts, run:
+
+```bash
+npm run lan
+```
+
+It builds the game and starts the game server, which prints the address to
+open, such as http://192.168.1.20:3001/?mp (with the name of each network,
+since some are virtual, like WSL's). Everyone on the same network opens it in
+their browser; the host can use http://localhost:3001/?mp. If Windows asks,
+allow Node.js on private networks. The server picks a new island each time it
+starts: `npm run server -- --seed 1234` plays a chosen one, and `--port`
+picks another port.
+
+**While developing,** run `npm run server` beside `npm run dev` and open
+http://localhost:5173/?mp: the dev server passes Socket.IO through to the
+game server. Two browser tabs make two players.
+
+**The lobby.** "Play multiplayer" on the start screen opens it. Pick a name
+and join. You're put on the team with the fewest players (up to 4 a team, 16
+in all), and you can switch to one with room, which takes back your Ready.
+The first to join hosts, then the next in line if they leave. Once everyone
+is ready, the host starts the match.
+
+**The bases.** Red, Blue, Green and Yellow are based a little inland from
+the island's north-east, south-east, south-west and north-west shores: the
+first flat ground 20 to 80 m in from the beach that's at least 5 m above the
+sea (it can rise 2.4 m, and storm surges 1.4 m more). They're worked out from
+the island, so every player finds the same spots, about 180 m apart. You
+spawn at yours facing the middle of the island, and come back there after
+blacking out.
+
+**The server** (`server/`) decides the island (its seed), so every player
+generates the same one, and a player whose server restarts with another
+island reloads onto it. It checks every request: names lose invisible
+characters and are cut to 16, only the host can start, and only once
+everyone is ready. It only sends out real changes. Newcomers wait while a
+match is on; once everyone has left it, the lobby opens again.
+Single-player never loads Socket.IO.
+
+**Not shared yet:** you don't see the other players, and felling, building,
+the weather and the sea still run separately on each player's machine. Still
+to come:
+
+- Phase 2, players: seeing each other move, smoothly, at 20 updates a second.
+- Phase 3, a shared world: felling, gathering and building go through the
+  server, which keeps opponents from building within about 50 m of another
+  team's base.
+- Phase 4, the match: a bed per team, a 10-minute building countdown, then
+  raids. Tools damage enemy pieces and beds, and a team whose bed is
+  destroyed is out.
+- Phase 5, weather hazards: storm cells, heat domes and surges at random,
+  more often and worse the more the teams strip the island.
 
 ## Controls
 
@@ -626,7 +687,15 @@ src/
   ui/inventoryUI.js     hotbar, inventory screen, pickup feed, what you carry and the prompt
   ui/buildUI.js         the build bar, its piece icons and what needs repairs
   ui/joinery.js         the joinery mini-game: saw, chisel and pegs
+  ui/lobbyUI.js         the multiplayer lobby on the start screen
+  match/teams.js        the four multiplayer teams (shared with the game server)
+  match/bases.js        where each team's base is: inland from its diagonal shore
+  match/multiplayer.js  multiplayer: connecting, the lobby, and starting the match
+  net/net.js            the connection to the game server (Socket.IO, loaded only for multiplayer)
   audio/ambience.js     synthesized wind, rain, surf, underwater, thunder, splashes, wood sounds
+server/
+  index.js              the game server: serves the built game, runs the lobby over Socket.IO
+  lobby.js              the lobby's rules: joining, teams, ready, the host, starting
 scripts/
   gltf.mjs              glTF, GLB and PNG reading and writing for the import scripts
   import-trees.mjs      packs the tree pack's .glb files into public/models/trees

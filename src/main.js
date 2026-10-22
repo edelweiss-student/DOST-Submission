@@ -31,8 +31,14 @@ import { createTimber, woodName } from './world/timber.js';
 import { createBuilding, PIECES, DECK_LEVELS } from './world/building.js';
 import { createHeldItem } from './player/heldItem.js';
 import { loadToolModels } from './items/models.js';
+import { joinServer, createMatch } from './match/multiplayer.js';
 
-const seed = Number(new URLSearchParams(location.search).get('seed')) || 1337;
+// Multiplayer (?mp in the address): the game server decides the island, so
+// ask it before generating anything (see match/multiplayer.js).
+const params = new URLSearchParams(location.search);
+if (params.has('mp')) document.querySelector('#overlay .play').textContent = 'Connecting…';
+const server = params.has('mp') ? await joinServer() : null;
+const seed = server?.seed ?? (Number(params.get('seed')) || 1337);
 const rng = mulberry32(seed);
 
 // Graphics settings for the GPU the browser actually hands us.
@@ -255,12 +261,14 @@ let started = false;
 // The inventory frees the mouse but doesn't pause: the world keeps going.
 const isPlaying = () => player.controls.isLocked || player.dragLook || inventoryUI.open;
 player.enableDragLook(renderer.domElement);
+// Multiplayer: the start screen is the lobby until the match starts.
+const match = server && createMatch(server, { terrain, player, hud, overlay });
 
 function onPlay() {
   overlay.classList.add('hidden');
   if (!started) {
     started = true;
-    hud.message('Day 1. The sun is swelling. Explore the island and the reef while you can.', 6);
+    hud.message(match?.intro ?? 'Day 1. The sun is swelling. Explore the island and the reef while you can.', 6);
   }
 }
 function startDragLook() {
@@ -270,7 +278,7 @@ function startDragLook() {
   hud.message('Mouse capture is blocked here. Hold the left button and drag to look. Esc pauses.', 7);
 }
 overlay.addEventListener('click', () => {
-  if (!ready) return;
+  if (!ready || match?.inLobby) return;
   audio.start();
   try {
     const request = renderer.domElement.requestPointerLock();
@@ -329,6 +337,11 @@ waterButtons.forEach((button) => button.addEventListener('click', (e) => {
   markWater();
 }));
 markWater();
+// Multiplayer has its own address (?mp), answered by the game server.
+overlay.querySelector('.mode').addEventListener('click', (e) => {
+  e.stopPropagation(); // don't start the game
+  location.search = '?mp';
+});
 
 // What E and X act on: whichever is most squarely under the crosshair of
 // the plants and items you can gather, the logs and planks lying about,
@@ -443,6 +456,7 @@ addEventListener('keyup', (e) => {
   if (e.code === 'KeyX') hold.down = false;
 });
 addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLInputElement) return;   // typing your name in the lobby
   if (e.code === 'KeyP') perf.toggle();
   if (e.code === 'Tab') e.preventDefault();
   if (e.code === 'Escape') {
@@ -642,7 +656,7 @@ renderer.compileAsync(scene, camera).catch(() => {}).finally(() => {
 if (import.meta.env.DEV) {
   window.game = {
     scene, camera, renderer, terrain, weather, sea, player, sky, water, uniforms, vegetation, step, inventory, gathering,
-    timber, building, build, joinery, held, climate,
+    timber, building, build, joinery, held, climate, match,
     counts: vegetation.counts, quality: { tier, gpu, adaptive, gpuTimer },
   };
 }

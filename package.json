@@ -8,10 +8,14 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "server": "node server/index.js",
+    "lan": "vite build && node server/index.js",
     "import-trees": "node scripts/import-trees.mjs",
     "import-tools": "node scripts/import-tools.mjs"
   },
   "dependencies": {
+    "socket.io": "^4.8.4",
+    "socket.io-client": "^4.8.4",
     "three": "^0.170.0"
   },
   "devDependencies": {
