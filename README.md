@@ -433,8 +433,9 @@ To re-import, for example after updating the pack:
 npm run import-trees -- "<folder with Birch_A.glb, Oak_B.glb, ...>"
 ```
 
-The script uses only Node's built-in modules. The download had no licence
-file, so check the pack's terms before publishing the game.
+The script uses only Node's built-in modules. The pack is free to use:
+credit isn't required but is appreciated, so the game credits it here (see
+Credits) and on the start screen.
 
 ## Layout
 
@@ -486,3 +487,8 @@ public/models/trees/    the packed tree models: one .glb per species, plus deadw
 ```
 
 There are no hostile creatures yet. The fish are passive.
+
+## Credits
+
+The trees and fallen trunks come from the **3D Retro World** pack (version
+0.01), which is free to use. Thank you to its creator.
