@@ -4,6 +4,15 @@ import { patchMaterial } from '../world/materials.js';
 import { LOG_LENGTH, LOG_RADIUS, PLANK, logGeometry, boardGeometry } from '../world/wood.js';
 import { CARRY } from '../world/timber.js';
 
+// How each tool sits in your hand: its size, and where the grip is (m,
+// from the eye), so a big head doesn't fill the view and a short knife
+// still shows.
+const GRIP = {
+  knife: { scale: 1, y: -0.36, z: -0.5 },
+  axe: { scale: 0.7, y: -0.48, z: -0.6 },
+  pickaxe: { scale: 0.58, y: -0.47, z: -0.6 },
+};
+
 // What's in your hands, at the lower right of the view: the selected tool,
 // which bobs as you walk and swings when you use it, or the wood you're
 // carrying instead (logs on your shoulder, planks under your arm).
@@ -12,7 +21,6 @@ import { CARRY } from '../world/timber.js';
 export function createHeldItem(scene, camera, wood) {
   scene.add(camera);   // things attached to the camera are only drawn if it's in the scene
   const hand = new THREE.Group();
-  hand.scale.setScalar(0.85);
   camera.add(hand);
   const material = patchMaterial(new THREE.MeshLambertMaterial({ vertexColors: true }), { key: 'held-item', snowMin: 0.95 });
   const models = {};
@@ -87,7 +95,9 @@ export function createHeldItem(scene, camera, wood) {
       if (!id) return;
       swing = Math.max(0, swing - dt * 3.5);
       const sw = Math.sin(swing * Math.PI);   // out and back over the swing
-      hand.position.set(0.34 + sw * 0.04, -0.46 + Math.sin(bob * 2) * 0.012 * moving, -0.6 - sw * 0.08);
+      const grip = GRIP[id];
+      hand.scale.setScalar(grip.scale);
+      hand.position.set(0.34 + sw * 0.04, grip.y + Math.sin(bob * 2) * 0.012 * moving, grip.z - sw * 0.08);
       hand.rotation.set(-0.45 - sw * 1.1, 0.35, 0.45 + Math.sin(bob) * 0.02 * moving);
     },
   };

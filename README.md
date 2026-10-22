@@ -494,6 +494,30 @@ The script uses only Node's built-in modules. The pack is free to use:
 credit isn't required but is appreciated, so the game credits it here (see
 Credits) and on the start screen.
 
+## Tool models
+
+The knife, axe and pickaxe are from Kay Lousberg's **KayKit : RPG Tools
+Bits** (free version, CC0: <https://kaylousberg.itch.io/rpg-tools-bits>).
+`scripts/import-tools.mjs` packs the three into `public/models/tools.glb`
+(61 KB):
+
+- The colours each model takes from the pack's palette texture are baked
+  into its vertices, so the tools share the one material every item uses,
+  and the texture isn't needed.
+- The game's tools are stone-headed, so metal (the pack's greys and
+  blue-greys) becomes stone, keeping each part's light-to-dark gradient.
+- Each tool is turned to stand on its grip at the origin, handle up and
+  head facing +X, and scaled to the game: a 30 cm knife, a 55 cm axe (more
+  hatchet than felling axe) and a 62 cm pickaxe.
+
+In your hand each has its own size and grip position (`player/heldItem.js`);
+lying in the world they rest on their side, head flat. To re-import, for
+example to swap in other tools from the pack:
+
+```bash
+npm run import-tools -- "<the pack's Assets/gltf folder>"
+```
+
 ## Layout
 
 ```
@@ -532,7 +556,8 @@ src/
   items/items.js        item definitions and their icons (drawn at startup)
   items/inventory.js    hotbar and bag slots: stacking, splitting, swapping, quick-move, tool wear
   items/recipes.js      crafting recipes
-  items/models.js       low-poly item and tool models (in the world and in your hand)
+  items/models.js       item models: the imported tools, simple shapes for the rest (in the world
+                        and in your hand)
   world/gathering.js    gathering from trees, bushes, boulders, fallen trunks and grass, tool
                         bonuses; items in the world
   player/heldItem.js    the selected tool in your hand (bobbing and swinging), or the wood you carry
@@ -542,8 +567,11 @@ src/
   ui/joinery.js         the joinery mini-game: saw, chisel and pegs
   audio/ambience.js     synthesized wind, rain, surf, underwater, thunder, splashes, wood sounds
 scripts/
+  gltf.mjs              glTF, GLB and PNG reading and writing for the import scripts
   import-trees.mjs      packs the tree pack's .glb files into public/models/trees
+  import-tools.mjs      packs the knife, axe and pickaxe into public/models/tools.glb
 public/models/trees/    the packed tree models: one .glb per species, plus deadwood
+public/models/tools.glb the packed tool models
 ```
 
 There are no hostile creatures yet. The fish are passive.
@@ -552,3 +580,7 @@ There are no hostile creatures yet. The fish are passive.
 
 The trees and fallen trunks come from the **3D Retro World** pack (version
 0.01), which is free to use. Thank you to its creator.
+
+The knife, axe and pickaxe are from **KayKit : RPG Tools Bits** by Kay
+Lousberg (<https://www.kaylousberg.com>), released under CC0. Thank you,
+Kay.
