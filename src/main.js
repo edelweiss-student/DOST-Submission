@@ -309,7 +309,8 @@ markWater();
 
 // What E and X act on: whichever is most squarely under the crosshair of
 // the plants and items you can gather, the logs and planks lying about,
-// and what you've built. Each offers { score, prompt, dim, act, hold }.
+// and what you've built. Each offers { score, prompt, dim, act, hold }, and
+// swing when the act is done with the tool in hand.
 const aimRay = new THREE.Ray(), aimDir = new THREE.Vector3();
 let focus = null;
 function updateFocus() {
@@ -328,14 +329,15 @@ function updateFocus() {
   }
 }
 
-// What an action did: items gained, the tool used (it swings and wears
-// down), anything to tell you, and joints to make.
+// What an action did: items gained, the tool used (it wears down),
+// anything to tell you, and joints to make.
 function report(result, tool) {
   if (!result) return;
   for (const { id, count } of result.got ?? []) inventoryUI.notify(`+${count} ${ITEMS[id].name}`);
   if (result.used) {
-    held.swing();
-    if (inventory.wear(inventory.selected)) hud.message(`Your ${ITEMS[tool.id].name.toLowerCase()} broke.`, 4);
+    // The tool that swung, wherever it is now.
+    const slot = inventory.slots.indexOf(tool);
+    if (slot >= 0 && inventory.wear(slot)) hud.message(`Your ${ITEMS[tool.id].name.toLowerCase()} broke.`, 4);
   }
   if (result.empty) hud.message('Nothing left to gather here. It grows back with time.', 3);
   else if (result.full) hud.message('Your bag is full.', 3);
@@ -345,12 +347,18 @@ function report(result, tool) {
 }
 
 // E: act on what you're looking at, or in build mode place the blueprint.
+// Work done with a tool happens as the swing lands, not when it starts.
 let lastUse = 0;
 function interact() {
-  if (performance.now() - lastUse < 300) return;
+  if (performance.now() - lastUse < 300 || held.busy) return;
   lastUse = performance.now();
-  if (build.on) placeBlueprint();
-  else if (focus?.act) report(focus.act(), inventory.current);
+  if (build.on) {
+    placeBlueprint();
+  } else if (focus?.act) {
+    const { act } = focus, tool = inventory.current;
+    if (focus.swing) held.swing(() => report(act(), tool));
+    else report(act(), tool);
+  }
 }
 
 // Holding X takes apart what you built (or clears a blueprint).
@@ -610,7 +618,7 @@ renderer.compileAsync(scene, camera).catch(() => {}).finally(() => {
 if (import.meta.env.DEV) {
   window.game = {
     scene, camera, renderer, terrain, weather, sea, player, sky, water, uniforms, vegetation, step, inventory, gathering,
-    timber, building, build, joinery,
+    timber, building, build, joinery, held,
     counts: vegetation.counts, quality: { tier, gpu, adaptive, gpuTimer },
   };
 }

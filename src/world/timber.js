@@ -373,7 +373,7 @@ export function createTimber(scene, { terrain, water, forest, trees, wood, groun
     const name = woodName(p.kind);
     if (p.kind === 'log' && tool === 'axe' && !held) {
       return {
-        score, key: p, prompt: [['E', `Split into planks (${p.chops}/${SPLIT_CHOPS})`]],
+        score, key: p, swing: true, prompt: [['E', `Split into planks (${p.chops}/${SPLIT_CHOPS})`]],
         act: () => {
           split(p);
           return { used: true };

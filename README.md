@@ -89,8 +89,13 @@ For now there are three stone tools:
 A tool is used up one gather at a time, and only where it does better (an
 axe at a bush wears nothing). A bar under its slot shows the uses left, and
 the tooltip gives the exact number. A selected tool is in your hand at the
-lower right; it bobs as you walk and swings when you use it. Tools keep
-their wear when moved, dropped or picked back up, and they sink in water.
+lower right; it bobs as you walk and swings when you use it, and its work
+is done when the swing lands, not when you press `E`. The knife and pickaxe
+strike down and forward. The axe chops level: it swings back to the right,
+sweeps across from right to left and bites in edge first right where the
+crosshair is, jolts with the blow, then pulls back. You can't start another
+swing until one is nearly over. Tools keep their wear when moved, dropped or
+picked back up, and they sink in water.
 
 `I` or `Tab` opens the inventory screen. It frees the mouse but doesn't
 pause the game:

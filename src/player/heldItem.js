@@ -13,6 +13,37 @@ const GRIP = {
   pickaxe: { scale: 0.58, y: -0.47, z: -0.6 },
 };
 
+// How each tool swings. duration in seconds; hit: when in the swing the
+// tool lands (0..1), which is when its work is done.
+// A strike (knife, pickaxe) jabs down and forward from where it's held.
+const STRIKE = { duration: 0.29, hit: 0.5 };
+// A chop (the axe) swings level from right to left. Your hands stay low on
+// the right and move in a little, while the axe turns in them, so the head
+// sweeps across the view from the right edge and bites in edge first right
+// at the crosshair, jolts with the blow, then pulls back.
+const CHOP = {
+  duration: 0.5, hit: 0.45,
+  // Where the grip is (from the eye) and how far the axe has turned (to the
+  // left, about the vertical): wound back, and at the hit.
+  grip: [new THREE.Vector3(0.36, -0.22, -0.5), new THREE.Vector3(0.17, -0.09, -0.42)],
+  turn: [-0.85, 0.12],
+  recoil: 0.09,   // how far the blow jolts it back (radians)
+  // Held out: the handle forward and a little up, the edge (the head's +X)
+  // facing left, the way the swing goes, and the blade flat, so at eye
+  // level it's seen edge on.
+  hold: (() => {
+    const lift = 0.25;
+    return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(
+      new THREE.Vector3(-1, 0, 0),
+      new THREE.Vector3(0, Math.sin(lift), -Math.cos(lift)),
+      new THREE.Vector3(0, -Math.cos(lift), -Math.sin(lift)),
+    ));
+  })(),
+};
+const SWINGS = { knife: STRIKE, axe: CHOP, pickaxe: STRIKE };
+const UP = new THREE.Vector3(0, 1, 0);
+const ease = (t) => t * t * (3 - 2 * t);
+
 // What's in your hands, at the lower right of the view: the selected tool,
 // which bobs as you walk and swings when you use it, or the wood you're
 // carrying instead (logs on your shoulder, planks under your arm).
@@ -25,7 +56,48 @@ export function createHeldItem(scene, camera, wood) {
   const material = patchMaterial(new THREE.MeshLambertMaterial({ vertexColors: true }), { key: 'held-item', snowMin: 0.95 });
   const models = {};
   let shown = null;
-  let swing = 0, bob = 0;
+  let swing = null, bob = 0;   // swing: { style, t (0..1), onHit, landed }
+
+  // Poses of the hand: where the grip is and how the tool is turned.
+  const rest = { pos: new THREE.Vector3(), quat: new THREE.Quaternion() };
+  const pose = { pos: new THREE.Vector3(), quat: new THREE.Quaternion() };
+  const euler = new THREE.Euler(), turn = new THREE.Quaternion();
+  // The axe mid-chop: the grip t of the way from wound back to the hit,
+  // and turned to angle.
+  const chopAt = (t, angle) => {
+    pose.pos.lerpVectors(CHOP.grip[0], CHOP.grip[1], t);
+    turn.setFromAxisAngle(UP, angle);
+    pose.quat.copy(turn).multiply(CHOP.hold);
+    return pose;
+  };
+  const set = ({ pos, quat }) => {
+    hand.position.copy(pos);
+    hand.quaternion.copy(quat);
+  };
+  const blend = (from, to, t) => {
+    hand.position.lerpVectors(from.pos, to.pos, t);
+    hand.quaternion.slerpQuaternions(from.quat, to.quat, t);
+  };
+  // u: how far through the swing (0..1).
+  function chop(u) {
+    const [back, at] = CHOP.turn, windUp = 0.28, bitten = 0.6;
+    if (u < windUp) {
+      blend(rest, chopAt(0, back), ease(u / windUp));
+    } else if (u < CHOP.hit) {
+      const t = (u - windUp) / (CHOP.hit - windUp);
+      set(chopAt(t, back + (at - back) * t * t));   // gathering speed into the hit
+    } else if (u < bitten) {
+      const t = (u - CHOP.hit) / (bitten - CHOP.hit);
+      set(chopAt(1, at - CHOP.recoil * Math.sin(t * Math.PI) * (1 - t)));   // the jolt of the blow
+    } else {
+      blend(chopAt(1, at), rest, ease((u - bitten) / (1 - bitten)));
+    }
+  }
+  function strike(u) {
+    const s = Math.sin(u * Math.PI);   // out and back
+    hand.position.set(rest.pos.x + s * 0.04, rest.pos.y, rest.pos.z - s * 0.08);
+    hand.quaternion.setFromEuler(euler.set(-0.45 - s * 1.1, 0.35, 0.45));
+  }
 
   // Carried wood: instanced like the wood in the world, so it shares its shaders.
   const arms = new THREE.Group();
@@ -73,7 +145,13 @@ export function createHeldItem(scene, camera, wood) {
   }
 
   return {
-    swing() { swing = 1; },
+    // Swings the tool in hand; onHit() is called as it lands.
+    swing(onHit) {
+      swing = { style: SWINGS[shown] ?? STRIKE, t: 0, onHit, landed: false };
+    },
+
+    // Mid-swing: too soon to swing again.
+    get busy() { return !!swing && swing.t < 0.85; },
 
     // stack: the selected hotbar stack; speed: how fast you're moving (m/s);
     // carried: the logs or planks in your arms ([{ kind, bark }]), which
@@ -92,13 +170,25 @@ export function createHeldItem(scene, camera, wood) {
       const moving = Math.min(1, speed / 4);
       bob += dt * (2 + speed * 1.4);
       arms.position.set(0, Math.sin(bob * 2) * 0.02 * moving, 0);
+      const style = swing?.style;
+      if (swing) {
+        swing.t = Math.min(1, swing.t + dt / style.duration);
+        if (!swing.landed && swing.t >= style.hit) {
+          swing.landed = true;
+          swing.onHit?.();
+        }
+      }
+      const u = swing?.t ?? 0;
+      if (u >= 1) swing = null;
       if (!id) return;
-      swing = Math.max(0, swing - dt * 3.5);
-      const sw = Math.sin(swing * Math.PI);   // out and back over the swing
+      // At rest: low on the right, bobbing as you walk.
       const grip = GRIP[id];
       hand.scale.setScalar(grip.scale);
-      hand.position.set(0.34 + sw * 0.04, grip.y + Math.sin(bob * 2) * 0.012 * moving, grip.z - sw * 0.08);
-      hand.rotation.set(-0.45 - sw * 1.1, 0.35, 0.45 + Math.sin(bob) * 0.02 * moving);
+      rest.pos.set(0.34, grip.y + Math.sin(bob * 2) * 0.012 * moving, grip.z);
+      rest.quat.setFromEuler(euler.set(-0.45, 0.35, 0.45 + Math.sin(bob) * 0.02 * moving));
+      if (style === CHOP && u < 1) chop(u);
+      else if (style && u < 1) strike(u);
+      else set(rest);
     },
   };
 }
