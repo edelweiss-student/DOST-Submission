@@ -58,7 +58,10 @@ export function createTimber(scene, { terrain, water, forest, trees, wood, groun
   const logGeo = logGeometry(), boardGeo = boardGeometry();
   const logMeshes = {};
   for (const [bark, material] of Object.entries(wood.bark)) {
-    const mesh = new THREE.InstancedMesh(logGeo, [material, wood.endGrain, wood.endGrain], MAX_LOGS + trees.filter((t) => t.species === bark).length);
+    const capacity = MAX_LOGS + trees.filter((t) => t.species === bark).length;
+    const mesh = new THREE.InstancedMesh(logGeo, [material, wood.endGrain, wood.endGrain], capacity);
+    // Untinted, but coloured like the built pilings' logs (building.js), so they share a shader.
+    mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3).fill(1), 3);
     mesh.count = 0;
     mesh.frustumCulled = false;
     mesh.castShadow = shadows;
@@ -398,10 +401,12 @@ export function createTimber(scene, { terrain, water, forest, trees, wood, groun
     // A log cut off a fallen trunk.
     spawnLog(x, y, z, yaw, bark) { spawn('log', bark, x, y, z, yaw, 0, 1, 0); },
 
-    // Planks set free from something built (taken apart, or broken up by
-    // the sea): [{ x, y, z, yaw }].
+    // Wood set free from something built (taken apart, or broken up by the
+    // weather or the sea): [{ x, y, z, yaw, kind, bark }], planks by default.
     release(list) {
-      for (const { x, y, z, yaw } of list) spawn('plank', null, x, y, z, yaw, (rng() - 0.5) * 1.5, 0.5 + rng(), (rng() - 0.5) * 1.5, (rng() - 0.5) * 2);
+      for (const { x, y, z, yaw, kind = 'plank', bark = null } of list) {
+        spawn(kind, kind === 'log' ? bark : null, x, y, z, yaw, (rng() - 0.5) * 1.5, 0.5 + rng(), (rng() - 0.5) * 1.5, (rng() - 0.5) * 2);
+      }
     },
 
     // What you're carrying: { kind, count }, or null.
@@ -414,11 +419,10 @@ export function createTimber(scene, { terrain, water, forest, trees, wood, groun
       if (!held) return 0;
       return held.kind === 'log' ? held.count / CARRY.log : 0.4 * held.count / CARRY.plank;
     },
-    // Uses up one carried piece of this kind (a plank going into a build).
+    // Uses up one carried piece of this kind (going into a build or a
+    // repair) and returns it, or null if you're not carrying one.
     take(kind) {
-      if (carried.at(-1)?.kind !== kind) return false;
-      carried.pop();
-      return true;
+      return carried.at(-1)?.kind === kind ? carried.pop() : null;
     },
     putDown,
     // Everything you carry falls where you stand (you blacked out).

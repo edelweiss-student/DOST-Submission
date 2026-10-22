@@ -38,9 +38,19 @@
     <div id="hotbar-name"></div>
     <div id="hotbar"></div>
     <div id="build-bar" hidden>
+      <div id="build-status"></div>
       <div id="build-name"></div>
       <div id="build-pieces"></div>
-      <div class="build-help"><kbd>E</kbd>Place <kbd>R</kbd>Turn <kbd>1–4</kbd>Piece <kbd>B</kbd>Done</div>
+      <div class="build-help"><kbd>E</kbd>Place <kbd>R</kbd>Turn or raise <kbd>1–8</kbd>Piece <kbd>B</kbd>Done</div>
+    </div>
+    <div id="joinery" hidden>
+      <div class="joinery-panel">
+        <h2 id="joinery-title"></h2>
+        <div id="joinery-step"></div>
+        <canvas id="joinery-canvas" width="420" height="210"></canvas>
+        <div id="joinery-help"></div>
+        <div class="joinery-keys"><kbd>E</kbd> / <kbd>Space</kbd> / click to work · <kbd>X</kbd> skip (rough joints)</div>
+      </div>
     </div>
     <div id="feed"></div>
 
@@ -80,7 +90,8 @@
           <b>1–9 / Wheel</b><span>Choose a hotbar slot</span>
           <b>I / Tab</b><span>Inventory and crafting</span>
           <b>Q</b><span>Drop one of the selected item, or put down wood</span>
-          <b>B</b><span>Build (floors, walls, doorways, roofs)</span>
+          <b>B</b><span>Build: floors, pilings, walls, roofs and more</span>
+          <b>E on a build</b><span>Add wood, repair it, or work its joints</span>
           <b>Hold X</b><span>Take apart what you built</span>
           <b>Right-click</b><span>Eat the selected item</span>
           <b>M</b><span>Mute</span>

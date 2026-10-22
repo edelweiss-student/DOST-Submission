@@ -9,6 +9,7 @@ const GRAVITY = 24, JUMP = 7.5;
 const FLOAT_DEPTH = 1.45;       // feet below the surface while treading water
 const STEP = 0.5;               // highest ledge you step up onto (a built floor)
 const CLIMB = 2.2;              // ...or climb onto out of the water
+const LADDER_SPEED = 2.4;       // m/s up or down a ladder
 export const MAX_OXYGEN = 30;   // seconds of breath
 
 // Stamina per second in mild weather: about 12 s of sprinting or 10 s of
@@ -57,7 +58,8 @@ export class Player {
     this.dragLook = false;
     this.inputEnabled = true;   // off while a menu (the inventory) has the keys
     this.burden = 0;            // 0 empty-handed .. 1 carrying all you can (logs)
-    // What you've built (world/building.js): floorAt, collide and shelterAt.
+    this.climbing = false;      // on a ladder
+    // What you've built (world/building.js): floorAt, collide, ladderAt and shelterAt.
     this.structures = null;
     this.onMessage = null;
     this.onSplash = null;
@@ -113,14 +115,14 @@ export class Player {
   }
 
   // How high a ledge you can get up onto: a step on land, more out of the water.
-  get climb() { return this.swimming || this.inWater ? CLIMB : STEP; }
+  get ledge() { return this.swimming || this.inWater ? CLIMB : STEP; }
 
   // The ground under you: the terrain, or a floor you've built that you're
   // on or can get up onto.
   groundAt(x, z) {
     const g = this.terrain.heightAt(x, z);
     if (!this.structures) return g;
-    return Math.max(g, this.structures.floorAt(x, z, this.pos.y + this.climb));
+    return Math.max(g, this.structures.floorAt(x, z, this.pos.y + this.ledge));
   }
 
   // heatIndex: the weather's heat index, °C.
@@ -139,8 +141,17 @@ export class Player {
     const submerged = (surf.height - p.y) / BODY;
     // Hysteresis so bobbing on a wave doesn't flip between walking and swimming.
     this.swimming = surf.height - ground > FLOAT_DEPTH && submerged > (this.swimming ? 0.4 : 0.6);
+    // A ladder: climb on at its foot with W or Space, or catch hold of it
+    // stepping off its floor. Swimming, you climb on only if you mean to;
+    // standing at its foot (or on the deck at its top), you let go.
+    const ladder = this.structures?.ladderAt(p.x, p.y, p.z);
+    const up = k.has('KeyW') || k.has('Space');
+    const atTop = !!ladder && this.grounded && p.y > ladder.top - 0.3;
+    this.climbing = !!ladder && ((up && !atTop) || (!this.grounded && (this.climbing || !this.swimming)));
+    if (this.climbing) this.swimming = false;
 
-    if (this.swimming) this.swim(dt, sprint, ix, iz, surf);
+    if (this.climbing) this.climb(dt, ix, ladder);
+    else if (this.swimming) this.swim(dt, sprint, ix, iz, surf);
     else this.walk(dt, sprint, ix, iz, surf, submerged);
 
     const inWater = p.y < surf.height - 0.1;
@@ -215,6 +226,21 @@ export class Player {
     this.grounded = false;
   }
 
+  // On a ladder: W or Space climbs, S goes down, A and D shuffle sideways.
+  // Near the top, climbing on while facing the deck takes you onto it.
+  climb(dt, ix, ladder) {
+    const k = this.keys, p = this.pos, v = this.vel;
+    const up = k.has('KeyW') || k.has('Space'), down = k.has('KeyS');
+    v.y = (up ? LADDER_SPEED : 0) - (down ? LADDER_SPEED : 0);
+    const facing = -(fwd.x * ladder.nx + fwd.z * ladder.nz) / (Math.hypot(fwd.x, fwd.z) || 1);
+    const onto = up && facing > 0.3 && p.y > ladder.top - 0.5 ? 1.6 : 0;
+    v.x = -ladder.nx * onto + right.x * ix * 1.2;
+    v.z = -ladder.nz * onto + right.z * ix * 1.2;
+    p.addScaledVector(v, dt);
+    p.y = Math.min(p.y, ladder.top + 0.1);
+    this.grounded = false;
+  }
+
   walk(dt, sprint, ix, iz, surf, submerged) {
     const p = this.pos, v = this.vel;
     const wading = submerged > 0.2;
@@ -238,7 +264,7 @@ export class Player {
 
   collide(t) {
     const p = this.pos;
-    this.structures?.collide(p, 0.35, BODY, this.climb);
+    this.structures?.collide(p, 0.35, BODY, this.ledge);
     for (const c of this.colliders.query(p.x, p.z, near)) {
       const dx = p.x - c.x, dz = p.z - c.z, min = c.r + 0.35;
       const d2 = dx * dx + dz * dz;

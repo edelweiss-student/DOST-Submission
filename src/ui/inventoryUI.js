@@ -210,7 +210,8 @@ export class InventoryUI {
   }
 
   // The actions under the crosshair, as [key, text] pairs, e.g.
-  // [['E', 'Gather sticks']]; dim when there's nothing to be done.
+  // [['E', 'Gather sticks']], plus [null, text] lines that only inform;
+  // dim when there's nothing to be done.
   setPrompt(actions, dim = false) {
     const p = this.el.prompt;
     const key = actions ? JSON.stringify([actions, dim]) : '';
@@ -221,7 +222,8 @@ export class InventoryUI {
     p.innerHTML = '';
     for (const [k, text] of actions ?? []) {
       const line = p.appendChild(document.createElement('div'));
-      line.appendChild(document.createElement('kbd')).textContent = k;
+      if (k) line.appendChild(document.createElement('kbd')).textContent = k;
+      else line.className = 'info';
       line.append(text);
     }
   }

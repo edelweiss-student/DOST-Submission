@@ -28,7 +28,9 @@ Open http://localhost:5173 in Chrome, Edge or Firefox and click to play.
 | 1–9 / mouse wheel | Choose a hotbar slot |
 | I / Tab | Open or close the inventory and crafting |
 | Q | Drop one of the selected item, or put down the wood you're carrying |
-| B | Build mode: `1`–`4` or the wheel choose a piece, `R` turns a roof, `E` (or left-click) places it, `B` or right-click leaves |
+| B | Build mode: `1`–`8` or the wheel choose a piece, `R` turns a roof or raises pilings, `E` (or left-click) places it, `B` or right-click leaves |
+| E on a build | Add the wood you carry, repair it with a plank (or log), or with empty arms rework its joints |
+| W / S on a ladder | Climb up or down |
 | Hold X | Take apart something you built, or clear a blueprint |
 | Right-click | Eat the selected item |
 | M | Mute |
@@ -130,35 +132,88 @@ rest along the ground, float, and drift with the waves and the wind.
 - `Q` puts one down in front of you, across your path. If you black out,
   you drop everything you carry.
 
-**Building.** Press `B` and the hotbar turns into the build bar:
+**Building.** Press `B` and the hotbar turns into the build bar. `1`–`8`
+or the mouse wheel choose a piece:
 
-| Piece | Planks | Goes |
-| --- | --- | --- |
-| Floor | 6 | On the ground or out over the water, on posts, snapped to a 2 m grid |
-| Wall | 6 | Along the floor edge nearest the crosshair |
-| Doorway | 4 | Like a wall, with an opening to walk through |
-| Roof | 8 | Over a floor: a pitched roof with boarded gable ends (`R` turns the ridge) |
+| Key | Piece | Costs | Goes |
+| --- | --- | --- | --- |
+| 1 | Floor | 6 planks | On posts on the ground or out over the water, snapped to a 2 m grid, or on top of pilings |
+| 2 | Wall | 6 planks | Along the floor edge nearest the crosshair |
+| 3 | Doorway | 4 planks | Like a wall, with an opening to walk through |
+| 4 | Roof | 8 planks | Over a floor: a pitched roof with boarded gable ends (`R` turns the ridge) |
+| 5 | Pilings | 4 logs | Four log stilts driven into the ground or the seabed. A floor goes on top of them, 2, 3, 4 or 5 m above the water (`R` changes the height) |
+| 6 | Window | 5 planks | A wall with a window in it |
+| 7 | Ladder | 3 planks | Down the side of a floor, to the ground or the seabed |
+| 8 | Railing | 3 planks | Along a floor edge, so you don't fall off |
 
 A see-through preview follows the crosshair: green where the piece fits,
 red (with the reason) where it doesn't. A floor levels itself above the
 highest ground under it, matches the height of a floor next to it, and
 can't go where trunks, stumps or boulders are in the way or where its
-posts would be longer than 5 m. Press `E` to place a **blueprint**.
+posts would be longer than 5 m. Pilings line up with pilings or floors next
+to them, so decks meet. When you choose pilings, the build bar says how
+much further the sea may still rise. Press `E` to place a **blueprint**.
 
-Then bring planks. With planks in your arms, look at the blueprint and press
-`E` to add one; the piece grows board by board. Once it has all its planks
-it's solid: you stand on floors (and step or climb onto them, even out of
-the water), walls and doorways stop you, and a roof shades you from the sun
-like a tree's crown. Holding `X` for a moment on a piece takes it apart
-and gives all its planks back; on a blueprint it clears it and gives back
-the planks it had. A floor can't be taken apart while walls or a roof stand
-on it.
+Then bring the wood: planks, or logs for pilings. With it in your arms, look
+at the blueprint and press `E` to add one; the piece grows board by board.
+Once it has everything it's solid: you stand on floors (and step or climb
+onto them, even out of the water), walls, doorways and railings stop you,
+pilings stand in your way, and a roof shades you from the sun like a tree's
+crown and keeps the rain off what's under it.
 
-**The sea wears it down.** Built pieces near the shore use the sea's wear
-(see Sea level below): a low dock lasts hours in calm weather, several
-minutes in a storm's surf, and a couple of minutes under a storm surge. Worn wood greys and darkens, and the
-prompt shows how sound it still is. When a piece wears through, it breaks
-up and its planks float away. Whatever stood on a broken floor goes with it.
+**Ladders.** Walk up to one and hold `W` (or `Space`) to climb, `S` to go
+down, `A` and `D` to shuffle sideways. At the top, keep climbing while
+facing the deck and you step onto it. Walk off a deck where a ladder hangs
+and you catch hold of it. From the water, swim to the foot of a ladder and
+climb out.
+
+**Joinery.** When a piece gets its last plank, you make its joints in a
+quick mini-game. `E`, `Space` or a click works each step:
+
+1. **Saw the tenon:** stop the saw on the pencil line.
+2. **Chisel the mortise:** tap to cut deeper, then stop inside the marked
+   depth. Cut too deep and the joint is loose.
+3. **Drive the pegs:** strike as the mallet swings down onto the peg, three
+   times.
+
+How well it went sets the joints: Rough, Sound, Tight or Masterful. Better
+joints make the piece sturdier, so weather and sea wear it down more
+slowly: masterful joints last nearly twice as long as rough ones. `X` skips
+the mini-game and leaves rough joints. Later, look at a piece with empty
+arms and press `E` to rework its joints; you keep whichever joints are
+better.
+
+**Everything you build wears down**, and needs looking after from time to
+time. Look at a piece to see how it's doing: its condition, its joints,
+whether it's soaked, and how high it stands above the water.
+
+- Wood ages in any weather: left alone, a piece wears out in a little over
+  an hour of play.
+- Rain soaks it unless a roof is over it, and wet wood rots faster. It
+  dries out again in the sun, faster in a heatwave.
+- Storm winds batter it, the harder the higher it stands; roofs and walls
+  catch the most. A violent storm can take a third off an exposed wall.
+- Snow weighs on roofs, and droughts crack the wood.
+- The sea does the most damage (see Sea level below). Anything it floods or
+  its surf reaches wears down fast: a low floor dies in a minute or two
+  under a storm surge. It leaves a high-water mark on what it reached:
+  stained green with weed below, crusted with salt along the line. A
+  message warns you when the sea is nearly up to something you built.
+- Pilings are made to stand in water. Only the surf works on them, and
+  logs are tough, so they last several times longer than planks. Building
+  up on pilings, above where the sea will reach, is how to stay ahead of it.
+
+Worn wood greys and darkens, and below about half its condition, boards
+start falling off. To **repair** a piece, carry a plank (a log, for pilings)
+to it and press `E`: each one brings it back 40% (50% for a log). A message
+warns you when something drops below 35%, and the build bar counts what
+needs repairs. When a piece wears through it gives way, along with whatever
+stood on it, and its wood falls or floats away.
+
+Holding `X` for a moment on a piece takes it apart and gives all its wood
+back; on a blueprint it clears it and gives back what it had. A floor can't
+be taken apart while walls, a roof or a ladder stand on it, nor pilings with
+a floor on top.
 
 ## How the climate works
 
@@ -207,7 +262,9 @@ minutes a metre under water, about 15 minutes in the surf, and a few hours
 in salt spray just above it. Rough seas wear it faster, and sturdier
 materials will pass a higher resistance (stone about 4). Floors are worn
 from the underside of the deck (their posts are meant to stand in water),
-walls and roofs from their base.
+walls and roofs from their base. Pilings only take the surf, and their logs
+outlast planks several times over. Better joints slow all of it (see Timber
+and building).
 
 ## Heat and stamina
 
@@ -455,8 +512,10 @@ src/
   world/vegetation.js   tree, fallen trunk, bush and boulder placement, colliders, culled instancing
   world/wood.js         wood materials and shapes: bark, plank grain, cut ends, logs, boards
   world/timber.js       felling, stumps, logs and planks in the world, splitting, carrying
-  world/building.js     floors, walls, doorways and roofs: placing, blueprints, building up,
-                        taking apart, standing and colliding, roof shade, sea wear
+  world/building.js     floors, pilings, walls, windows, doorways, ladders, railings and roofs:
+                        placing, blueprints, building up, joints, weather and sea wear,
+                        high-water marks, repairs, taking apart, standing, climbing, colliding,
+                        roof shade
   world/grass.js        GPU grass around the player
   world/waves.js        Gerstner wave spectrum, CPU surface sampling for physics
   world/water.js        water surface mesh, depth and ripple textures, uniforms
@@ -469,7 +528,7 @@ src/
   weather/weather.js    weather presets, humidity and heat index, climate instability
   weather/sealevel.js   sea level rise, tides, storm surge, salt damage lines, structure exposure
   weather/precipitation.js  GPU rain and snow, lightning
-  player/player.js      walking, buoyant swimming, oxygen, health, stamina, heat strain, eating
+  player/player.js      walking, buoyant swimming, ladders, oxygen, health, stamina, heat strain, eating
   items/items.js        item definitions and their icons (drawn at startup)
   items/inventory.js    hotbar and bag slots: stacking, splitting, swapping, quick-move, tool wear
   items/recipes.js      crafting recipes
@@ -479,7 +538,8 @@ src/
   player/heldItem.js    the selected tool in your hand (bobbing and swinging), or the wood you carry
   ui/hud.js             HUD panels, bars, messages and heat warnings
   ui/inventoryUI.js     hotbar, inventory screen, pickup feed, what you carry and the prompt
-  ui/buildUI.js         the build bar and its piece icons
+  ui/buildUI.js         the build bar, its piece icons and what needs repairs
+  ui/joinery.js         the joinery mini-game: saw, chisel and pegs
   audio/ambience.js     synthesized wind, rain, surf, underwater, thunder, splashes, wood sounds
 scripts/
   import-trees.mjs      packs the tree pack's .glb files into public/models/trees

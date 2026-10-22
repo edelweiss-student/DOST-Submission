@@ -124,6 +124,7 @@ html, body {
   font: 600 12px/17px system-ui, sans-serif; text-align: center;
 }
 #prompt.dim kbd { border-color: var(--muted); color: var(--muted); }
+#prompt .info { font-size: 12px; color: var(--muted); }
 
 #build-bar {
   position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
@@ -135,7 +136,29 @@ html, body {
 #build-pieces .slot.selected { border-color: var(--accent); background: rgba(255, 178, 91, 0.18); }
 .build-help { font-size: 12px; color: var(--muted); text-shadow: 0 1px 3px #000; }
 .build-help kbd { margin-left: 8px; margin-right: 4px; }
+#build-status { font-size: 13px; color: var(--heat); text-shadow: 0 1px 3px #000; }
+#build-status:empty { display: none; }
+#build-pieces .count.logs { color: #e0a96d; }
 #hotbar-name.carrying { color: var(--accent); }
+
+/* Joinery mini-game */
+#joinery {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -54%); z-index: 8;
+  pointer-events: none; user-select: none; -webkit-user-select: none;
+}
+.joinery-panel {
+  padding: 14px 18px 12px; border-radius: 12px; text-align: center;
+  background: rgba(10, 16, 24, 0.88); border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.joinery-panel h2 { margin: 0; font-size: 16px; letter-spacing: 0.06em; color: var(--accent); }
+#joinery-step { margin: 4px 0 8px; font-size: 13px; font-weight: 600; }
+#joinery-canvas { display: block; width: min(420px, 80vw); height: auto; margin: 0 auto; border-radius: 8px; background: rgba(255, 255, 255, 0.04); }
+#joinery-help { margin-top: 8px; max-width: 420px; font-size: 13px; }
+.joinery-keys { margin-top: 6px; font-size: 12px; color: var(--muted); }
+.joinery-keys kbd {
+  display: inline-block; min-width: 18px; padding: 0 5px; border: 1px solid var(--accent); border-radius: 4px;
+  color: var(--accent); font: 600 12px/17px system-ui, sans-serif; text-align: center;
+}
 
 #feed {
   position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;

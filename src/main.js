@@ -13,7 +13,7 @@ import { createWater } from './world/water.js';
 import { createSplashes } from './world/splash.js';
 import { createSky } from './world/sky.js';
 import { Weather, WEATHER_KEYS } from './weather/weather.js';
-import { SeaLevel } from './weather/sealevel.js';
+import { SeaLevel, MAX_RISE } from './weather/sealevel.js';
 import { createPrecipitation } from './weather/precipitation.js';
 import { Player } from './player/player.js';
 import { HUD } from './ui/hud.js';
@@ -23,10 +23,11 @@ import { Inventory } from './items/inventory.js';
 import { craft } from './items/recipes.js';
 import { InventoryUI } from './ui/inventoryUI.js';
 import { BuildUI } from './ui/buildUI.js';
+import { Joinery } from './ui/joinery.js';
 import { createGathering } from './world/gathering.js';
 import { createWoodMaterials } from './world/wood.js';
 import { createTimber, woodName } from './world/timber.js';
-import { createBuilding, PIECES } from './world/building.js';
+import { createBuilding, PIECES, DECK_LEVELS } from './world/building.js';
 import { createHeldItem } from './player/heldItem.js';
 
 const seed = Number(new URLSearchParams(location.search).get('seed')) || 1337;
@@ -92,14 +93,15 @@ const gpuTimer = new GpuTimer(renderer);
 const perf = createPerfOverlay(document.getElementById('perf'), { renderer, adaptive, gpuTimer, tier, gpu, water });
 
 // Wood and building: felled trees come down as logs, the axe splits logs
-// into planks where they lie, and you carry planks to blueprints to build.
-// Each part has its own random numbers, so none of it changes the weather's.
+// into planks where they lie, and you carry planks (and logs, for pilings)
+// to blueprints to build. Each part has its own random numbers, so none of
+// it changes the weather's.
 const wood = createWoodMaterials(treeModels, { anisotropy: quality.anisotropy, cloudShadows });
 const shadows = quality.shadowMap > 0;
 const building = createBuilding(scene, {
   terrain, colliders: vegetation.colliders, wood, rng: mulberry32(seed + 2), shadows,
-  takePlank: () => timber.take('plank'),
-  release: (planks) => timber.release(planks),
+  takeWood: (kind) => timber.take(kind),
+  release: (list) => timber.release(list),
   onMessage: (text) => hud.message(text, 6),
   onSound: (name, strength) => audio.wood(name, strength),
   onChange: () => timber.wake(),
@@ -145,10 +147,10 @@ const held = createHeldItem(scene, camera, wood);
 const selectedTool = () => ITEMS[inventory.current?.id]?.tool;
 
 // Build mode (B): the chosen piece follows the crosshair as a see-through
-// preview, and E places it as a blueprint to fill with planks.
+// preview, and E places it as a blueprint to fill with planks (or logs).
+// R turns a roof or raises pilings.
 const buildUI = new BuildUI(PIECES);
-const build = { on: false, piece: 0, dir: 0, plan: null };
-buildUI.select(0);
+const build = { on: false, piece: 0, turn: 0, plan: null };
 function setBuilding(on) {
   build.on = on;
   build.plan = null;
@@ -157,7 +159,6 @@ function setBuilding(on) {
 }
 function choosePiece(index) {
   build.piece = (index + PIECES.length) % PIECES.length;
-  buildUI.select(build.piece);
 }
 function placeBlueprint() {
   const { plan } = build;
@@ -168,7 +169,32 @@ function placeBlueprint() {
   }
   building.place(plan);
   const piece = PIECES[build.piece];
-  inventoryUI.notify(`${piece.name} blueprint: ${piece.cost} planks to build`);
+  inventoryUI.notify(`${piece.name} blueprint: ${piece.cost} ${piece.material ?? 'plank'}s to build`);
+}
+// The build bar's line about the chosen piece. For pilings: how high the
+// deck will stand, against how far the sea may still rise.
+function buildDetail() {
+  const piece = PIECES[build.piece];
+  if (piece.id !== 'pilings') return piece.hint;
+  const deck = DECK_LEVELS[build.turn % DECK_LEVELS.length];
+  return `Deck ${deck} m above the water (R to change). The sea may rise ${Math.max(0, MAX_RISE - sea.rise).toFixed(1)} m more, and storms surge 1.4 m above that.`;
+}
+// How everything built is holding up.
+function buildStatus() {
+  const { worn, lowest } = building.status();
+  return worn ? `${worn} piece${worn === 1 ? ' needs' : 's need'} repairs (the worst is at ${Math.ceil(lowest * 100)}%)` : '';
+}
+
+// The joinery mini-game, for a finished piece or reworking one. You stay
+// put while you work.
+const joinery = new Joinery(mulberry32(seed + 4));
+function startJoinery({ name, apply }) {
+  player.setInput(false);
+  joinery.start(name, (quality) => {
+    player.setInput(true);
+    const text = apply(quality);
+    if (text) inventoryUI.notify(text);
+  });
 }
 
 const MILESTONES = [
@@ -300,7 +326,7 @@ function updateFocus() {
 }
 
 // What an action did: items gained, the tool used (it swings and wears
-// down), and anything to tell you.
+// down), anything to tell you, and joints to make.
 function report(result, tool) {
   if (!result) return;
   for (const { id, count } of result.got ?? []) inventoryUI.notify(`+${count} ${ITEMS[id].name}`);
@@ -312,6 +338,7 @@ function report(result, tool) {
   else if (result.full) hud.message('Your bag is full.', 3);
   if (result.message) hud.message(result.message, 4);
   if (result.notify) inventoryUI.notify(result.notify);
+  if (result.joinery) startJoinery(result.joinery);
 }
 
 // E: act on what you're looking at, or in build mode place the blueprint.
@@ -351,7 +378,8 @@ function promptFor(playing) {
     const { plan } = build, piece = PIECES[build.piece];
     if (!plan) return [[['E', piece.id === 'floor' ? 'Aim at the ground or the water' : 'Aim at a floor']], true];
     if (!plan.ok) return [[['E', plan.reason]], true];
-    return [[['E', `Place ${piece.name.toLowerCase()} blueprint`], ...(piece.id === 'roof' ? [['R', 'Turn']] : [])]];
+    const turn = piece.id === 'roof' ? [['R', 'Turn']] : piece.id === 'pilings' ? [['R', 'Raise or lower the deck']] : [];
+    return [[['E', `Place ${piece.name.toLowerCase()} blueprint`], ...turn]];
   }
   if (!focus) return [null];
   if (hold.time > 0) return [[['X', `Taking apart… ${Math.round((hold.time / HOLD_TIME) * 100)}%`]]];
@@ -369,11 +397,13 @@ function useSelected() {
 }
 
 // Keys: 1-9 or the mouse wheel pick a hotbar slot, I or Tab open the
-// inventory, E gathers, chops and picks up, Q drops one of the selected
-// item (or puts down wood you're carrying), B builds (1-4 or the wheel pick
-// the piece, R turns a roof), holding X takes apart, P toggles the
-// performance readout, M mutes. Dev keys: ` then 1-7 forces a weather type,
-// T skips an hour, K fast-forwards the climate, G sends a rogue wave set.
+// inventory, E gathers, chops, picks up, builds and repairs, Q drops one of
+// the selected item (or puts down wood you're carrying), B builds (1-8 or
+// the wheel pick the piece, R turns a roof or raises pilings), holding X
+// takes apart, P toggles the performance readout, M mutes. In the joinery
+// mini-game, E or Space works and X skips. Dev keys: ` then 1-7 forces a
+// weather type, T skips an hour, K fast-forwards the climate, G sends a
+// rogue wave set.
 let devArmed = -Infinity;
 addEventListener('keyup', (e) => {
   if (e.code === 'KeyX') hold.down = false;
@@ -392,6 +422,11 @@ addEventListener('keydown', (e) => {
     }
   }
   if (!isPlaying()) return;
+  if (joinery.open) {
+    if (!e.repeat && (e.code === 'KeyE' || e.code === 'Space')) joinery.act();
+    else if (e.code === 'KeyX') joinery.skip();
+    return;
+  }
   if (e.code === 'KeyI' || e.code === 'Tab') {
     if (inventoryUI.open) {
       closeInventory();
@@ -426,7 +461,7 @@ addEventListener('keydown', (e) => {
   } else if (e.code === 'KeyB') {
     setBuilding(!build.on);
   } else if (e.code === 'KeyR') {
-    if (build.on) build.dir = 1 - build.dir;
+    if (build.on) build.turn++;
   } else if (e.code === 'KeyX') {
     if (!e.repeat) hold.down = true;
   } else if (e.code === 'KeyQ') {
@@ -451,16 +486,18 @@ addEventListener('keydown', (e) => {
 });
 
 addEventListener('wheel', (e) => {
-  if (!isPlaying() || inventoryUI.open || !e.deltaY) return;
+  if (!isPlaying() || inventoryUI.open || joinery.open || !e.deltaY) return;
   if (build.on) choosePiece(build.piece + Math.sign(e.deltaY));
   else inventory.select(inventory.selected + Math.sign(e.deltaY));
 }, { passive: true });
 renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 // Right-click eats (or leaves build mode); in build mode with the mouse
-// captured, left-click places too.
+// captured, left-click places too. In the joinery mini-game a click works.
 renderer.domElement.addEventListener('mousedown', (e) => {
   if (!isPlaying() || inventoryUI.open) return;
-  if (e.button === 2) {
+  if (joinery.open) {
+    if (e.button === 0) joinery.act();
+  } else if (e.button === 2) {
     if (build.on) setBuilding(false);
     else useSelected();
   } else if (e.button === 0 && build.on && player.controls.isLocked) {
@@ -498,16 +535,19 @@ function step() {
   uniforms.uPlayerPos.value.copy(player.pos);
   gathering.update(sdt, t);
   timber.update(sdt, t, player);
-  building.update(sdt, sea);
+  building.update(sdt, sea, weather);
+  joinery.update(sdt);
 
   // What's under the crosshair, or where a blueprint would go.
-  const playing = isPlaying() && !inventoryUI.open;
+  const playing = isPlaying() && !inventoryUI.open && !joinery.open;
   camera.getWorldDirection(aimDir);
   aimRay.set(camera.position, aimDir);
   focus = null;
   if (playing && build.on) {
-    build.plan = building.plan(PIECES[build.piece].id, aimRay, build.dir);
+    build.plan = building.plan(PIECES[build.piece].id, aimRay, build.turn);
     building.preview(build.plan);
+    buildUI.select(build.piece, buildDetail());
+    buildUI.status(buildStatus());
   } else if (playing) {
     updateFocus();
   }
@@ -567,7 +607,7 @@ renderer.compileAsync(scene, camera).catch(() => {}).finally(() => {
 if (import.meta.env.DEV) {
   window.game = {
     scene, camera, renderer, terrain, weather, sea, player, sky, water, uniforms, vegetation, step, inventory, gathering,
-    timber, building, build,
+    timber, building, build, joinery,
     counts: vegetation.counts, quality: { tier, gpu, adaptive, gpuTimer },
   };
 }

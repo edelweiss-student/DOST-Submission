@@ -27,6 +27,7 @@ export function createHeldItem(scene, camera, wood) {
   const logMesh = (bark) => {
     if (!logs[bark]) {
       logs[bark] = new THREE.InstancedMesh(logGeo, [wood.bark[bark], wood.endGrain, wood.endGrain], CARRY.log);
+      logs[bark].instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(CARRY.log * 3).fill(1), 3);
       logs[bark].count = 0;
       logs[bark].frustumCulled = false;
       arms.add(logs[bark]);

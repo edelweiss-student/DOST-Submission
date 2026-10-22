@@ -55,6 +55,53 @@ const DRAW = {
     ctx.lineTo(60, 44);
     ctx.stroke();
   },
+  pilings(ctx) {
+    // Log stilts standing in the water, a deck on top.
+    ctx.fillStyle = '#2f6f8c';
+    ctx.fillRect(4, 42, 56, 18);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.fillRect(4, 42, 56, 2);
+    for (const x of [14, 50]) {
+      ctx.fillStyle = '#6b4a2a';
+      ctx.fillRect(x - 5, 16, 10, 44);
+      ctx.strokeStyle = DARK;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - 5, 16, 10, 44);
+    }
+    boards(ctx, [[4, 10], [60, 10], [60, 17], [4, 17]]);
+  },
+  window(ctx) {
+    boards(ctx, [[10, 12], [54, 12], [54, 54], [10, 54]]);
+    lines(ctx, [[10, 22.5, 54, 22.5], [10, 43.5, 54, 43.5]]);
+    ctx.fillStyle = '#9cc8dc';
+    ctx.fillRect(22, 23, 20, 18);
+    lines(ctx, [[20, 41, 44, 41]], 3);
+    lines(ctx, [[32, 23, 32, 41], [22, 32, 42, 32]], 1.5);
+  },
+  ladder(ctx) {
+    lines(ctx, [[20, 6, 20, 60], [44, 6, 44, 60]], 6);
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#8a6440';
+    ctx.beginPath();
+    for (const y of [14, 25, 36, 47, 56]) {
+      ctx.moveTo(20, y);
+      ctx.lineTo(44, y);
+    }
+    ctx.stroke();
+  },
+  railing(ctx) {
+    lines(ctx, [[10, 22, 10, 54], [32, 22, 32, 54], [54, 22, 54, 54]], 5);
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = '#8a6440';
+    ctx.beginPath();
+    ctx.moveTo(6, 22);
+    ctx.lineTo(58, 22);
+    ctx.moveTo(8, 38);
+    ctx.lineTo(56, 38);
+    ctx.stroke();
+    ctx.fillStyle = '#5d4a33';
+    ctx.fillRect(4, 54, 56, 5);
+  },
 };
 
 function pieceIcon(id) {
@@ -66,22 +113,24 @@ function pieceIcon(id) {
   return canvas.toDataURL();
 }
 
-// The build bar (B): what can be built and its cost in planks, in place
-// of the hotbar while you're building.
+// The build bar (B): what can be built and what it costs (planks, or logs
+// in brown), in place of the hotbar while you're building, with a line
+// about anything you've built that needs repairs.
 export class BuildUI {
   constructor(pieces) {
     this.pieces = pieces;
-    this.el = { bar: $('build-bar'), list: $('build-pieces'), name: $('build-name'), hotbar: $('hotbar') };
+    this.el = { bar: $('build-bar'), list: $('build-pieces'), name: $('build-name'), status: $('build-status'), hotbar: $('hotbar') };
     this.slots = pieces.map((piece, i) => {
       const slot = this.el.list.appendChild(document.createElement('div'));
       slot.className = 'slot';
       const img = slot.appendChild(document.createElement('img'));
       img.src = pieceIcon(piece.id);
       img.alt = piece.name;
-      slot.insertAdjacentHTML('beforeend', `<span class="key">${i + 1}</span><span class="count">${piece.cost}</span>`);
+      slot.insertAdjacentHTML('beforeend', `<span class="key">${i + 1}</span><span class="count${piece.material === 'log' ? ' logs' : ''}">${piece.cost}</span>`);
       return slot;
     });
     this.open = false;
+    this.shown = '';
   }
 
   show(open) {
@@ -90,11 +139,20 @@ export class BuildUI {
     this.el.hotbar.hidden = open;
   }
 
-  select(index) {
+  // The chosen piece, what it costs, and a hint (or details) about it.
+  select(index, detail) {
     const piece = this.pieces[index];
+    const text = `${piece.name}\u0000${detail ?? piece.hint}`;
+    if (text === this.shown) return;
+    this.shown = text;
     this.slots.forEach((slot, i) => slot.classList.toggle('selected', i === index));
     this.el.name.innerHTML = '';
     this.el.name.appendChild(document.createElement('b')).textContent = piece.name;
-    this.el.name.append(` · ${piece.cost} planks · ${piece.hint}`);
+    this.el.name.append(` · ${piece.cost} ${piece.material ?? 'plank'}s · ${detail ?? piece.hint}`);
+  }
+
+  // e.g. "2 pieces need repairs (the worst is at 31%)"; empty to hide.
+  status(text) {
+    if (this.el.status.textContent !== text) this.el.status.textContent = text;
   }
 }
