@@ -232,14 +232,16 @@ html, body {
   transition: opacity 0.25s;
 }
 
+/* The card sits in the middle when it fits; in a short window it starts at
+   the top and the screen scrolls, instead of losing its top and bottom. */
 #overlay {
   position: fixed; inset: 0;
-  display: flex; align-items: center; justify-content: center;
+  display: flex; overflow-y: auto;
   background: radial-gradient(ellipse at center, rgba(40, 18, 8, 0.55), rgba(5, 8, 14, 0.85));
   cursor: pointer; z-index: 10;
 }
 #overlay.hidden { display: none; }
-.card { max-width: 520px; padding: 32px 36px; text-align: center; }
+.card { margin: auto; max-width: 520px; padding: 32px 36px; text-align: center; }
 .card h1 { margin: 0; font-size: 44px; letter-spacing: 0.08em; color: var(--accent); }
 .card .tagline { margin: 8px 0 24px; color: var(--muted); font-style: italic; }
 .card .play { display: inline-block; padding: 10px 26px; border: 1px solid var(--accent); border-radius: 999px; font-weight: 600; }
