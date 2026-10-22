@@ -19,8 +19,8 @@ export async function joinServer() {
 
 // The start screen becomes the lobby until the host starts the match; then
 // everyone spawns at their team's base (and comes back there after blacking
-// out). overlay: the start screen. Returns { inLobby, intro, team }: while
-// inLobby, clicking the start screen doesn't start the game.
+// out). overlay: the start screen. Returns { inLobby, intro, team, bases }:
+// while inLobby, clicking the start screen doesn't start the game.
 export function createMatch({ net, seed, error }, { terrain, player, hud, overlay }) {
   overlay.classList.add('mp', 'lobby');
   const leave = () => { location.href = location.pathname; };
@@ -28,6 +28,7 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
   try { name = localStorage.getItem(NAME_KEY) ?? ''; } catch { /* storage blocked */ }
   let joined = false;   // asked to join, so ask again after a reconnect
   let team = null;      // ours, once the match is on
+  let bases = null;     // every team's, once the match is on
 
   const ui = new LobbyUI(overlay.querySelector('#lobby'), {
     name,
@@ -46,6 +47,7 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
     get inLobby() { return overlay.classList.contains('lobby'); },
     get intro() { return team && `You’re on Team ${team.name}. Your base is on the ${team.shore} shore.`; },
     get team() { return team; },
+    get bases() { return bases; },
   };
   if (error) {
     ui.offline(`No game server answered at ${location.host}. Start one with npm run server, then try again.`, () => location.reload());
@@ -58,7 +60,8 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
     const me = players.find((p) => p.id === net.id);
     if (!me) return;   // it started without us
     team = TEAMS[me.team];
-    player.spawn = findBases(terrain)[me.team];
+    bases = findBases(terrain);
+    player.spawn = bases[me.team];
     player.respawn();
     overlay.classList.remove('lobby');
     ui.showMatch(team, players);

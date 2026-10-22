@@ -33,8 +33,18 @@
       <div id="stamina" class="bar"><div id="stamina-fill"></div></div>
     </div>
 
+    <div id="map" hidden>
+      <div class="map-panel">
+        <div class="map-head"><b>Map</b><span id="map-info"></span></div>
+        <canvas id="map-canvas" width="620" height="620"></canvas>
+        <div id="map-legend"></div>
+        <div class="map-keys"><kbd>K</kbd> close</div>
+      </div>
+    </div>
+
     <div id="message"></div>
     <pre id="perf"></pre>
+    <div id="dev-badge" hidden>Dev mode</div>
 
     <div id="prompt"></div>
     <div id="hotbar-name"></div>
@@ -93,6 +103,7 @@
           <b>E</b><span>Gather, pick up, chop / split with the axe</span>
           <b>1–9 / Wheel</b><span>Choose a hotbar slot</span>
           <b>I / Tab</b><span>Inventory and crafting</span>
+          <b>K</b><span>Map</span>
           <b>Q</b><span>Drop one of the selected item, or put down wood</span>
           <b>B</b><span>Build: floors, pilings, walls, roofs and more</span>
           <b>E on a build</b><span>Add wood, repair it, or work its joints</span>
@@ -108,7 +119,7 @@
           <button type="button" data-water="medium">Medium</button>
           <button type="button" data-water="high">High</button>
         </div>
-        <div class="dev">Dev keys: ` then 1–7 force weather (` then 4 again for a worse storm) · G rogue wave set · T skip an hour · K fast-forward the sun</div>
+        <div class="dev" hidden>Dev mode: ` then 1–7 force weather (` then 4 again for a worse storm) · T skip an hour · F fast-forward the sun · G rogue wave set · ` five times to leave dev mode</div>
         <div id="gpu-tip"></div>
         <div class="credits">Trees from the 3D Retro World pack. Tools from KayKit by Kay Lousberg. Thank you to their creators.</div>
       </div>

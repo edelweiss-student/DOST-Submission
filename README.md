@@ -88,6 +88,7 @@ to come:
 | E | Gather from what you're looking at, pick something up, or (with the axe) chop a tree or split a log |
 | 1–9 / mouse wheel | Choose a hotbar slot |
 | I / Tab | Open or close the inventory and crafting |
+| K | Open or close the map |
 | Q | Drop one of the selected item, or put down the wood you're carrying |
 | B | Build mode: `1`–`8` or the wheel choose a piece, `R` turns a roof or raises pilings, `E` (or left-click) places it, `B` or right-click leaves |
 | E on a build | Add the wood you carry, repair it with a plank (or log), or with empty arms rework its joints |
@@ -98,12 +99,42 @@ to come:
 | P | Performance readout (fps, quality, render scale, GPU) |
 | Esc | Pause (or close the inventory) |
 
-Dev keys: `` ` `` then `1`–`7` forces a weather type (clear, overcast, rain,
-thunderstorm, fog, heatwave, cold snap); `` ` `` then `4` again during a storm
-makes it worse. `G` sends a rogue wave set at you, `T` skips an hour, `K`
-fast-forwards the swelling sun by 2½ minutes.
+**Dev mode**, for testing, is hidden: press `` ` `` five times in quick
+succession (within about 2½ seconds) to turn it on, and five times again to
+turn it off. A "Dev mode" badge shows at the top of the screen while it's
+on, and the start screen lists its keys. Its keys do nothing while it's off:
+
+- `` ` `` then `1`–`7` forces a weather type (clear, overcast, rain,
+  thunderstorm, fog, heatwave, cold snap); `` ` `` then `4` again during a
+  storm makes it worse.
+- `T` skips an hour.
+- `F` fast-forwards the swelling sun by 2½ minutes.
+- `G` sends a rogue wave set at you.
+
+In multiplayer, dev mode only changes your own game for now, since the
+weather and the time of day aren't shared yet.
+
 Add `?seed=1234` to the URL to generate a different island, or
 `?quality=low|medium|high` to override the graphics tier.
+
+## Map
+
+`K` opens a map of the island, drawn from the terrain itself, with north up
+and a 100 m scale bar. It shows:
+
+- the sea where it is now, so as the sea rises the beaches shrink on the map;
+- every tree still standing (felled trees disappear from it, so you can see
+  where you've cleared);
+- what you've built: floors and pilings as cells, walls, windows, doorways,
+  railings and ladders along their edges, and blueprints in outline;
+- in a multiplayer match, the four team bases in their colours, with yours
+  marked;
+- you, as an arrow pointing the way you face, and the name of the region
+  you're in.
+
+It stays up while you move and redraws a few times a second, but while it's
+open you can't act on what's in front of you. `K` again, or opening the
+inventory, closes it.
 
 ## Inventory, gathering and crafting
 
@@ -358,8 +389,8 @@ The water level is the sum of three parts:
 - **Storm surge.** Storms pile water against the shore: about 0.3 m in a
   thunderstorm, up to 1.4 m in a violent storm. A surge builds over about a
   minute once the wind picks up and drains away over several minutes. A
-  message warns you when one comes in. (Press `4` two or three times to see
-  one.)
+  message warns you when one comes in. (In dev mode, `` ` `` then `4` two or
+  three times shows one.)
 
 The HUD shows the rise so far, whether the tide is rising or falling, and any
 surge. The level moves the whole sea, for the water you see and the water you
@@ -688,6 +719,7 @@ src/
   ui/buildUI.js         the build bar, its piece icons and what needs repairs
   ui/joinery.js         the joinery mini-game: saw, chisel and pegs
   ui/lobbyUI.js         the multiplayer lobby on the start screen
+  ui/mapUI.js           the map (K): terrain, the sea, standing trees, what you've built, bases, you
   match/teams.js        the four multiplayer teams (shared with the game server)
   match/bases.js        where each team's base is: inland from its diagonal shore
   match/multiplayer.js  multiplayer: connecting, the lobby, and starting the match

@@ -910,6 +910,19 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
       return { worn, lowest };
     },
 
+    // What's built, seen from above (for the map): floors and pilings by
+    // their cell's corner (x, z), walls and the like by the edge they stand
+    // on, each with whether it's finished or still a blueprint. size: a
+    // cell's width (m).
+    layout() {
+      const cells = [], edges = [];
+      for (const p of pieces) {
+        if (p.type === 'floor' || p.type === 'pilings') cells.push({ x: p.cell.x0, z: p.cell.z0, type: p.type, done: p.done });
+        else if (p.edge) edges.push({ ax: p.edge.ax, az: p.edge.az, bx: p.edge.bx, bz: p.edge.bz, done: p.done });
+      }
+      return { cells, edges, size: CELL };
+    },
+
     update(dt, sea, weather) {
       if (dt > 0) wear(dt, sea, weather);
       if (dirty) {

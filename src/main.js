@@ -32,6 +32,7 @@ import { createBuilding, PIECES, DECK_LEVELS } from './world/building.js';
 import { createHeldItem } from './player/heldItem.js';
 import { loadToolModels } from './items/models.js';
 import { joinServer, createMatch } from './match/multiplayer.js';
+import { MapUI } from './ui/mapUI.js';
 
 // Multiplayer (?mp in the address): the game server decides the island, so
 // ask it before generating anything (see match/multiplayer.js).
@@ -263,6 +264,7 @@ const isPlaying = () => player.controls.isLocked || player.dragLook || inventory
 player.enableDragLook(renderer.domElement);
 // Multiplayer: the start screen is the lobby until the match starts.
 const match = server && createMatch(server, { terrain, player, hud, overlay });
+const map = new MapUI({ terrain, trees: vegetation.sources.trees, building, sea, climate, match });
 
 function onPlay() {
   overlay.classList.add('hidden');
@@ -292,6 +294,7 @@ overlay.addEventListener('click', () => {
 let leavingForInventory = false;
 let relocking = false;
 function openInventory() {
+  map.close();
   player.setInput(false);
   inventoryUI.show();
   if (player.controls.isLocked) {
@@ -447,16 +450,38 @@ function useSelected() {
 // inventory, E gathers, chops, picks up, builds and repairs, Q drops one of
 // the selected item (or puts down wood you're carrying), B builds (1-8 or
 // the wheel pick the piece, R turns a roof or raises pilings), holding X
-// takes apart, P toggles the performance readout, M mutes. In the joinery
-// mini-game, E or Space works and X skips. Dev keys: ` then 1-7 forces a
-// weather type, T skips an hour, K fast-forwards the climate, G sends a
-// rogue wave set.
-let devArmed = -Infinity;
+// takes apart, K opens the map, P toggles the performance readout, M mutes.
+// In the joinery mini-game, E or Space works and X skips.
+//
+// Dev mode, for testing, is off and out of sight until ` is pressed five
+// times in quick succession (five more turn it off). Then ` and 1-7 forces
+// a weather type (` and 4 again during a storm makes it worse), T skips an
+// hour, F fast-forwards the sun and G sends a rogue wave set.
+const DEV_TAPS = 5;
+let devMode = false, devTaps = [], devArmed = -Infinity;
+const devBadge = document.getElementById('dev-badge');
+function setDevMode(on) {
+  devMode = on;
+  devArmed = -Infinity;
+  overlay.querySelector('.dev').hidden = !on;
+  devBadge.hidden = !on;
+  hud.message(on ? 'Dev mode on: ` then 1–7 forces the weather, T skips an hour, F fast-forwards the sun, G sends a rogue wave set.' : 'Dev mode off.', on ? 7 : 3);
+}
 addEventListener('keyup', (e) => {
   if (e.code === 'KeyX') hold.down = false;
 });
 addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return;   // typing your name in the lobby
+  if (e.code === 'Backquote' && !e.repeat) {
+    const now = performance.now();
+    devTaps = devTaps.filter((t) => now - t < 2500);
+    devTaps.push(now);
+    if (devTaps.length >= DEV_TAPS) {
+      devTaps = [];
+      setDevMode(!devMode);
+      return;
+    }
+  }
   if (e.code === 'KeyP') perf.toggle();
   if (e.code === 'Tab') e.preventDefault();
   if (e.code === 'Escape') {
@@ -486,10 +511,10 @@ addEventListener('keydown', (e) => {
   }
   const digit = e.code.startsWith('Digit') ? Number(e.code.slice(5)) : 0;
   if (e.code === 'Backquote') {
-    devArmed = performance.now();
+    if (devMode) devArmed = performance.now();
     return;
   }
-  if (digit && performance.now() - devArmed < 1500) {
+  if (devMode && digit && performance.now() - devArmed < 1500) {
     devArmed = -Infinity;
     const key = WEATHER_KEYS[digit - 1];
     if (key) weather.force(key);
@@ -520,14 +545,16 @@ addEventListener('keydown', (e) => {
       const stack = inventory.take(inventory.selected, 1);
       if (stack) throwStack(stack);
     }
-  } else if (e.code === 'KeyT') {
-    sky.skip(1);
   } else if (e.code === 'KeyK') {
-    weather.advanceSun(150);
-    hud.message(`Sun fast-forwarded: solar output +${((weather.solarOutput - 1) * 100).toFixed(2)}%`, 3);
+    map.toggle();
   } else if (e.code === 'KeyM') {
     hud.message(audio.toggleMute() ? 'Sound off' : 'Sound on', 2);
-  } else if (e.code === 'KeyG') {
+  } else if (devMode && e.code === 'KeyT') {
+    sky.skip(1);
+  } else if (devMode && e.code === 'KeyF') {
+    weather.advanceSun(150);
+    hud.message(`Sun fast-forwarded: solar output +${((weather.solarOutput - 1) * 100).toFixed(2)}%`, 3);
+  } else if (devMode && e.code === 'KeyG') {
     water.waves.spawnRogue(camera.position);
     hud.message('A rogue wave set is rolling in from upwind.', 4);
   }
@@ -588,7 +615,8 @@ function step() {
   joinery.update(sdt);
 
   // What's under the crosshair, or where a blueprint would go.
-  const playing = isPlaying() && !inventoryUI.open && !joinery.open;
+  // (With the map up you can still move, but not act on what's in front of you.)
+  const playing = isPlaying() && !inventoryUI.open && !joinery.open && !map.open;
   camera.getWorldDirection(aimDir);
   aimRay.set(camera.position, aimDir);
   focus = null;
@@ -605,6 +633,7 @@ function step() {
   const carrying = timber.carrying;
   inventoryUI.setCarrying(carrying && `Carrying ${carrying.count} ${woodName(carrying.kind, carrying.count)} · Q to put down`);
   inventoryUI.update(dt);
+  map.update(dt, player, camera);
   held.update(sdt, inventory.current, Math.hypot(player.vel.x, player.vel.z), timber.carried);
   precip.update(sdt, t, camera, weather);
   const env = sky.update(sdt, camera, weather.current, precip.flash, weather.sun);
@@ -656,7 +685,7 @@ renderer.compileAsync(scene, camera).catch(() => {}).finally(() => {
 if (import.meta.env.DEV) {
   window.game = {
     scene, camera, renderer, terrain, weather, sea, player, sky, water, uniforms, vegetation, step, inventory, gathering,
-    timber, building, build, joinery, held, climate, match,
+    timber, building, build, joinery, held, climate, match, map, get devMode() { return devMode; },
     counts: vegetation.counts, quality: { tier, gpu, adaptive, gpuTimer },
   };
 }
