@@ -23,7 +23,7 @@ export class HUD {
   constructor() {
     this.el = {
       icon: $('w-icon'), label: $('w-label'), temp: $('w-temp'), feels: $('w-feels'), wind: $('w-wind'), seaState: $('w-sea'),
-      forecast: $('w-forecast'), clock: $('clock'), solar: $('solar'), sea: $('sea'), climate: $('climate'), region: $('region'),
+      forecast: $('w-forecast'), clock: $('clock'), sea: $('sea'), climate: $('climate'), region: $('region'),
       oxygen: $('oxygen'), oxygenFill: $('oxygen-fill'), health: $('health'), healthFill: $('health-fill'),
       stamina: $('stamina'), staminaFill: $('stamina-fill'),
       depth: $('depth'), message: $('message'), underwater: $('underwater'),
@@ -82,7 +82,6 @@ export class HUD {
     const s = Math.max(0, Math.ceil(weather.timeLeft));
     e.forecast.textContent = `Next: ${WEATHER[weather.next].label} in ${Math.floor(s / 60)}:${pad(s % 60)}`;
     e.clock.textContent = `Day ${clock.day} · ${pad(clock.hours)}:${pad(clock.minutes)}`;
-    e.solar.textContent = `Solar output +${((weather.solarOutput - 1) * 100).toFixed(2)}%`;
     // Long-term rise, which way the tide is going, and any storm surge.
     const turning = Math.abs(sea.tideRate) < 0.0012;
     const tide = turning ? (sea.tide > 0 ? 'high tide' : 'low tide') : sea.tideRate > 0 ? 'tide rising' : 'tide falling';

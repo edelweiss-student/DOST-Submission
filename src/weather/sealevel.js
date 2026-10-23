@@ -1,10 +1,10 @@
 import { uniforms, clamp, smoothstep } from '../shared.js';
 
 // Sea level is the sum of three parts:
-// - rise:  the long-term climb as the climate warms (the swelling sun, and
-//          what you do to the island: see climate/entity.js), steeper as
-//          it breaks down (up to MAX_RISE). It never comes back down:
-//          melted ice stays melted;
+// - rise:  the long-term climb as the climate warms with what you do to
+//          the island (see climate/entity.js), steeper as it breaks down
+//          (up to MAX_RISE). It never comes back down: melted ice stays
+//          melted;
 // - tide:  two high tides a day;
 // - surge: storms pile water against the shore. Worse storms push harder;
 //          a surge builds over about a minute and drains away more slowly.

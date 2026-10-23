@@ -85,7 +85,7 @@ const vegetation = createVegetation(scene, terrain, rng, { quality, ground, clou
 const grass = createGrass(scene, terrain, { ...quality.grass, anisotropy: quality.anisotropy, msaa: quality.antialias, cloudShadows });
 const ocean = createOcean(scene, terrain, rng, { ground, anisotropy: quality.anisotropy, cloudShadows });
 // Water quality is its own setting (on the pause screen), remembered between visits.
-const WATER_KEY = 'borrowed-time.water-quality';
+const WATER_KEY = 'washed-away.water-quality';
 let savedWater = null;
 try { savedWater = localStorage.getItem(WATER_KEY); } catch { /* storage blocked */ }
 const water = createWater(scene, terrain, renderer, savedWater || (tier === 'low' ? 'medium' : 'high'));
@@ -93,8 +93,8 @@ const splashes = createSplashes(scene);
 const sky = createSky(scene, renderer, {
   cloudTexture, shadowMap: quality.shadowMap, shadowRange: quality.shadowRange, cloudShadows,
 });
-// The climate answers what you do to the island, on top of the swelling
-// sun, and the weather and the sea follow it.
+// The climate answers what you do to the island, and the weather and the
+// sea follow it.
 const climate = new ClimateEntity({ terrain, sources: vegetation.sources });
 const weather = new Weather(rng, climate);
 const sea = new SeaLevel(water);
@@ -232,10 +232,9 @@ const CAUSES = {
   felling: 'Too many trees have come down.',
   mining: 'Too much of the ground has been dug up and stripped bare.',
   building: 'Too much of the island is built over.',
-  sun: 'The swelling sun is warming the island.',
 };
 climate.onTier = (tier, previous, cause) => {
-  hud.message(tier > previous ? `${TIER_UP[tier]} ${CAUSES[cause ?? 'sun']}` : TIER_DOWN[tier], 8);
+  hud.message(tier > previous ? `${TIER_UP[tier]} ${CAUSES[cause] ?? ''}`.trim() : TIER_DOWN[tier], 8);
 };
 weather.onChange = () => hud.message(`Weather shifting: ${weather.label}`);
 precip.onStrike = (distance) => audio.thunder(distance);
@@ -270,7 +269,7 @@ function onPlay() {
   overlay.classList.add('hidden');
   if (!started) {
     started = true;
-    hud.message(match?.intro ?? 'Day 1. The sun is swelling. Explore the island and the reef while you can.', 6);
+    hud.message(match?.intro ?? 'Day 1. Explore the island and the reef. Strip the island bare and the sea will wash it away.', 6);
   }
 }
 function startDragLook() {
@@ -456,7 +455,7 @@ function useSelected() {
 // Dev mode, for testing, is off and out of sight until ` is pressed five
 // times in quick succession (five more turn it off). Then ` and 1-7 forces
 // a weather type (` and 4 again during a storm makes it worse), T skips an
-// hour, F fast-forwards the sun and G sends a rogue wave set.
+// hour and G sends a rogue wave set.
 const DEV_TAPS = 5;
 let devMode = false, devTaps = [], devArmed = -Infinity;
 const devBadge = document.getElementById('dev-badge');
@@ -465,7 +464,7 @@ function setDevMode(on) {
   devArmed = -Infinity;
   overlay.querySelector('.dev').hidden = !on;
   devBadge.hidden = !on;
-  hud.message(on ? 'Dev mode on: ` then 1–7 forces the weather, T skips an hour, F fast-forwards the sun, G sends a rogue wave set.' : 'Dev mode off.', on ? 7 : 3);
+  hud.message(on ? 'Dev mode on: ` then 1–7 forces the weather, T skips an hour, G sends a rogue wave set.' : 'Dev mode off.', on ? 7 : 3);
 }
 addEventListener('keyup', (e) => {
   if (e.code === 'KeyX') hold.down = false;
@@ -551,9 +550,6 @@ addEventListener('keydown', (e) => {
     hud.message(audio.toggleMute() ? 'Sound off' : 'Sound on', 2);
   } else if (devMode && e.code === 'KeyT') {
     sky.skip(1);
-  } else if (devMode && e.code === 'KeyF') {
-    weather.advanceSun(150);
-    hud.message(`Sun fast-forwarded: solar output +${((weather.solarOutput - 1) * 100).toFixed(2)}%`, 3);
   } else if (devMode && e.code === 'KeyG') {
     water.waves.spawnRogue(camera.position);
     hud.message('A rogue wave set is rolling in from upwind.', 4);
@@ -604,7 +600,7 @@ function step() {
   uniforms.uTime.value = t;
 
   weather.update(sdt);
-  climate.update(sdt, { sun: weather.sun, rain: weather.current.rain, x: player.pos.x, z: player.pos.z });
+  climate.update(sdt, { rain: weather.current.rain, x: player.pos.x, z: player.pos.z });
   sea.update(sdt, weather, sky.state.time);
   player.burden = timber.burden;
   player.update(sdt, t, weather.heatIndex);
@@ -636,7 +632,7 @@ function step() {
   map.update(dt, player, camera);
   held.update(sdt, inventory.current, Math.hypot(player.vel.x, player.vel.z), timber.carried);
   precip.update(sdt, t, camera, weather);
-  const env = sky.update(sdt, camera, weather.current, precip.flash, weather.sun);
+  const env = sky.update(sdt, camera, weather.current, precip.flash);
   weather.dayF = env.dayF;
   water.update(camera, weather, env, precip.flash, sdt);
   ocean.update(t, camera, sea.level);
@@ -675,7 +671,7 @@ function step() {
 // browser allows), so nothing stalls when new things come into view.
 playLabel.textContent = 'Loading…';
 sea.update(0, weather, sky.state.time);
-sky.update(0, camera, weather.current, 0, 0);
+sky.update(0, camera, weather.current, 0);
 renderer.compileAsync(scene, camera).catch(() => {}).finally(() => {
   ready = true;
   playLabel.textContent = 'Click to play';

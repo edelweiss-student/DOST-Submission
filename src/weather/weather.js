@@ -40,8 +40,6 @@ const stormTarget = (s) => ({
   dark: 0.65 + 0.3 * s,
 });
 
-const SUN_RAMP = 1500;   // seconds until the sun has swollen to its full size
-
 // How often each kind of weather comes round, by the climate's pressure P
 // (0..1): mostly fair weather in a balanced climate, storms, heatwaves and
 // cold snaps as it breaks down.
@@ -74,16 +72,14 @@ export function heatIndex(temp, rh) {
   return lerp(temp, (hi - 32) / 1.8, smoothstep(26, 28, temp));
 }
 
-// The weather keeps shifting, and as the climate's pressure rises (the
-// swelling sun, and what you do to the island: see climate/entity.js) the
-// shifts come faster and more often extreme. The sea level that goes with
-// it is in sealevel.js.
+// The weather keeps shifting, and as the climate's pressure rises (with
+// what you do to the island: see climate/entity.js) the shifts come faster
+// and more often extreme. The sea level that goes with it is in sealevel.js.
 export class Weather {
   constructor(rng, climate) {
     this.rng = rng;
     this.climate = climate;
-    this.elapsed = 0;
-    this.sun = 0;          // how far the sun has swollen (0..1)
+    this.elapsed = 0;      // seconds of game time
     this.pressure = 0;     // the climate's pressure (0..1)
     this.key = 'clear';
     this.severity = 0;
@@ -173,12 +169,6 @@ export class Weather {
 
   get gustSpeed() { return this.current.wind * (1 + this.gustiness) * MAX_WIND; }
 
-  // Time passing for the swelling sun (the dev key skips ahead with it).
-  advanceSun(seconds) {
-    this.elapsed += seconds;
-    this.sun = clamp(this.elapsed / SUN_RAMP, 0, 1);
-  }
-
   // The weather's temperature, plus the climate's warming where you are
   // (or, on cold days, cooling).
   get temperature() {
@@ -191,11 +181,9 @@ export class Weather {
 
   get heatIndex() { return heatIndex(this.temperature, this.humidity); }
 
-  get solarOutput() { return 1 + this.sun * 0.04; }
-
   update(dt) {
-    this.advanceSun(dt);
-    this.pressure = this.climate?.pressure ?? this.sun;
+    this.elapsed += dt;
+    this.pressure = this.climate?.pressure ?? 0;
 
     this.timeLeft -= dt;
     if (this.timeLeft <= 0) this.setWeather(this.next);

@@ -101,7 +101,7 @@ if (!dir || !fs.existsSync(path.join(dir, 'axe.gltf'))) {
   process.exit(1);
 }
 const palette = decodePng(fs.readFileSync(path.join(dir, 'tools_bits_texture.png')));
-const out = new GlbWriter('Borrowed Time scripts/import-tools.mjs');
+const out = new GlbWriter('Washed Away scripts/import-tools.mjs');
 out.material({ name: 'tools', pbrMetallicRoughness: { metallicFactor: 0, roughnessFactor: 0.9 } });
 for (const [name, tool] of Object.entries(TOOLS)) packTool(dir, palette, out, name, tool);
 const buffer = out.toBuffer();

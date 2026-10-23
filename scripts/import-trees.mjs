@@ -115,7 +115,7 @@ const kindOf = (materialName) =>
   /billboard/i.test(materialName) ? 'billboard' : /bark|break/i.test(materialName) ? 'bark' : 'leaves';
 
 function packSpecies(sourceDir, species, variants) {
-  const out = new GlbWriter('Borrowed Time scripts/import-trees.mjs');
+  const out = new GlbWriter('Washed Away scripts/import-trees.mjs');
   const textures = new Map();   // source image hash -> { texture, kind }
   const materials = new Map();  // texture index -> material index
   let triangles = 0;

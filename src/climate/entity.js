@@ -4,19 +4,18 @@ import { SPECIES } from '../world/trees.js';
 // The Climate Entity: the island's climate as something that answers what
 // you do to the island, not dice. It keeps a tally, region by region, of
 // the damage done (trees felled, stone mined, plants stripped, ground built
-// over), turns it into ecological stress, and from that and the slowly
-// swelling sun works out the climate's pressure P (0..1). The pressure sets
-// the weather's mix and strength, the temperature and the sea's rise
-// (weather/weather.js, weather/sealevel.js), and moves the climate through
-// four tiers: Balanced, Unstable, Severe and Crisis.
+// over), turns it into ecological stress, and from the island's stress
+// works out the climate's pressure P (0..1): nothing else drives it. The
+// pressure sets the weather's mix and strength, the temperature and the
+// sea's rise (weather/weather.js, weather/sealevel.js), and moves the
+// climate through four tiers: Balanced, Unstable, Severe and Crisis.
 
 const N = 16;                         // regions per side
 const SIZE = WORLD.size / N;          // 45 m
 const AREA = SIZE * SIZE;
-export const SUN_SHARE = 0.3;         // β: the sun's share of the pressure; the rest is yours
 const HALF_LIFE = 900;                // s: mined and stripped ground recovers by half in 15 min
 const TIPPED = 0.6;                   // stress past which a region starts getting worse by itself
-const SPREAD = 5;                     // regions' worth of stress that makes the island's spread 63%
+const SPREAD = 3;                     // regions' worth of stress that makes the island's spread 63%
 const STEP = 0.5;                     // s between updates
 
 // How much each kind of damage stresses a region. Fire (0.2) and hunting
@@ -82,8 +81,7 @@ export class ClimateEntity {
     const woods = wooded[Math.floor(wooded.length / 2)];
     for (const r of this.land) r.name = regionName(r, woods);
 
-    this.pressure = 0;           // P, 0..1
-    this.ecology = 0;            // G: the island's stress, your share of the pressure (0..1)
+    this.pressure = 0;           // P: the island's stress, 0..1
     this.causes = { felling: 0, mining: 0, building: 0 };   // how far each has gone, island-wide (0..1)
     this.tier = 0;
     this.dT = 0;                 // warming now (eases towards the tier's)
@@ -127,10 +125,10 @@ export class ClimateEntity {
   }
   statusOf(r) { return STATUS.find(([max]) => r.stress < max)[1]; }
 
-  // What's stressing the island most, or null if it's mostly the sun.
+  // What's stressing the island most, or null if hardly anything is.
   get cause() {
     const top = Object.keys(this.causes).reduce((a, b) => (WEIGHT[b] * this.causes[b] > WEIGHT[a] * this.causes[a] ? b : a));
-    return this.ecology > 0.05 ? top : null;
+    return this.pressure > 0.05 ? top : null;
   }
 
   // How much warmer it runs where you are (°C). warm: 0 in cold weather,
@@ -142,8 +140,8 @@ export class ClimateEntity {
     return lerp(-0.6 * this.dT - D, this.dT + 4 * D, warm);
   }
 
-  // sun: the swelling sun's progress (0..1); rain 0..1; (x, z): where you are.
-  update(dt, { sun, rain, x, z }) {
+  // rain 0..1; (x, z): where you are.
+  update(dt, { rain, x, z }) {
     this.here = this.regionAt(x, z);
     if (dt <= 0) return;
     this.dT += (TIERS[this.tier].dT - this.dT) * (1 - Math.exp(-dt / 60));
@@ -177,18 +175,18 @@ export class ClimateEntity {
       r.stress = Math.min(1, r.base + 0.25 * Math.max(0, sum / n - r.base));
     }
 
-    // The island as a whole: how much of it is damaged in all, and its
-    // worst-hit region (one wrecked valley counts).
+    // The island as a whole, which is the climate's pressure: half its
+    // worst-hit region (one wrecked valley counts), half how much of it is
+    // damaged in all.
     const island = (values) => {
       const total = values.reduce((a, b) => a + b, 0);
-      return 0.4 * Math.max(...values) + 0.6 * (1 - Math.exp(-total / SPREAD));
+      return clamp(0.5 * Math.max(...values) + 0.5 * (1 - Math.exp(-total / SPREAD)), 0, 1);
     };
-    this.ecology = island(this.land.map((r) => r.stress));
+    this.pressure = island(this.land.map((r) => r.stress));
     for (const cause of Object.keys(this.causes)) {
       const key = { felling: 'D', mining: 'E', building: 'U' }[cause];
       this.causes[cause] = island(this.land.map((r) => r[key]));
     }
-    this.pressure = clamp(SUN_SHARE * sun + (1 - SUN_SHARE) * this.ecology, 0, 1);
 
     // Up or down a tier, once the pressure has stayed past the threshold.
     const tier = TIERS[this.tier];

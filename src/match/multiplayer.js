@@ -3,7 +3,7 @@ import { LobbyUI } from '../ui/lobbyUI.js';
 import { TEAMS } from './teams.js';
 import { findBases } from './bases.js';
 
-const NAME_KEY = 'borrowed-time.name';
+const NAME_KEY = 'washed-away.name';
 
 // Multiplayer, when the address has ?mp. The game server decides the island
 // (its seed), so this connects before the island is generated. Returns

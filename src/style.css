@@ -44,7 +44,6 @@ html, body {
 
 #climate-panel { top: 16px; right: 16px; text-align: right; }
 #clock { font-weight: 600; font-size: 15px; }
-#solar { color: var(--accent); }
 #sea { color: var(--oxygen); }
 /* Climate tier, balanced (green) to crisis (red) */
 #climate { font-weight: 600; color: var(--stamina); }

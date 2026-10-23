@@ -1,9 +1,10 @@
-# Borrowed Time
+# Washed Away
 
-The sun is swelling and Earth is running out of time. A survival and
-exploration game built with three.js: a realistic island, a smooth
-wave-driven ocean with a reef and kelp forest to dive into, and a climate that
-keeps shifting and answers what you do to the island.
+Every tree you fell brings the sea closer. A survival and exploration game
+built with three.js: a realistic island, a smooth wave-driven ocean with a
+reef and kelp forest to dive into, and a climate that keeps shifting and
+answers what you do to the island. Strip it bare and the rising sea washes
+it away.
 
 ## Run
 
@@ -108,7 +109,6 @@ on, and the start screen lists its keys. Its keys do nothing while it's off:
   thunderstorm, fog, heatwave, cold snap); `` ` `` then `4` again during a
   storm makes it worse.
 - `T` skips an hour.
-- `F` fast-forwards the swelling sun by 2½ minutes.
 - `G` sends a rogue wave set at you.
 
 In multiplayer, dev mode only changes your own game for now, since the
@@ -317,8 +317,9 @@ a floor on top.
 ## How the climate works
 
 The climate is an entity that answers what you do to the island
-(`src/climate/entity.js`). The sun still swells on its own, slowly, but how
-far and how fast the climate breaks down is mostly up to you.
+(`src/climate/entity.js`), and nothing else drives it: there's no clock
+counting it down. Leave the island be and the climate stays balanced; how
+far and how fast it breaks down is up to you.
 
 - **Regions.** The world is split into a 16 × 16 grid of 45 m regions, 62
   of them with some land. Each is named for where it lies and what it's
@@ -336,20 +337,18 @@ far and how fast the climate breaks down is mostly up to you.
   tips: it recovers half as fast, and its bare ground washes away in the
   rain, so it keeps getting worse after you leave. Clear-cutting a valley
   tips it.
-- **Pressure.** The island's stress weighs how much of it is damaged in
-  all (0.6) and its worst-hit region (0.4: one wrecked valley counts). The
-  climate's pressure (0–100%) is 30% the swelling sun, which takes 25
-  minutes to swell fully, and 70% the island's stress. The sun alone
-  unsettles the climate after about 26 minutes; clearing about 30 trees
-  out of one valley does it in 10 to 16, sooner the bigger the trees.
+- **Pressure.** The climate's pressure (0–100%) is the island's stress:
+  half its worst-hit region (one wrecked valley counts), half how much of
+  it is damaged in all.
 - **Tiers.** The pressure moves the climate through four tiers: Balanced,
   Unstable (from 30%), Severe (55%) and Crisis (80%). It has to stay past
   the threshold for a minute to go up a tier, and below a lower one (22%,
   47%, 70%) for two minutes to come back down, so it doesn't flicker. A
-  message says when it turns, and why. Once the sun is full size, one
-  clear-cut valley keeps it unstable; a second, or mining out the first,
-  makes it severe; and it takes about five wrecked valleys to bring on a
-  crisis.
+  message says when it turns, and why. Clearing about 30 big trees out of
+  one valley, or the whole valley, makes it unstable (30 small ones
+  don't). Mining that valley out too, or clear-cutting three, makes it
+  severe, and about four wrecked valleys (clear-cut, then mined or washed
+  out by the rain) bring on a crisis.
 - **Weather.** The weather blends between seven presets, each setting cloud
   cover, rain, snow, fog, wind, waves, temperature, humidity, haze and
   lightning. What comes next isn't rolled: each kind comes round in
@@ -381,10 +380,11 @@ its way to the next tier up or down, and how the region you're in is doing
 The water level is the sum of three parts:
 
 - **Rise.** The long-term climb as the climate warms. It follows the
-  climate's pressure, steeper as it climbs: about 0.5 m from the sun alone,
-  1.1 m in a severe climate, 1.8 m at the start of a crisis, and 2.4 m with
-  the climate at its worst. It catches up over a couple of minutes, and
-  never comes back down: melted ice stays melted.
+  climate's pressure, steeper as it climbs: none while the island is left
+  alone, about 0.5 m once the climate turns unstable, 1.1 m when it's
+  severe, 1.8 m at the start of a crisis, and 2.4 m with the climate at its
+  worst. It catches up over a couple of minutes, and never comes back
+  down: melted ice stays melted.
 - **Tide.** ±0.35 m, with two high tides a day.
 - **Storm surge.** Storms pile water against the shore: about 0.3 m in a
   thunderstorm, up to 1.4 m in a violent storm. A surge builds over about a
@@ -697,7 +697,7 @@ src/
   world/splash.js       splash particles
   world/ocean.js        abyss floor, kelp, coral, seabed rocks, fish
   world/atmosphere.js   atmospheric scattering (GPU sky table, CPU colours)
-  world/sky.js          sky dome, swollen sun, moon, stars, cloud layer, sun/sky light,
+  world/sky.js          sky dome, sun, moon, stars, cloud layer, sun/sky light,
                         fog colours, shadow placement, exposure
   climate/entity.js     the Climate Entity: regions, what you've done to each, stress, the
                         climate's pressure and tiers, local warming

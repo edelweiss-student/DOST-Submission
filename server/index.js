@@ -107,7 +107,7 @@ http.listen(PORT, () => {
   const lan = Object.entries(networkInterfaces()).flatMap(([name, addresses]) => addresses
     .filter((a) => a.family === 'IPv4' && !a.internal)
     .map((a) => `http://${a.address}:${PORT}/?mp  (${name})`));
-  console.log(`Borrowed Time game server, island ${SEED}`);
+  console.log(`Washed Away game server, island ${SEED}`);
   if (existsSync(join(DIST, 'index.html'))) {
     console.log(`  On this computer:   http://localhost:${PORT}/?mp`);
     for (const url of lan) console.log(`  On your network:    ${url}`);
