@@ -73,6 +73,18 @@ in all), and you can switch to one with room, which takes back your Ready.
 The first to join hosts, then the next in line if they leave. Once everyone
 is ready, the host starts the match.
 
+Everyone who has joined stands in a line-up above the teams, grouped by
+team, with a marker over you. Each player is a low-poly survivor
+(`player/playerModel.js`): chunky, flat-shaded blocks with the shirt,
+sleeves and headband in the team's colour, over grey trousers, brown boots,
+a canvas backpack and a bedroll. Switching teams recolours your survivor
+straight away. It's one skinned mesh on an 11-joint skeleton, so one draw
+call a player, with arms and legs that swing at the shoulders and hips and
+bend at the elbows and knees. It walks in step with its speed and, standing
+still, breathes and looks about. It's 1.85 m tall with its eyes at 1.7 m,
+where the first-person camera is, and it renders in the world with the
+game's own lighting, fog and weather, ready for phase 2.
+
 **The bases.** Red, Blue, Green and Yellow are based a little inland from
 the island's north-east, south-east, south-west and north-west shores: the
 first flat ground 20 to 80 m in from the beach that's at least 5 m above the
@@ -93,7 +105,8 @@ Single-player never loads Socket.IO.
 the weather and the sea still run separately on each player's machine. Still
 to come:
 
-- Phase 2, players: seeing each other move, smoothly, at 20 updates a second.
+- Phase 2, players: seeing each other move as these survivors, smoothly, at
+  20 updates a second.
 - Phase 3, a shared world: felling, gathering and building go through the
   server, which keeps opponents from building within about 50 m of another
   team's base.
@@ -740,11 +753,13 @@ src/
   world/gathering.js    gathering from trees, bushes, boulders, fallen trunks and grass, tool
                         bonuses; items in the world
   player/heldItem.js    the selected tool in your hand (bobbing and swinging), or the wood you carry
+  player/playerModel.js the low-poly player model in team colours: skeleton, walk and idle
   ui/hud.js             HUD panels, bars, messages, heat warnings and the climate readout
   ui/inventoryUI.js     hotbar, inventory screen, pickup feed, what you carry and the prompt
   ui/buildUI.js         the build bar, its piece icons and what needs repairs
   ui/joinery.js         the joinery mini-game: saw, chisel and pegs
   ui/lobbyUI.js         the multiplayer lobby on the start screen
+  ui/lineupUI.js        the lobby's line-up of everyone who has joined, in team colours
   ui/mapUI.js           the map (K): terrain, the sea, standing trees, what you've built, bases, you
   match/teams.js        the four multiplayer teams (shared with the game server)
   match/bases.js        where each team's base is: inland from its diagonal shore

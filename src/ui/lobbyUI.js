@@ -1,4 +1,5 @@
 import { TEAMS, TEAM_SIZE, NAME_LENGTH } from '../match/teams.js';
+import { Lineup } from './lineupUI.js';
 
 const el = (tag, className, text) => {
   const e = document.createElement(tag);
@@ -8,7 +9,8 @@ const el = (tag, className, text) => {
 };
 const button = (className, text) => Object.assign(el('button', `pill ${className}`, text), { type: 'button' });
 
-// The multiplayer lobby on the start screen: your name, the four teams and
+// The multiplayer lobby on the start screen: your name, everyone who has
+// joined standing in a line-up in their team's colour, the four teams and
 // who's on them, Ready, and Start for the host. Once the match is on, just
 // your team. Names come from other players, so they only go in as text.
 //
@@ -29,6 +31,11 @@ export class LobbyUI {
     joinButton.addEventListener('click', join);
     this.name.addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
     this.join.append(this.name, joinButton);
+
+    this.lineupBox = el('div', 'lobby-lineup');
+    const canvas = el('canvas');
+    this.lineupBox.append(canvas);
+    this.lineup = new Lineup(canvas);
 
     this.teams = el('div', 'lobby-teams');
     this.teamBoxes = TEAMS.map((team, i) => {
@@ -55,7 +62,8 @@ export class LobbyUI {
     this.statusLine = el('p', 'lobby-status');
     this.leave = button('leave', 'Back to single-player');
     this.leave.addEventListener('click', onLeave);
-    root.append(this.banner, this.join, this.teams, this.actions, this.statusLine, this.leave);
+    root.append(this.banner, this.join, this.lineupBox, this.teams, this.actions, this.statusLine, this.leave);
+    this.lineupBox.hidden = true;
     this.banner.hidden = true;
     this.lastStatus = '';
     this.noticeTimer = null;
@@ -67,6 +75,7 @@ export class LobbyUI {
     const open = phase === 'lobby';
     this.join.hidden = !open || !!you;
     this.actions.hidden = !open || !you;
+    this.showLineup(open && players.length > 0, players, me);
     TEAMS.forEach((team, i) => {
       const { list, switchTo } = this.teamBoxes[i];
       const members = players.filter((p) => p.team === i);
@@ -99,16 +108,29 @@ export class LobbyUI {
   // No game server answered: say so, and offer to try again.
   offline(text, onRetry) {
     this.join.hidden = this.teams.hidden = this.actions.hidden = true;
+    this.showLineup(false);
     const retry = button('', 'Try again');
     retry.addEventListener('click', onRetry);
     this.leave.before(retry, ' ');
     this.status(text);
   }
 
+  // The line-up of everyone who has joined, drawn only while it shows.
+  showLineup(show, players = [], me = null) {
+    this.lineupBox.hidden = !show;
+    if (!show) {
+      this.lineup.stop();
+      return;
+    }
+    this.lineup.set(players, me);
+    this.lineup.start();
+  }
+
   // The match has started: just your team, over Click to play.
   showMatch(team, players) {
     const mates = players.filter((p) => p.team === TEAMS.indexOf(team)).length;
     this.join.hidden = this.teams.hidden = this.actions.hidden = true;
+    this.showLineup(false);
     this.banner.hidden = false;
     this.banner.style.setProperty('--team', team.color);
     this.banner.textContent = `Team ${team.name} · ${team.shore} shore · ${mates} of ${players.length} players`;
