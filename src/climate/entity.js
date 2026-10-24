@@ -137,6 +137,21 @@ export class ClimateEntity {
     return lerp(-0.6 * this.dT - D, this.dT + 4 * D, warm);
   }
 
+  // A multiplayer match's climate: not what anyone does to the island, but
+  // the same for every team, on the match's clock (match/rules.js). Its
+  // pressure is given, and the tier follows it straight away.
+  follow(dt, pressure, { x, z }) {
+    this.here = this.regionAt(x, z);
+    this.pressure = pressure;
+    let tier = 0;
+    while (TIERS[tier].up !== undefined && pressure >= TIERS[tier].up) tier++;
+    if (dt > 0) this.dT += (TIERS[tier].dT - this.dT) * (1 - Math.exp(-dt / 60));
+    if (tier === this.tier) return;
+    const previous = this.tier;
+    this.tier = tier;
+    this.onTier?.(tier, previous, null);
+  }
+
   // rain 0..1; (x, z): where you are.
   update(dt, { rain, x, z }) {
     this.here = this.regionAt(x, z);

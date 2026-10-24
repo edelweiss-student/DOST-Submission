@@ -6,19 +6,22 @@ import { TextureBaker, bakeGround, bakeCloudNoise } from './world/textures.js';
 import { installShadowFilter } from './world/materials.js';
 import { createTerrain } from './world/terrain.js';
 import { createVegetation } from './world/vegetation.js';
+import { createCoast } from './world/coast.js';
 import { loadTreeModels } from './world/trees.js';
 import { createGrass } from './world/grass.js';
 import { createOcean } from './world/ocean.js';
 import { createWater } from './world/water.js';
 import { createSplashes } from './world/splash.js';
 import { createSky } from './world/sky.js';
-import { Weather, WEATHER_KEYS } from './weather/weather.js';
+import { Weather, WEATHER_KEYS, SIGNAL_ADVICE } from './weather/weather.js';
 import { ClimateEntity } from './climate/entity.js';
 import { SeaLevel, MAX_RISE } from './weather/sealevel.js';
 import { createPrecipitation } from './weather/precipitation.js';
 import { Player } from './player/player.js';
 import { HUD } from './ui/hud.js';
 import { Ambience } from './audio/ambience.js';
+import { Music } from './audio/music.js';
+import { Tutorial, SOLO, MATCH } from './ui/tutorial.js';
 import { ITEMS } from './items/items.js';
 import { Inventory } from './items/inventory.js';
 import { craft } from './items/recipes.js';
@@ -82,6 +85,8 @@ scene.add(terrain.mesh);
 const treeModels = await treeModelsLoading;
 await toolModelsLoading;
 const vegetation = createVegetation(scene, terrain, rng, { quality, ground, cloudShadows, treeModels });
+// Coconut palms on the beaches and mangroves in the shallows, with their own random numbers.
+const coast = createCoast(scene, terrain, mulberry32(seed + 5), { quality, colliders: vegetation.colliders, cloudShadows });
 const grass = createGrass(scene, terrain, { ...quality.grass, anisotropy: quality.anisotropy, msaa: quality.antialias, cloudShadows });
 const ocean = createOcean(scene, terrain, rng, { ground, anisotropy: quality.anisotropy, cloudShadows });
 // Water quality is its own setting (on the pause screen), remembered between visits.
@@ -102,6 +107,7 @@ const precip = createPrecipitation(scene, terrain, rng);
 const player = new Player(camera, renderer.domElement, terrain, vegetation.colliders, water);
 const hud = new HUD();
 const audio = new Ambience();
+const music = new Music(audio);
 const adaptive = new AdaptiveResolution(renderer, basePixelRatio, quality.minScale);
 const gpuTimer = new GpuTimer(renderer);
 const perf = createPerfOverlay(document.getElementById('perf'), { renderer, adaptive, gpuTimer, tier, gpu, water });
@@ -119,7 +125,10 @@ const building = createBuilding(scene, {
   onMessage: (text) => hud.message(text, 6),
   onSound: (name, strength) => audio.wood(name, strength),
   onChange: () => timber.wake(),
-  onImpact: (e) => climate.record(e),
+  onImpact: (e) => {
+    climate.record(e);
+    if (e.area > 0 && !e.remote) tutorial.event('built');
+  },
 });
 // What things land on: the terrain, or a floor you've built.
 const groundAt = (x, z, y) => Math.max(terrain.heightAt(x, z), building.floorAt(x, z, y + 0.3));
@@ -127,7 +136,10 @@ const timber = createTimber(scene, {
   terrain, water, forest: vegetation.forest, trees: vegetation.sources.trees, wood, groundAt, shadows,
   dropItem: (stack, from, velocity) => gathering.drop(stack, from, velocity),
   onSound: (name, strength) => audio.wood(name, strength),
-  onImpact: (e) => climate.record(e),
+  onImpact: (e) => {
+    climate.record(e);
+    tutorial.event('felled');
+  },
   rng: mulberry32(seed + 3),
 });
 player.structures = building;
@@ -137,7 +149,7 @@ player.onBlackout = () => timber.dropAll(player.pos);
 // Gathering has its own random numbers, so it doesn't change the weather's.
 const inventory = new Inventory();
 const gathering = createGathering(scene, {
-  terrain, water, vegetation, inventory, timber, groundAt, rng: mulberry32(seed + 1),
+  terrain, water, vegetation, palms: coast.palms, inventory, timber, groundAt, rng: mulberry32(seed + 1),
   onImpact: (e) => climate.record(e),
 });
 const throwDir = new THREE.Vector3();
@@ -233,10 +245,20 @@ const CAUSES = {
   stripping: 'Too much of the ground has been stripped bare.',
   building: 'Too much of the island is built over.',
 };
+// (A multiplayer match's storm says what's coming in its own words.)
 climate.onTier = (tier, previous, cause) => {
+  if (match) return;
   hud.message(tier > previous ? `${TIER_UP[tier]} ${CAUSES[cause] ?? ''}`.trim() : TIER_DOWN[tier], 8);
 };
 weather.onChange = () => hud.message(`Weather shifting: ${weather.label}`);
+// PAGASA's wind signals as a storm's winds rise, with what each calls for.
+let signalShown = 0;
+function announceSignal() {
+  const signal = weather.signal;
+  if (signal > signalShown) hud.message(`PAGASA raises wind Signal No. ${signal}. ${SIGNAL_ADVICE[signal]}`, 7);
+  else if (!signal && signalShown) hud.message('All wind signals are lifted.', 4);
+  signalShown = signal;
+}
 precip.onStrike = (distance) => audio.thunder(distance);
 sea.onSurge = () => hud.message('Storm surge! The sea is pushing inland.', 5);
 player.onMessage = (text) => hud.message(text, 5);
@@ -262,14 +284,17 @@ let started = false;
 const isPlaying = () => player.controls.isLocked || player.dragLook || inventoryUI.open;
 player.enableDragLook(renderer.domElement);
 // Multiplayer: the start screen is the lobby until the match starts.
-const match = server && createMatch(server, { terrain, player, hud, overlay, scene, sea, camera });
+const match = server && createMatch(server, { terrain, player, hud, overlay, scene, sea, camera, weather, building });
 const map = new MapUI({ terrain, trees: vegetation.sources.trees, building, sea, climate, match });
+// Tips for a first game (H hides them).
+const tutorial = new Tutorial(match ? MATCH : SOLO);
 
 function onPlay() {
   overlay.classList.add('hidden');
   if (!started) {
     started = true;
     hud.message(match?.intro ?? 'Day 1. Explore the island and the reef. Strip the island bare and the sea will wash it away.', 6);
+    tutorial.begin();
   }
 }
 function startDragLook() {
@@ -281,6 +306,7 @@ function startDragLook() {
 overlay.addEventListener('click', () => {
   if (!ready || match?.inLobby) return;
   audio.start();
+  music.start();
   try {
     const request = renderer.domElement.requestPointerLock();
     request?.catch?.(startDragLook);
@@ -406,7 +432,9 @@ function attack() {
   if (!match?.fighting || held.busy || build.on || timber.carrying) return;
   const tool = inventory.current, kind = selectedTool();
   held.swing(() => {
-    if (match.strike(aimRay, kind ?? 'none')) report({ used: !!kind }, tool);
+    if (!match.strike(aimRay, kind ?? 'none')) return;
+    report({ used: !!kind }, tool);
+    tutorial.event('struck');
   });
 }
 
@@ -454,6 +482,7 @@ function useSelected() {
   inventory.take(inventory.selected, 1);
   player.eat(food);
   inventoryUI.notify(`Ate ${ITEMS[stack.id].name.toLowerCase()}`);
+  tutorial.event('ate');
 }
 
 // Keys: 1-9 or the mouse wheel pick a hotbar slot, I or Tab open the
@@ -564,6 +593,10 @@ addEventListener('keydown', (e) => {
     map.toggle();
   } else if (e.code === 'KeyM') {
     hud.message(audio.toggleMute() ? 'Sound off' : 'Sound on', 2);
+  } else if (e.code === 'KeyN') {
+    hud.message(music.toggle() ? 'Music on' : 'Music off', 2);
+  } else if (e.code === 'KeyH') {
+    tutorial.hide();
   } else if (devMode && e.code === 'KeyT') {
     sky.skip(1);
   } else if (devMode && e.code === 'KeyG') {
@@ -604,6 +637,7 @@ const underwaterColor = new THREE.Color('#1f6878');
 const clock = new THREE.Clock();
 let t = 0;
 let shadowFrame = 0;
+let mangrovesSeen = false;
 
 function frame() {
   step();
@@ -618,9 +652,11 @@ function step() {
   uniforms.uTime.value = t;
 
   weather.update(sdt);
-  // A multiplayer match is a fast bed-wars game: no climate change in it,
-  // so the weather stays fair to all and the sea doesn't rise.
-  if (!match) climate.update(sdt, { rain: weather.current.rain, x: player.pos.x, z: player.pos.z });
+  announceSignal();
+  // In a multiplayer match the climate follows the match's storm, the same
+  // for every team, instead of what anyone does (match/rules.js).
+  if (match) climate.follow(sdt, match.pressure, { x: player.pos.x, z: player.pos.z });
+  else climate.update(sdt, { rain: weather.current.rain, x: player.pos.x, z: player.pos.z });
   sea.update(sdt, weather, sky.state.time);
   player.burden = timber.burden;
   player.update(sdt, t, weather.heatIndex);
@@ -639,6 +675,7 @@ function step() {
   focus = null;
   if (playing && build.on) {
     build.plan = building.plan(PIECES[build.piece].id, aimRay, build.turn);
+    if (match) build.plan = match.checkPlan(build.plan);
     building.preview(build.plan);
     buildUI.select(build.piece, buildDetail());
     buildUI.status(buildStatus());
@@ -652,6 +689,9 @@ function step() {
   inventoryUI.update(dt);
   map.update(dt, player, camera);
   match?.update(dt);
+  if (playing) tutorial.update(sdt, { player, inventory, open: !!match?.opened });
+  // The music builds with the climate and the wind (in a match, its storm).
+  music.intensity = Math.min(1, climate.pressure * 0.75 + weather.current.wind * 0.4);
   held.update(sdt, inventory.current, Math.hypot(player.vel.x, player.vel.z), timber.carried);
   precip.update(sdt, t, camera, weather);
   const env = sky.update(sdt, camera, weather.current, precip.flash);
@@ -659,6 +699,12 @@ function step() {
   water.update(camera, weather, env, precip.flash, sdt);
   ocean.update(t, camera, sea.level);
   vegetation.update(camera);
+  coast.update(camera);
+  // The first time you come near the mangroves: what they're for.
+  if (!mangrovesSeen && coast.mangroveNear(player.pos.x, player.pos.z, 8)) {
+    mangrovesSeen = true;
+    hud.message('Mangroves: their tangled roots break the waves and storm surges before they reach the shore.', 7);
+  }
   grass.update(camera);
   splashes.update(dt, env.dayF);
 
@@ -681,7 +727,7 @@ function step() {
   renderer.shadowMap.needsUpdate = sky.sun.intensity > 0.02 && shadowFrame === 0;
 
   audio.update(weather, player.underwater, water.waves.hs);
-  hud.update(dt, { weather, sea, climate: match ? null : climate, clock: sky.clock(), player, waves: water.waves });
+  hud.update(dt, { weather, sea, climate, regions: !match, forecast: match?.forecast, clock: sky.clock(), player, waves: water.waves });
   gpuTimer.begin(perf.visible);
   renderer.render(scene, camera);
   gpuTimer.end();
@@ -702,7 +748,7 @@ renderer.compileAsync(scene, camera).catch(() => {}).finally(() => {
 
 if (import.meta.env.DEV) {
   window.game = {
-    scene, camera, renderer, terrain, weather, sea, player, sky, water, uniforms, vegetation, step, inventory, gathering,
+    scene, camera, renderer, terrain, weather, sea, player, sky, water, uniforms, vegetation, coast, step, inventory, gathering, audio, music, tutorial,
     timber, building, build, joinery, held, climate, match, map, get devMode() { return devMode; },
     counts: vegetation.counts, quality: { tier, gpu, adaptive, gpuTimer },
   };

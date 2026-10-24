@@ -35,6 +35,12 @@ const SOURCES = {
     tool: 'knife', label: () => 'Cut grass',
     give: (r) => [['fibre', r() < 0.35 ? 2 : 1]],
   },
+  // Coconut palms (world/coast.js): a knife cuts down two at a time.
+  palm: {
+    stock: 4, regrow: 300, tool: 'knife',
+    label: (knife) => (knife ? 'Cut down coconuts' : 'Pick a coconut'),
+    give: (r, { tool }) => [['coconut', tool ? 2 : 1]],
+  },
 };
 
 class Grid {
@@ -64,19 +70,20 @@ class Grid {
   }
 }
 
-// Gathering from bushes and (with a knife) grass, felling trees and cutting
-// logs off fallen trunks (with an axe), picking up the sticks and stones
-// lying loose on the ground, and items in the world (dropped, or thrown out
-// of a full bag). Stones and tools sink; everything else floats, drifting
+// Gathering from bushes, coconut palms (palms, from world/coast.js) and
+// (with a knife) grass, felling trees and cutting logs off fallen trunks
+// (with an axe), picking up the sticks and stones lying loose on the
+// ground, and items in the world (dropped, or thrown out of a full bag). Stones and tools sink; everything else floats, drifting
 // with the waves and the wind. groundAt(x, z, y): the terrain, or a floor
 // built there, for items to land on. onImpact({ kind: 'strip', x, z,
 // amount }): bushes and grass cut back, for the climate (climate/entity.js).
 // Loose sticks and stones are free.
-export function createGathering(scene, { terrain, water, vegetation, inventory, timber, groundAt, rng, onImpact }) {
+export function createGathering(scene, { terrain, water, vegetation, palms = [], inventory, timber, groundAt, rng, onImpact }) {
   const grid = new Grid();
   const { trees, bushes, logs } = vegetation.sources;
   for (const t of trees) grid.add(t.x, t.z, { kind: 'tree', x: t.x, z: t.z, r: SPECIES[t.species].trunk * t.s, tree: t });
   for (const b of bushes) grid.add(b.x, b.z, { kind: 'bush', x: b.x, z: b.z, y: b.y, r: 1.1 * b.s });
+  for (const p of palms) grid.add(p.x, p.z, { kind: 'palm', x: p.x, z: p.z, r: 0.35 });
   for (const l of logs) {
     const source = { kind: 'log', x: l.x, z: l.z, dx: l.dx, dz: l.dz, len: l.len, yaw: l.yaw, r: 0.55 * l.s };
     for (let d = 0; d <= l.len; d += 4) grid.add(l.x + l.dx * d, l.z + l.dz * d, source);

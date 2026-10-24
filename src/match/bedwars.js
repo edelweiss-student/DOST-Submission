@@ -15,8 +15,8 @@ const FEED = 5000;   // ms a line stays in the match feed
 // team }]); me: your id; peace: true while the build phase lasts (nothing
 // can be hurt until the barriers come down).
 export class BedWars {
-  constructor({ net, players, me, bases, terrain, scene, player, camera, hud, peace }) {
-    Object.assign(this, { net, player, camera, hud, peace });
+  constructor({ net, players, me, bases, terrain, scene, player, camera, hud, building, peace }) {
+    Object.assign(this, { net, player, camera, hud, building, peace });
     this.me = me;
     ({ team: this.team, name: this.name } = players.find((p) => p.id === me));
     this.out = false;
@@ -53,7 +53,11 @@ export class BedWars {
     net.on('bedDestroyed', ({ team, by }) => this.bedDestroyed(team, by));
     net.on('death', (down) => this.death(down));
     net.on('respawned', ({ id }) => this.respawned(id));
-    net.on('matchOver', ({ winner }) => this.end(winner));
+    net.on('matchOver', ({ winner, time }) => this.end(winner, time));
+    // What's built is shared, and another team's tools can break it.
+    building.share({ team: this.team, teamName: (team) => `Team ${TEAMS[team].name}`, send: (msg) => net.send('build', msg) });
+    net.on('build', (msg) => building.apply(msg));
+    net.on('pieceHit', ({ key, amount }) => building.apply({ op: 'hit', key, amount }));
   }
 
   // Up and about (not down, not out, the match not over).
@@ -78,13 +82,16 @@ export class BedWars {
   }
 
   // A swing landing (ray: from your eye, the way you look; tool: what's in
-  // your hand, or 'none'): at the nearest other-team player or bed in reach.
-  // Returns true if it hit something (so the tool wears).
+  // your hand, or 'none'): at whatever is nearest in reach, of another
+  // team's players, beds and what they built (your own team's builds stop
+  // it). Returns true if it hit something (so the tool wears).
   strike(ray, tool) {
     if (!this.fighting) return false;
     const foe = this.remotes.aimed(ray, REACH), bed = this.beds.aimed(ray, REACH, this.team);
     const enemy = foe && foe.team !== this.team ? foe : null;
-    if (!enemy && !bed) return false;
+    const piece = this.building.aimed(ray, REACH);
+    const nearest = [enemy, bed, piece].filter(Boolean).sort((a, b) => a.distance - b.distance)[0];
+    if (!nearest || (nearest === piece && piece.team === this.team)) return false;
     if (this.peace) {
       if (performance.now() - this.warnedPeace > 3000) {
         this.warnedPeace = performance.now();
@@ -92,8 +99,9 @@ export class BedWars {
       }
       return false;
     }
-    if (enemy && (!bed || enemy.distance <= bed.distance)) this.net.send('hit', { target: enemy.id, tool });
-    else this.net.send('hitBed', { team: bed.team, tool });
+    if (nearest === enemy) this.net.send('hit', { target: enemy.id, tool });
+    else if (nearest === bed) this.net.send('hitBed', { team: bed.team, tool });
+    else this.net.send('hitPiece', { key: piece.key, tool });
     const crosshair = $('crosshair');
     crosshair.classList.add('hit');
     setTimeout(() => crosshair.classList.remove('hit'), 140);
@@ -153,10 +161,6 @@ export class BedWars {
       this.deathScreen.hidden = true;
       this.player.dead = false;
       this.player.respawn();
-      const timer = $('match-timer');
-      timer.textContent = 'You’re out · watching';
-      timer.className = '';
-      timer.hidden = false;
     }, 5000);
   }
 
@@ -178,6 +182,19 @@ export class BedWars {
     if (team === this.team) this.hud.message(`${by} destroyed your bed! Go down now and you’re out.`, 6);
     else if (by === this.name) this.hud.message(`You destroyed Team ${TEAMS[team].name}’s bed!`, 4);
     this.feed(`Team ${TEAMS[team].name}’s bed was destroyed by ${this.who(by)}`);
+    this.render();
+  }
+
+  // The storm surge washed away every bed still standing (teams): from now
+  // on, going down is for good.
+  surge(teams) {
+    for (const team of teams) {
+      const t = this.teams.get(team);
+      if (t) t.hp = 0;
+      this.beds.destroy(team);
+    }
+    this.hud.message('The storm surge washed away every bed! Going down is for good now: the last team standing wins, or the one with the most players left when time runs out.', 9);
+    this.feed('The storm surge washed away every bed');
     this.render();
   }
 
@@ -236,8 +253,9 @@ export class BedWars {
     }));
   }
 
-  // The match is over: who won, and the way back to the lobby.
-  end(winner) {
+  // The match is over: who won (-1 for nobody), and the way back to the
+  // lobby. time: it ended when time ran out after the surge.
+  end(winner, time = false) {
     this.over = true;
     this.player.setInput(false);
     this.player.dragLook = false;
@@ -245,9 +263,11 @@ export class BedWars {
     this.deathScreen.hidden = true;
     const screen = $('match-end');
     const title = screen.querySelector('h2');
-    title.textContent = winner === this.team ? 'Your team wins!' : winner >= 0 ? `Team ${TEAMS[winner].name} wins` : 'Nobody is left';
+    title.textContent = winner === this.team ? 'Your team wins!' : winner >= 0 ? `Team ${TEAMS[winner].name} wins` : time ? 'A draw' : 'Nobody is left';
     title.style.setProperty('--team', TEAMS[winner]?.color ?? '');
-    screen.querySelector('p').textContent = winner >= 0 ? 'Every other team is out.' : 'Every team went down for good.';
+    screen.querySelector('p').textContent = time
+      ? winner >= 0 ? 'Time ran out with the most players still standing.' : 'Time ran out with the teams tied.'
+      : winner >= 0 ? 'Every other team is out.' : 'Every team went down for good.';
     screen.querySelector('button').onclick = () => location.reload();
     screen.hidden = false;
   }

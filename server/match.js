@@ -52,6 +52,15 @@ export class Match {
     return { amount: damageOf('player', tool(held)), by: a.name, from: [a.pos[0], a.pos[2]] };
   }
 
+  // A swing at something another team built (the games check whose it is
+  // and where): the swinger's name, or null if it doesn't count.
+  swing(id, now) {
+    const a = this.players.get(id);
+    if (!a?.alive || now - a.lastSwing < SWING_GAP) return null;
+    a.lastSwing = now;
+    return a.name;
+  }
+
   // A swing at another team's bed: its health now, and whether that broke it.
   hitBed(id, team, held, now) {
     const a = this.players.get(id), hp = this.beds.get(team);
@@ -86,6 +95,23 @@ export class Match {
   }
 
   leave(id) { this.players.delete(id); }
+
+  // The storm surge washes away every bed still standing. Returns their teams.
+  surge() {
+    const washed = [...this.beds].filter(([, hp]) => hp > 0).map(([team]) => team);
+    for (const team of washed) this.beds.set(team, 0);
+    return washed;
+  }
+
+  // Time's up: the team with the most players still in wins, and a tie is
+  // a draw: { winner (-1 for a draw), time: true }.
+  timeUp() {
+    const left = new Map();
+    for (const p of this.players.values()) if (!p.out) left.set(p.team, (left.get(p.team) ?? 0) + 1);
+    const most = Math.max(0, ...left.values());
+    const leaders = [...left].filter(([, n]) => n === most);
+    return { winner: most > 0 && leaders.length === 1 ? leaders[0][0] : -1, time: true };
+  }
 
   // Over once only one team has anyone left in it (if it began with more
   // than one): { winner } (its index, or -1 if nobody's left), else null.

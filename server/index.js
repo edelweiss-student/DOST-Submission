@@ -10,7 +10,7 @@ import { Server } from 'socket.io';
 import { TEAMS, BUILD_TIME } from '../src/match/teams.js';
 import { Lobby } from './lobby.js';
 import { Match } from './match.js';
-import { RESPAWN_TIME } from '../src/match/rules.js';
+import { RESPAWN_TIME, SURGE, FINAL, PIECE_HP, damageOf } from '../src/match/rules.js';
 
 // The multiplayer game server: a lobby of up to four teams, and the match it
 // starts. It decides the island (its seed), so every player generates the
@@ -23,12 +23,17 @@ import { RESPAWN_TIME } from '../src/match/rules.js';
 //   npm run server -- --seed 1234     a chosen island
 //   npm run server -- --port 4000     another port (default: $PORT, else 3001)
 //   npm run server -- --build 60      a 60-second build phase, for testing (default 600)
+//   npm run server -- --surge 120     the storm surge 2 minutes after the barriers come
+//                                     down, for testing (default 480; see rules.js)
 
-const { values: args } = parseArgs({ options: { seed: { type: 'string' }, port: { type: 'string' }, build: { type: 'string' } } });
+const { values: args } = parseArgs({ options: { seed: { type: 'string' }, port: { type: 'string' }, build: { type: 'string' }, surge: { type: 'string' } } });
 // A host such as Render says which port to use in PORT.
 const PORT = Number(args.port) || Number(process.env.PORT) || 3001;
 const SEED = Number(args.seed) || randomInt(1, 2 ** 31);
 const BUILD = Number(args.build) > 0 ? Number(args.build) : BUILD_TIME;
+// The storm: its surge, and when time is up after it (shortened with it).
+const STORM = Number(args.surge) > 0 ? Number(args.surge) : SURGE;
+const STORM_FINAL = (FINAL * STORM) / SURGE;
 const DIST = fileURLToPath(new URL('../dist', import.meta.url));
 
 const TYPES = {
@@ -87,25 +92,31 @@ const broadcast = () => io.emit('lobby', lobby.state);
 const teamOf = (id) => TEAMS[lobby.players.get(id)?.team]?.name;
 const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 // The bed-wars match while it's on (server/match.js). When its build phase
-// ends, the barriers come down and every base is open; until it's over,
-// everyone's whereabouts go out 20 times a second.
-let match = null, opening = null, tick = null;
+// ends, the barriers come down and every base is open, and the storm
+// starts building (rules.js); until it's over, everyone's whereabouts go
+// out 20 times a second.
+let match = null, opening = null, tick = null, storm = [];
 const endMatch = () => {
   clearTimeout(opening);
   clearInterval(tick);
+  storm.forEach(clearTimeout);
+  storm = [];
   match = null;
 };
-// Once only one team is left: tell everyone who won, and open the lobby again.
-const settle = () => {
-  const result = match?.result();
+// The match is over (result: { winner, time? }): tell everyone who won, and
+// open the lobby again.
+const finish = (result) => {
   if (!result) return;
   const name = TEAMS[result.winner]?.name;
-  console.log(name ? `Team ${name} wins the match` : 'Nobody is left: the match is over');
+  const how = result.time ? 'Time’s up: ' : '';
+  console.log(`${how}${name ? `Team ${name} wins the match` : result.time ? 'a draw' : 'Nobody is left: the match is over'}`);
   io.emit('matchOver', result);
   endMatch();
   lobby.reset();
   broadcast();
 };
+// Once only one team is left.
+const settle = () => finish(match?.result());
 
 io.on('connection', (socket) => {
   socket.emit('welcome', { seed: lobby.seed });
@@ -135,9 +146,17 @@ io.on('connection', (socket) => {
     match = new Match(lobby.state.players);
     tick = setInterval(() => io.volatile.emit('moves', match.snapshot()), 50);
     opening = setTimeout(() => {
-      console.log('The build phase is over: every base is open');
-      io.emit('basesOpen');
+      console.log('The build phase is over: every base is open, and the storm is building');
+      io.emit('basesOpen', { surge: STORM, final: STORM_FINAL });
       broadcast();
+      storm = [
+        setTimeout(() => {
+          const washed = match?.surge() ?? [];
+          console.log(`The storm surge washed away ${washed.length} bed${washed.length === 1 ? '' : 's'}`);
+          io.emit('surge', { teams: washed });
+        }, STORM * 1000),
+        setTimeout(() => finish(match?.timeUp()), (STORM + STORM_FINAL) * 1000),
+      ];
     }, lobby.buildLeft);
   });
 
@@ -160,6 +179,21 @@ io.on('connection', (socket) => {
     if (!hit.destroyed) return;
     console.log(`Team ${TEAMS[team].name}'s bed was destroyed by ${hit.by}`);
     io.emit('bedDestroyed', { team, by: hit.by });
+  });
+  // What's built: placed, built up, repaired or taken down in one game,
+  // passed on to the others (world/building.js), each piece placed for the
+  // team of whoever placed it.
+  const BUILD_OPS = new Set(['place', 'state', 'remove']);
+  socket.on('build', (msg) => {
+    const p = match?.players.get(socket.id);
+    if (!p || !msg || !BUILD_OPS.has(msg.op) || typeof msg.key !== 'string' || msg.key.length > 40) return;
+    socket.broadcast.emit('build', msg.op === 'place' ? { ...msg, team: p.team } : msg);
+  });
+  // A swing at a piece another team built. Nothing can be hurt during the build phase.
+  socket.on('hitPiece', (data) => {
+    const { key, tool } = data ?? {};
+    if (!match || lobby.buildLeft > 0 || typeof key !== 'string' || key.length > 40) return;
+    if (match.swing(socket.id, Date.now())) io.emit('pieceHit', { key, amount: damageOf('piece', tool) / PIECE_HP });
   });
   socket.on('died', () => {
     const down = match?.died(socket.id, Date.now());
@@ -189,7 +223,7 @@ http.on('error', (e) => {
 });
 
 http.listen(PORT, () => {
-  console.log(`Washed Away game server, island ${SEED}, ${clock(BUILD)} build phase`);
+  console.log(`Washed Away game server, island ${SEED}, ${clock(BUILD)} build phase, storm surge ${clock(STORM)} after it`);
   // On Render: the address the game is reached at online.
   const online = process.env.RENDER_EXTERNAL_URL;
   if (online) return console.log(`  Online:   ${online}   (multiplayer: ${online}/?mp)`);

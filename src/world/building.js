@@ -17,6 +17,12 @@ import { boardGeometry, logGeometry } from './wood.js';
 // built low, pounds it with surf and leaves a stained high-water mark. Worn
 // boards grey and fall off; repairs with planks (or logs, for pilings) bring
 // a piece back; left alone it gives way and its wood floats off.
+//
+// In a multiplayer match what's built is shared (share()): every change
+// goes to the other players' games, which apply() it, and pieces belong to
+// a team. Another team's pieces can't be built on or taken apart, only
+// broken with tools (match/bedwars.js), and they don't weather, so every
+// game agrees on what stands.
 
 export const CELL = 2;             // the building grid (m); a floor fills one cell
 export const WALL_HEIGHT = 2.4;
@@ -456,7 +462,7 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
     // On pilings, the deck sits on top of them.
     if (cell?.pilings) {
       const y = cell.top + DECK;
-      return { type: 'floor', i, j, x0, z0, y, parts: floorParts(terrain, x0, z0, y, true), ok: true };
+      return { type: 'floor', i, j, x0, z0, y, onPilings: true, parts: floorParts(terrain, x0, z0, y, true), ok: true };
     }
     const { high, low } = groundUnder(x0, z0);
     let y = Math.max(high, uniforms.uWaterLevel.value + 0.4) + 0.25;
@@ -508,7 +514,7 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
     const side = near.indexOf(Math.min(...near));
     const edge = edgeOf(c.i, c.j, side);
     const parts = type === 'ladder' ? ladderParts(terrain, edge, c.y) : type === 'railing' ? railingParts(edge, c.y) : wallParts(edge, c.y, type);
-    const plan = { type, cell: c, edge, y: c.y, parts };
+    const plan = { type, cell: c, edge, side, y: c.y, parts };
     if (edges.has(edge.key)) return { ...plan, reason: 'Something’s on this edge already' };
     if (type === 'ladder') {
       const other = cells.get(cellKey(c.i + SIDES[side][0], c.j + SIDES[side][1]));
@@ -526,8 +532,36 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
     return { ...plan, ok: true };
   }
 
+  // --- Sharing (a multiplayer match): { team, teamName(team), send(msg) }.
+  let sharing = null;
+  const byKey = (key) => pieces.find((p) => p.key === key);
+  const share = (msg) => sharing?.send(msg);
+  const stateOf = (piece) => ({ op: 'state', key: piece.key, added: piece.added, done: piece.done, joints: piece.joints, health: piece.health });
+  const enemy = (piece) => sharing && piece.team !== undefined && piece.team !== sharing.team;
+  // What another game needs to place the same piece.
+  const specOf = (plan) => ({
+    type: plan.type, i: plan.i ?? plan.cell.i, j: plan.j ?? plan.cell.j, y: plan.y, top: plan.top, low: plan.low,
+    onPilings: !!plan.onPilings, side: plan.side, dir: plan.dir,
+  });
+  // A piece someone else placed, from its spec: null if it doesn't fit here.
+  function planFrom(spec) {
+    const { type, i, j } = spec;
+    if (!PIECE[type] || !Number.isInteger(i) || !Number.isInteger(j)) return null;
+    const x0 = i * CELL, z0 = j * CELL;
+    if (type === 'floor') return { type, i, j, x0, z0, y: spec.y, onPilings: spec.onPilings, parts: floorParts(terrain, x0, z0, spec.y, spec.onPilings), ok: true };
+    if (type === 'pilings') return { type, i, j, x0, z0, top: spec.top, low: spec.low, parts: pilingParts(terrain, x0, z0, spec.top), ok: true };
+    const cell = cells.get(cellKey(i, j));
+    if (!cell?.floor) return null;
+    if (type === 'roof') return cell.roof ? null : { type, cell, dir: spec.dir, y: spec.y, parts: roofParts(cell.x0, cell.z0, spec.y, spec.dir), ok: true };
+    const edge = edgeOf(i, j, spec.side);
+    if (edges.has(edge.key)) return null;
+    const parts = type === 'ladder' ? ladderParts(terrain, edge, cell.y) : type === 'railing' ? railingParts(edge, cell.y) : wallParts(edge, cell.y, type);
+    return { type, cell, edge, side: spec.side, y: cell.y, parts, ok: true };
+  }
+
   // --- Building up and taking down.
-  function place(plan) {
+  // owner: whose it is in a match ({ team, remote: placed by someone else }).
+  function place(plan, owner = {}) {
     const def = PIECE[plan.type];
     const piece = {
       type: plan.type, name: def.name.toLowerCase(), cost: def.cost, material: def.material ?? 'plank',
@@ -569,6 +603,9 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
       piece.low = plan.y;
     }
     piece.center = piece.box.getCenter(new THREE.Vector3());
+    piece.key = piece.edge ? `edge:${piece.edge.key}` : `${piece.type}:${piece.cell.i},${piece.cell.j}`;
+    piece.team = owner.team ?? sharing?.team;
+    piece.remote = !!owner.remote;
     pieces.push(piece);
     dirty = true;
     return piece;
@@ -602,7 +639,11 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
         piece.segments = [{ ax, az, bx, bz, y0: y, y1: y + WALL_HEIGHT }];
       }
     }
-    onImpact?.({ kind: 'build', x: piece.center.x, z: piece.center.z, area: FOOTPRINT[piece.type] });
+    onImpact?.({ kind: 'build', x: piece.center.x, z: piece.center.z, area: FOOTPRINT[piece.type], remote: piece.remote });
+    // A roof over a floor on pilings: the house on stilts of the Philippine coast.
+    if (piece.type === 'roof' && cell.pilings && !piece.remote) {
+      onMessage?.('A roofed house on stilts: a bahay kubo, raised above the floods like the houses of the Philippine coast.');
+    }
     onChange?.();
   }
 
@@ -615,6 +656,7 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
         const before = piece.joints;
         if (before != null && quality <= before) return `Your old ${jointName(before).toLowerCase()} joints were better: you kept them`;
         piece.joints = quality;
+        share(stateOf(piece));
         return `${jointName(quality)} joints on the ${piece.name}`;
       },
     };
@@ -627,8 +669,9 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
     if (w.bark) piece.barks.push(w.bark);
     dirty = true;
     onSound?.('knock', 0.8);
-    if (piece.added < piece.cost) return {};
-    complete(piece);
+    if (piece.added >= piece.cost) complete(piece);
+    share(stateOf(piece));
+    if (!piece.done) return {};
     return { notify: `Built a ${piece.name}`, joinery: joineryFor(piece) };
   }
 
@@ -639,6 +682,7 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
     piece.health = Math.min(1, piece.health + REPAIR[piece.material]);
     if (piece.health > 0.5) piece.warnedLow = false;
     dirty = true;
+    share(stateOf(piece));
     onSound?.('knock', 0.8);
     return { notify: `Repaired the ${piece.name}: ${Math.round(piece.health * 100)}%` };
   }
@@ -695,8 +739,19 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
     }
     free(piece, piece.done ? piece.cost : piece.added);
     unregister(piece);
+    share({ op: 'remove', key: piece.key });
     onSound?.('knock', 0.5);
     return { notify: piece.done ? `Took the ${piece.name} apart` : 'Blueprint cleared' };
+  }
+
+  // Broken by another team's tools (a match): it falls, with what stood on
+  // it, the same in every game.
+  function destroy(piece) {
+    if (!pieces.includes(piece)) return;
+    const on = standingOn(piece);
+    unregister(piece);
+    onSound?.('break', 1);
+    for (const other of on) destroy(other);
   }
 
   let lastWarning = -Infinity;
@@ -712,6 +767,7 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
     const on = standingOn(piece);
     free(piece, piece.cost);
     unregister(piece);
+    share({ op: 'remove', key: piece.key });
     for (const other of on) breakUp(other);
     const afloat = piece.water > piece.low;
     warn(`Your ${piece.name} has given way. Its ${piece.material}s are ${afloat ? 'floating away' : 'lying where it stood'}.`);
@@ -850,7 +906,55 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
     place(plan) {
       if (!plan?.ok) return null;
       onSound?.('knock', 0.4);
-      return place(plan);
+      const piece = place(plan);
+      share({ op: 'place', key: piece.key, plan: specOf(plan) });
+      return piece;
+    },
+
+    // A multiplayer match: share what's built ({ team, teamName(team),
+    // send(msg) }), and stop the weather wearing it down.
+    share(config) { sharing = config; },
+
+    // A change made in someone else's game: { op: 'place', key, team, plan },
+    // { op: 'state', key, added, done, joints, health }, { op: 'remove', key }
+    // or { op: 'hit', key, amount } (condition lost to a tool).
+    apply(msg) {
+      if (msg.op === 'place') {
+        if (byKey(msg.key)) return;
+        const plan = planFrom(msg.plan ?? {});
+        if (plan) place(plan, { team: msg.team, remote: true });
+        return;
+      }
+      const piece = byKey(msg.key);
+      if (!piece) return;
+      if (msg.op === 'state') {
+        piece.added = clamp(Math.floor(msg.added) || 0, 0, piece.cost);
+        if (msg.joints != null) piece.joints = clamp(Number(msg.joints) || 0, 0, 1);
+        if (Number.isFinite(msg.health)) piece.health = clamp(msg.health, 0.01, 1);
+        if (msg.done && !piece.done) complete(piece);
+        dirty = true;
+      } else if (msg.op === 'remove') {
+        unregister(piece);
+      } else if (msg.op === 'hit' && piece.done) {
+        piece.health -= Number(msg.amount) || 0;
+        dirty = true;
+        if (piece.health <= 0) destroy(piece);
+      }
+    },
+
+    // The finished piece a swing along ray would hit within reach (a
+    // match's fighting): { key, team, distance }, or null.
+    aimed(ray, reach) {
+      let best = null;
+      for (const piece of pieces) {
+        if (!piece.done || piece.center.distanceToSquared(ray.origin) > 100) continue;
+        for (const box of piece.aim) {
+          if (box.containsPoint(ray.origin) || !ray.intersectBox(box, v)) continue;
+          const distance = v.distanceTo(ray.origin);
+          if (distance <= reach && (!best || distance < best.distance)) best = { key: piece.key, team: piece.team, distance };
+        }
+      }
+      return best;
     },
 
     // The piece under the crosshair, as { score, prompt, dim, act, hold }.
@@ -873,6 +977,10 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
       if (!best) return null;
       const piece = best, wood = piece.material;
       const score = 3 - bestT * 0.3;
+      if (enemy(piece)) {
+        const state = piece.done ? `${Math.ceil(piece.health * 100)}%` : 'blueprint';
+        return { score, key: piece, dim: true, prompt: [[null, `${sharing.teamName(piece.team)}’s ${piece.name} · ${state}`]] };
+      }
       const hold = () => takeDown(piece);
       const has = carrying?.kind === wood;
       if (!piece.done) {
@@ -924,7 +1032,7 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
     },
 
     update(dt, sea, weather) {
-      if (dt > 0) wear(dt, sea, weather);
+      if (dt > 0 && !sharing) wear(dt, sea, weather);
       if (dirty) {
         dirty = false;
         render();

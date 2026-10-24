@@ -41,6 +41,9 @@ html, body {
 #w-feels:empty { display: none; }
 #w-feels.danger { color: var(--health); }
 #w-wind, #w-sea, #w-forecast { color: var(--muted); }
+/* A tropical cyclone wind signal, while the wind calls for one */
+#w-signal { color: var(--health); font-weight: 600; }
+#w-signal:empty { display: none; }
 
 #climate-panel { top: 16px; right: 16px; text-align: right; }
 #clock { font-weight: 600; font-size: 15px; }
@@ -180,6 +183,7 @@ html, body {
 #match-timer[hidden] { display: none; }
 #match-timer.soon { color: var(--accent); }
 #match-timer.open { color: var(--stamina); }
+#match-timer.final { color: var(--health); }
 #match-timer:not([hidden]) ~ #dev-badge { top: 58px; }
 
 /* Bed wars: every team's bed and players, with what just happened below */
@@ -204,6 +208,20 @@ html, body {
   0% { opacity: 0; transform: translateX(-10px); }
   6%, 85% { opacity: 1; transform: none; }
   100% { opacity: 0; }
+}
+
+/* Tips for a first game, at the bottom left */
+#tutorial {
+  position: fixed; left: 16px; bottom: 16px; max-width: min(340px, 60vw);
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 9px 13px; border-radius: 10px; background: var(--panel); backdrop-filter: blur(4px);
+  border-left: 3px solid var(--accent); font-size: 13px; line-height: 1.45; pointer-events: none;
+}
+#tutorial b { color: var(--accent); font-size: 12px; letter-spacing: 0.04em; }
+#tutorial small { color: var(--muted); font-size: 11px; }
+#tutorial kbd {
+  display: inline-block; min-width: 14px; padding: 0 4px; margin-right: 3px; border: 1px solid var(--muted); border-radius: 3px;
+  font: 600 10px/14px system-ui, sans-serif; text-align: center;
 }
 
 /* Hit by another player: a red flash at the edges */

@@ -1,11 +1,12 @@
 # Washed Away
 
 Every tree you fell brings the sea closer. A survival and exploration game
-built with three.js: a realistic island, a smooth wave-driven ocean with a
-reef and kelp forest to dive into, and a climate that keeps shifting and
-answers what you do to the island. Strip it bare and the rising sea washes
-it away. With friends, it's a fast bed-wars match for up to four teams (see
-Multiplayer).
+built with three.js, on a Philippine island: coconut palms leaning over the
+beaches, mangroves in the shallows, a smooth wave-driven ocean with a reef
+and kelp forest to dive into, and a climate that keeps shifting and answers
+what you do to the island. Strip it bare and the rising sea washes it away.
+With friends, it's a fast bed-wars match for up to four teams, fought as a
+typhoon builds (see Multiplayer).
 
 ## Run
 
@@ -47,9 +48,9 @@ Bed wars for up to four teams, on a game server. Players join a lobby, are
 put on teams, and spawn at their team's base, next to its bed, when the host
 starts the match. It opens with a 10-minute build phase behind barriers that
 keep each team out of the others' bases; then it's a fast fight to be the
-last team standing. There's no climate change in a match: nothing anyone
-does raises the climate's pressure, so the sea doesn't rise and the weather
-keeps to its mildest mix.
+last team standing. Climate change comes as a typhoon on a fixed clock, the
+same for every team: the weather worsens, the sea rises, and at the storm's
+peak its surge washes every bed away.
 
 **On a LAN.** On the computer that hosts, run:
 
@@ -63,8 +64,9 @@ since some are virtual, like WSL's). Everyone on the same network opens it in
 their browser; the host can use http://localhost:3001/?mp. If Windows asks,
 allow Node.js on private networks. The server picks a new island each time it
 starts: `npm run server -- --seed 1234` plays a chosen one, `--port`
-picks another port, and `--build 60` shortens the build phase to 60 seconds
-for testing.
+picks another port, `--build 60` shortens the build phase to 60 seconds
+and `--surge 120` brings the storm surge 2 minutes after the barriers come
+down, both for testing.
 
 **Online.** The hosted game (see Play online) runs the same server: everyone
 opens its address with `/?mp`.
@@ -83,16 +85,18 @@ Everyone who has joined stands in a line-up above the teams, grouped by
 team, with a marker over you. Each player is a low-poly survivor
 (`player/playerModel.js`): chunky, flat-shaded blocks with the shirt,
 sleeves and headband in the team's colour, over grey trousers, brown boots,
-a canvas backpack and a bedroll. Switching teams recolours your survivor
+a canvas backpack and a bedroll, under a salakot (the Philippines'
+traditional woven hat). Switching teams recolours your survivor
 straight away. It's one skinned mesh on an 11-joint skeleton, so one draw
 call a player, with arms and legs that swing at the shoulders and hips and
 bend at the elbows and knees. It walks in step with its speed and, standing
-still, breathes and looks about. It's 1.85 m tall with its eyes at 1.7 m,
+still, breathes and looks about. It's 1.85 m tall (2 m with the hat) with its eyes at 1.7 m,
 where the first-person camera is, and it renders in the world with the
 game's own lighting, fog and weather: in a match, it's how you see the
 others.
 
-**The bases.** Red, Blue, Green and Yellow are based a little inland from
+**The bases.** Pula, Asul, Berde and Dilaw (red, blue, green and yellow in
+Filipino) are based a little inland from
 the island's north-east, south-east, south-west and north-west shores: the
 first flat ground 20 to 80 m in from the beach that's at least 5 m above the
 sea (it can rise 2.4 m, and storm surges 1.4 m more). They're worked out from
@@ -120,6 +124,18 @@ last minute, with a warning when one minute is left.
 - Nothing can be hurt until then: a swing at another team's player only
   gets a reminder.
 
+**The storm** (`match/rules.js`). Climate change in a match is the same for
+every team, on the server's clock, not what anyone does. When the barriers
+come down a bagyo (typhoon) builds in stages two minutes apart: rain bands
+first, then storms of about 58, 76 and 98 km/h, which raise PAGASA wind
+Signals No. 1, 2 and 3. The climate's pressure climbs with it to Crisis, so
+the sea rises (up to 2.4 m, and the storm's surge on top) and floods the
+beaches. Eight minutes in, the storm surge washes away every bed still
+standing: from then on, going down is for good. Three minutes later time is
+up, and the team with the most players still standing wins; a tie is a
+draw. The top of the screen counts down to the surge, then to the end, and
+the weather panel says what's coming next.
+
 **Bed wars** (`match/bedwars.js`, with the rules in `match/rules.js`):
 
 - **The others.** Every other player shows as a survivor in their team's
@@ -127,27 +143,37 @@ last minute, with a warning when one minute is left.
   times a second, through the server, and draws the others a tenth of a
   second behind, so they move smoothly and walk in step.
 - **Fighting.** Left-click (with the mouse captured) or `F` swings what's in
-  your hand at another team's player or bed under the crosshair, within
-  3.2 m; the hit counts as the swing lands. A hit flashes the crosshair red
-  and wears the tool. Being hit flashes the edges of the screen red and
-  knocks you back. Health is 100 and slowly comes back. Each hit does:
+  your hand at whatever of another team's is nearest under the crosshair,
+  within 3.2 m: a player, a bed or something they built. Your own team's
+  builds stop a swing. The hit counts as the swing lands. A hit flashes the
+  crosshair red and wears the tool. Being hit flashes the edges of the
+  screen red and knocks you back. Health is 100 and slowly comes back. Each
+  hit does:
 
-  | In your hand | To a player | To a bed |
-  | --- | --- | --- |
-  | Nothing | 5 | 3 |
-  | Knife | 14 | 5 |
-  | Axe | 20 | 12 |
-  | Pickaxe | 16 | 20 |
+  | In your hand | To a player | To a bed | To a build |
+  | --- | --- | --- | --- |
+  | Nothing | 5 | 3 | 2 |
+  | Knife | 14 | 5 | 4 |
+  | Axe | 20 | 12 | 15 |
+  | Pickaxe | 16 | 20 | 10 |
 
-  A bed has 200 health: 10 blows of a pickaxe, 17 of an axe.
+  A bed has 200 health (10 blows of a pickaxe, 17 of an axe) and a built
+  piece 100 (7 blows of an axe).
+- **Building.** What's built is shared: every piece you place, build up,
+  repair or take down shows in everyone's game, as your team's. Another
+  team's pieces can't be built on or taken apart, only broken with tools,
+  so walls around your bed keep raiders out until they hack through. Nobody
+  can build within 50 m of another team's base, and in a match what's built
+  doesn't weather.
 - **Beds.** Each team's bed stands at its base, in its colour. While it
   stands, a player who goes down (knocked out, or drowned) lies where they
   fell and comes back at it 5 seconds later. Once it's destroyed, going down
   is for good: you're out. A few seconds later you can walk about and
   watch, unseen and unable to fight.
 - **The end.** The last team with anyone left wins (players who leave are
-  out). Everyone sees who won, and "Back to the lobby" goes back for the
-  next match.
+  out), or, when time runs out after the surge, the team with the most
+  players still standing. Everyone sees who won, and "Back to the lobby"
+  goes back for the next match.
 - **On screen,** under the weather: every team's bed (its health, or "no
   bed") and how many of its players are left, and below it a feed of who
   went down and which beds broke. You're warned when your bed is under
@@ -160,15 +186,16 @@ characters and are cut to 16, only the host can start, and only once
 everyone is ready. It only sends out real changes. It also referees the
 fight (`server/match.js`): it checks every hit (other team, both up, within
 reach, not too often), keeps the beds' health, and decides who comes back
-and who's out. Newcomers wait while a match is on; when it's over, or once
+and who's out. It passes on what's built, each piece stamped with its
+team, times the storm and its surge, and calls time. Newcomers wait while a
+match is on; when it's over, or once
 everyone has left it, the lobby opens again. Single-player never loads
 Socket.IO.
 
-**Not shared yet:** felling, gathering, building, the weather and the sea
-still run separately on each player's machine, so a wall you build around
-your bed only stands in your own game. Still to come: a shared world, where
-felling, gathering and building go through the server, tools damage enemy
-pieces, and opponents can't build within about 50 m of another team's base.
+**Not shared yet:** felling and gathering still run separately on each
+player's machine (a tree you fell still stands in the others' games), and
+so do the tides. The weather and the sea level follow the match's clock, so
+they agree.
 
 ## Controls
 
@@ -191,8 +218,16 @@ pieces, and opponents can't build within about 50 m of another team's base.
 | Hold X | Take apart something you built, or clear a blueprint |
 | Right-click | Eat the selected item |
 | M | Mute |
+| N | Music on or off |
+| H | Hide the tips |
 | P | Performance readout (fps, quality, render scale, GPU) |
 | Esc | Pause (or close the inventory) |
+
+**Tips.** A first game shows one tip at a time at the bottom left
+(`ui/tutorial.js`), each done when you do what it says. On your own: walk,
+pick up sticks and stones, eat a coconut, craft an axe, fell a tree, build,
+and what the climate panel means. In a match: gather, craft a pickaxe, wall
+in your bed, and strike. `H` hides them for good.
 
 **Dev mode**, for testing, is hidden: press `` ` `` five times in quick
 succession (within about 2½ seconds) to turn it on, and five times again to
@@ -245,6 +280,7 @@ you get more, or something else:
 | Grass | — | Knife: 1–2 fibre, never runs out | — | — |
 | Tree | — | Axe: fells it (see Timber and building) | — | — |
 | Fallen trunk | — | Axe: cuts a log off it | 3 | 10 min |
+| Coconut palm | 1 coconut | Knife: 2 at a time | 4 | 5 min |
 
 Sources regrow in game time, so not while paused. Bushes the sea has killed
 give only fibre. Without the right tool, a tree or a fallen trunk only says
@@ -257,9 +293,10 @@ more), and stones in little piles of 1 to 3 on the beaches. Look at one and
 press `E` to pick it up. It's gone for good, so they get scarcer as the
 island is picked over. Boulders give nothing.
 
-Items stack (sticks and stones 32, fibre 48, berries 24). Wood isn't an
-item: it never goes in the bag (see below). Berries are food: right-click
-with them selected to get back 25 stamina and 6 health.
+Items stack (sticks and stones 32, fibre 48, berries 24, coconuts 8). Wood
+isn't an item: it never goes in the bag (see below). Berries and coconuts
+are food: right-click with one selected to get back 25 stamina and 6
+health (berries) or 40 and 12 (a coconut, its water and its flesh).
 
 `Q` throws one of the selected item in front of you. Items in the world can
 be picked up again with `E`. Stones sink; everything else floats, riding the
@@ -420,7 +457,8 @@ a floor on top.
 The climate is an entity that answers what you do to the island
 (`src/climate/entity.js`), and nothing else drives it: there's no clock
 counting it down. Leave the island be and the climate stays balanced; how
-far and how fast it breaks down is up to you.
+far and how fast it breaks down is up to you. (In a multiplayer match it
+follows the match's typhoon instead: see Multiplayer.)
 
 - **Regions.** The world is split into a 16 × 16 grid of 45 m regions, 62
   of them with some land. Each is named for where it lies and what it's
@@ -462,6 +500,10 @@ far and how fast it breaks down is up to you.
   more so the higher the pressure.
 - **Storms** come as a Thunderstorm, Severe thunderstorm or Violent storm,
   by the pressure, and worse if the land where you are is stressed.
+- **Wind signals.** As a storm's sustained wind passes 39, 62, 89, 118 and
+  185 km/h, PAGASA's Tropical Cyclone Wind Signals No. 1 to 5 go up. The
+  weather panel shows the signal, and a message gives its advice as it
+  rises. The game's storms reach Signal No. 3.
 - **Temperature.** Warm weather runs 1.5, 3 and 5 °C hotter in the
   Unstable, Severe and Crisis tiers, and cold snaps colder. Cleared land is
   up to 4 °C hotter than forest on a warm day: it has lost its shade and
@@ -560,10 +602,28 @@ Heat makes all of this worse:
   midday sun and 6–7 at night, against 12 on a mild day. Swimming in the
   sea, you tire no faster than on a mild day.
 
+## Music
+
+The music is in the spirit of the kulintang, the gong music of Mindanao,
+and it's made up as it plays (`audio/music.js`; the game ships no audio
+files). A row of eight small gongs plays a pentatonic melody over the deep
+agung gongs, the babendil keeps time on a gong's rim and, as things get
+tense, the dabakan drum joins in. It quickens and fills in as the climate's
+pressure and the wind rise, so in a match it builds with the storm. `N`
+turns the music on or off (remembered), and `M` mutes everything.
+
 ## Graphics
 
 Everything except the trees is generated when the game starts. The trees
 are the only model files (see Tree models below).
+
+- **The coast** (`world/coast.js`). About 200 coconut palms lean out over
+  the beaches: curved, ringed trunks, drooping fronds with a leaflet
+  texture drawn at startup, and coconuts under the crown. Groves of
+  mangroves stand in the shallows on arching prop roots, and the first
+  time you come near them a message says how their roots break the waves
+  and storm surges. Both sway with the wind and are placed from the
+  island's seed, so every player sees the same coast.
 
 - **Sky.** A physically based atmosphere (Rayleigh and Mie scattering plus
   ozone) gives the blue day sky, sunsets and twilight. The GPU renders it
@@ -786,12 +846,13 @@ src/
   world/trees.js        tree models: loading, where each species grows, near models and billboards,
                         lifting one tree out to shake and fall
   world/vegetation.js   tree, fallen trunk, bush and boulder placement, colliders, culled instancing
+  world/coast.js        coconut palms on the beaches and mangrove groves in the shallows
   world/wood.js         wood materials and shapes: bark, plank grain, cut ends, logs, boards
   world/timber.js       felling, stumps, logs and planks in the world, splitting, carrying
   world/building.js     floors, pilings, walls, windows, doorways, ladders, railings and roofs:
                         placing, blueprints, building up, joints, weather and sea wear,
                         high-water marks, repairs, taking apart, standing, climbing, colliding,
-                        roof shade
+                        roof shade; shared between the players of a match
   world/grass.js        GPU grass around the player
   world/waves.js        Gerstner wave spectrum, CPU surface sampling for physics
   world/water.js        water surface mesh, depth and ripple textures, uniforms
@@ -813,14 +874,16 @@ src/
   items/recipes.js      crafting recipes
   items/models.js       item models: the imported tools, simple shapes for the rest (in the world
                         and in your hand)
-  world/gathering.js    gathering from bushes and grass, felling, cutting fallen trunks, tool
-                        bonuses; loose sticks and stones; items in the world
+  world/gathering.js    gathering from bushes, coconut palms and grass, felling, cutting fallen
+                        trunks, tool bonuses; loose sticks and stones; items in the world
   player/heldItem.js    the selected tool in your hand (bobbing and swinging), or the wood you carry
-  player/playerModel.js the low-poly player model in team colours: skeleton, walk and idle
+  player/playerModel.js the low-poly player model in team colours, with a salakot: skeleton, walk
+                        and idle
   ui/hud.js             HUD panels, bars, messages, heat warnings and the climate readout
   ui/inventoryUI.js     hotbar, inventory screen, pickup feed, what you carry and the prompt
   ui/buildUI.js         the build bar, its piece icons and what needs repairs
   ui/joinery.js         the joinery mini-game: saw, chisel and pegs
+  ui/tutorial.js        tips for a first game, one at a time, on your own or in a match
   ui/lobbyUI.js         the multiplayer lobby on the start screen
   ui/lineupUI.js        the lobby's line-up of everyone who has joined, in team colours
   ui/mapUI.js           the map (K): terrain, the sea, standing trees, what you've built, bases, you
@@ -828,9 +891,10 @@ src/
   match/bases.js        where each team's base is: inland from its diagonal shore
   match/barriers.js     the build phase's solid walls around each base: building them, keeping
                         other teams out, and sinking them when it ends
-  match/multiplayer.js  multiplayer: connecting, the lobby, starting the match, the build phase
-  match/rules.js        the bed-wars rules: health, damage, reach, respawning (shared with the
-                        game server)
+  match/multiplayer.js  multiplayer: connecting, the lobby, starting the match, the build phase,
+                        the storm on the match's clock, no-build zones
+  match/rules.js        the bed-wars rules: health, damage, reach, respawning, the storm and its
+                        surge (shared with the game server)
   match/bedwars.js      bed wars in your game: striking, being hit, going down, coming back or
                         being out, the teams panel and feed, the end of the match
   match/remotePlayers.js  the other players: drawn smoothly from the server's updates, name tags,
@@ -838,6 +902,7 @@ src/
   match/beds.js         each team's bed: the model, where it stands, what a swing hits
   net/net.js            the connection to the game server (Socket.IO, loaded only for multiplayer)
   audio/ambience.js     synthesized wind, rain, surf, underwater, thunder, splashes, wood sounds
+  audio/music.js        kulintang-style gong music, made up as it plays
 server/
   index.js              the game server: serves the built game (with caching), runs the lobby
                         and the match over Socket.IO

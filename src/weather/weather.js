@@ -31,6 +31,7 @@ const STORM_LEVELS = [
   { upTo: 0.67, label: 'Severe thunderstorm', force: 0.55 },
   { upTo: 1.01, label: 'Violent storm', force: 0.95 },
 ];
+export const stormLabel = (severity) => STORM_LEVELS.find((l) => severity < l.upTo).label;
 const stormTarget = (s) => ({
   ...target('storm'),
   wind: 0.5 + 0.5 * s,          // 50 to 100 km/h
@@ -39,6 +40,20 @@ const stormTarget = (s) => ({
   fog: 0.006 + 0.006 * s,
   dark: 0.65 + 0.3 * s,
 });
+
+// The Philippines' Tropical Cyclone Wind Signals (PAGASA): the sustained
+// wind speed (km/h) each one starts at, from Signal No. 1 to No. 5, and
+// what it calls for. signalFor(kmh) is 0 below Signal No. 1.
+export const SIGNALS = [39, 62, 89, 118, 185];
+export const SIGNAL_ADVICE = [
+  null,
+  'Strong winds. Tie down what can blow away, and keep off the water.',
+  'Gale-force winds. Stay away from the shore and the low ground.',
+  'Storm-force winds. Get to high ground and sturdy shelter.',
+  'Typhoon-force winds. Evacuate the coast.',
+  'Super typhoon. Shelter in the strongest place you have.',
+];
+export const signalFor = (kmh) => SIGNALS.filter((min) => kmh >= min).length;
 
 // How often each kind of weather comes round, by the climate's pressure P
 // (0..1): mostly fair weather in a balanced climate, storms, heatwaves and
@@ -99,6 +114,7 @@ export class Weather {
     this.gustWind = 0;     // wind right now, gusts included (0..1.3)
     this.wetness = 0; this.snowCover = 0; this.dryness = 0; this.bleach = 0;
     this.dayF = 1;
+    this.hold = false;     // a multiplayer match sets the weather (follow)
     this.onChange = null;
   }
 
@@ -160,9 +176,21 @@ export class Weather {
     this.setWeather(key, 2.5, severity);
   }
 
+  // A multiplayer match's weather, on the match's clock (match/rules.js):
+  // the weather now (key and, for a storm, its severity), and what comes
+  // next and in how many seconds. Its own shifts wait meanwhile.
+  follow(key, severity, next, timeLeft) {
+    this.hold = true;
+    if (key !== this.key || (key === 'storm' && severity !== this.severity)) this.setWeather(key, 6, severity);
+    this.next = next;
+    this.timeLeft = timeLeft;
+  }
+
+  // The wind signal the sustained wind calls for now (0 for none).
+  get signal() { return signalFor(this.windSpeed * 3.6); }
+
   get label() {
-    if (this.key !== 'storm') return WEATHER[this.key].label;
-    return STORM_LEVELS.find((l) => this.severity < l.upTo).label;
+    return this.key === 'storm' ? stormLabel(this.severity) : WEATHER[this.key].label;
   }
 
   get windSpeed() { return this.current.wind * MAX_WIND; }
@@ -185,8 +213,10 @@ export class Weather {
     this.elapsed += dt;
     this.pressure = this.climate?.pressure ?? 0;
 
-    this.timeLeft -= dt;
-    if (this.timeLeft <= 0) this.setWeather(this.next);
+    if (!this.hold) {
+      this.timeLeft -= dt;
+      if (this.timeLeft <= 0) this.setWeather(this.next);
+    }
 
     const k = 1 - Math.exp(-dt / this.tau);
     for (const p of PARAMS) this.current[p] += (this.target[p] - this.current[p]) * k;

@@ -12,7 +12,7 @@ const _a = new THREE.Vector3(), _c = new THREE.Vector3(), _corner = new THREE.Ve
 const UP = new THREE.Vector3(0, 1, 0);
 const CORNERS = [[-1, -1, 0, 0], [1, -1, 1, 0], [1, 1, 1, 1], [-1, 1, 0, 1]];
 
-class Builder {
+export class Builder {
   constructor() {
     this.pos = []; this.nrm = []; this.uv = []; this.col = []; this.idx = [];
   }

@@ -22,7 +22,7 @@ const CAUSES = { felling: 'felling', stripping: 'stripped bare', building: 'buil
 export class HUD {
   constructor() {
     this.el = {
-      icon: $('w-icon'), label: $('w-label'), temp: $('w-temp'), feels: $('w-feels'), wind: $('w-wind'), seaState: $('w-sea'),
+      icon: $('w-icon'), label: $('w-label'), temp: $('w-temp'), feels: $('w-feels'), wind: $('w-wind'), signal: $('w-signal'), seaState: $('w-sea'),
       forecast: $('w-forecast'), clock: $('clock'), sea: $('sea'), climate: $('climate'), region: $('region'),
       oxygen: $('oxygen'), oxygenFill: $('oxygen-fill'), health: $('health'), healthFill: $('health-fill'),
       stamina: $('stamina'), staminaFill: $('stamina-fill'),
@@ -39,7 +39,10 @@ export class HUD {
     this.messageTimer = seconds;
   }
 
-  update(dt, { weather, sea, climate, clock, player, waves }) {
+  // regions: whether to say how the land you're on is doing (not in a
+  // multiplayer match, whose climate follows its storm instead); forecast:
+  // a match's own line about what's coming.
+  update(dt, { weather, sea, climate, regions = true, forecast, clock, player, waves }) {
     if (this.messageTimer > 0 && (this.messageTimer -= dt) <= 0) this.el.message.classList.remove('show');
 
     // Per-frame: underwater tint and bars.
@@ -78,9 +81,10 @@ export class HUD {
     }
     const gusts = weather.gustiness > 0.15 ? `, gusting ${Math.round(weather.gustSpeed * 3.6)}` : '';
     e.wind.textContent = `Wind ${Math.round(weather.windSpeed * 3.6)} km/h${gusts}`;
+    e.signal.textContent = weather.signal ? `PAGASA Signal No. ${weather.signal}` : '';
     e.seaState.textContent = `Sea: ${seaState(waves.hs)} · ${waves.hs.toFixed(1)} m waves`;
     const s = Math.max(0, Math.ceil(weather.timeLeft));
-    e.forecast.textContent = `Next: ${WEATHER[weather.next].label} in ${Math.floor(s / 60)}:${pad(s % 60)}`;
+    e.forecast.textContent = forecast ?? `Next: ${WEATHER[weather.next].label} in ${Math.floor(s / 60)}:${pad(s % 60)}`;
     e.clock.textContent = `Day ${clock.day} · ${pad(clock.hours)}:${pad(clock.minutes)}`;
     // Long-term rise, which way the tide is going, and any storm surge.
     const turning = Math.abs(sea.tideRate) < 0.0012;
@@ -89,16 +93,11 @@ export class HUD {
     e.sea.textContent = `Sea level +${sea.rise.toFixed(2)} m · ${tide}${surge}`;
     // The climate's tier and pressure, with an arrow while it's on its way
     // to the next tier up or down; then how the land you're on is doing.
-    // (A multiplayer match has no climate change: no climate.)
-    if (climate) {
-      const heading = climate.timers.up > 0 ? ' ▲' : climate.timers.down > 0 ? ' ▼' : '';
-      e.climate.dataset.tier = climate.tier;
-      e.climate.textContent = `Climate: ${TIERS[climate.tier].name} · pressure ${Math.round(climate.pressure * 100)}%${heading}`;
-      const r = climate.here, cause = r.land && climate.causeOf(r);
-      e.region.textContent = r.land ? `${r.name}: ${climate.statusOf(r)}${cause ? ` · ${CAUSES[cause]}` : ''}` : '';
-    } else {
-      e.climate.textContent = e.region.textContent = '';
-    }
+    const heading = climate.timers.up > 0 ? ' ▲' : climate.timers.down > 0 ? ' ▼' : '';
+    e.climate.dataset.tier = climate.tier;
+    e.climate.textContent = `Climate: ${TIERS[climate.tier].name} · pressure ${Math.round(climate.pressure * 100)}%${heading}`;
+    const r = climate.here, cause = regions && r.land && climate.causeOf(r);
+    e.region.textContent = regions && r.land ? `${r.name}: ${climate.statusOf(r)}${cause ? ` · ${CAUSES[cause]}` : ''}` : '';
     e.depth.textContent = player.underwater ? `Depth ${player.depth.toFixed(1)} m` : '';
   }
 }

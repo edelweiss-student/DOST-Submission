@@ -21,6 +21,10 @@ export const ITEMS = {
     name: 'Berries', description: 'Right-click to eat: a little stamina and health back.',
     stack: 24, color: '#8e1f3a', floats: true, eat: { stamina: 25, health: 6 },
   },
+  coconut: {
+    name: 'Coconut', description: 'A young coconut (buko) from a palm on the beach. Right-click to drink its water and eat it: stamina and health back.',
+    stack: 8, color: '#5c7a2c', floats: true, eat: { stamina: 40, health: 12 },
+  },
   knife: {
     name: 'Makeshift knife', description: 'A sharp stone flake wedged into a split stick. Cuts twice the fibre from bushes, and fibre from grass anywhere it grows.',
     stack: 1, color: '#8a8780', floats: false, tool: 'knife', durability: 40,
@@ -116,6 +120,21 @@ const DRAW = {
     stroke(ctx, head, 10, '#34322f');
     stroke(ctx, head, 6, '#a9a59e');
     stroke(ctx, () => { ctx.moveTo(18, 17); ctx.quadraticCurveTo(34, 9, 48, 15); }, 2, '#d2cfc8');
+  },
+  coconut(ctx) {
+    const g = ctx.createRadialGradient(26, 26, 4, 32, 36, 24);
+    g.addColorStop(0, '#a9c45a');
+    g.addColorStop(0.6, '#5c7a2c');
+    g.addColorStop(1, '#2f4415');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(32, 36, 20, 22, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#6b4a2a';
+    ctx.beginPath();
+    ctx.ellipse(36, 14, 7, 4, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    stroke(ctx, () => { ctx.moveTo(22, 24); ctx.quadraticCurveTo(18, 36, 24, 48); }, 2, 'rgba(255, 255, 255, 0.3)');
   },
   berries(ctx) {
     ctx.fillStyle = '#4f8a32';

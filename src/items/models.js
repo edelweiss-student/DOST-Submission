@@ -51,10 +51,11 @@ export function lyingGeometry(id) {
     case 'stick': return paint(new THREE.CylinderGeometry(0.025, 0.03, 0.6, 5).rotateZ(Math.PI / 2), color);
     case 'stone': return paint(new THREE.DodecahedronGeometry(0.08).scale(1, 0.75, 0.9), color);
     case 'fibre': return paint(new THREE.CylinderGeometry(0.05, 0.035, 0.32, 6).rotateZ(Math.PI / 2), color);
+    case 'coconut': return paint(new THREE.IcosahedronGeometry(0.11, 1).scale(1, 0.9, 1.15), color);
     default: return mergeGeometries([[0, 0, 0], [0.06, 0.01, 0.03], [0.02, 0.05, -0.04]].map(
       ([x, y, z]) => paint(new THREE.IcosahedronGeometry(0.04, 1).translate(x, y, z), color)));
   }
 }
 
 // How far above the ground each item's centre rests (m).
-export const REST = { stick: 0.03, stone: 0.06, fibre: 0.05, berries: 0.04, knife: 0.02, axe: 0.03, pickaxe: 0.03 };
+export const REST = { stick: 0.03, stone: 0.06, fibre: 0.05, berries: 0.04, coconut: 0.1, knife: 0.02, axe: 0.03, pickaxe: 0.03 };

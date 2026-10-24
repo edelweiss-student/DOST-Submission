@@ -3,16 +3,19 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // A player, low-poly: a survivor built from chunky, flat-shaded blocks,
 // coloured per vertex. The shirt, its sleeves and a headband are in the
-// team's colour, over neutral clothes, boots and a canvas backpack.
+// team's colour, over neutral clothes, boots and a canvas backpack, under a
+// salakot (the Philippines' traditional woven hat).
 //
 // It's one skinned mesh (one draw call) on a small skeleton, so arms and
 // legs swing at the shoulders and hips and bend at the elbows and knees.
-// About 1.85 m tall with its eyes at 1.7 m, like the first-person camera.
+// About 1.85 m tall (2 m with the hat) with its eyes at 1.7 m, like the
+// first-person camera.
 // It stands on y = 0 and faces -Z, the way the camera looks at yaw 0, so a
 // player's yaw turns it to face where they look.
 
 const SKIN = '#c4946b', HAIR = '#3a2a1f', EYES = '#1c1917';
 const TROUSERS = '#4b5157', BOOTS = '#5a3a25', BELT = '#2b2622', PACK = '#7b6a4c', ROLL = '#5d6a50';
+const SALAKOT = '#c8a464', SALAKOT_TOP = '#8a6a3a';
 
 // The joints: parent, and where each sits standing still (m).
 const JOINTS = {
@@ -32,7 +35,9 @@ const BONE = Object.fromEntries(Object.keys(JOINTS).map((name, i) => [name, i]))
 
 // The blocks: [joint, colour ('team' for the team's), size [w, h, d], centre
 // [x, y, z], and how much wider the top is than the bottom (below 1,
-// narrower), across and front to back]. Left is -X.
+// narrower), across and front to back]. Left is -X. A 'cone' instead of
+// the last is a ten-sided cone, its size [radius at the bottom, height,
+// radius at the top].
 const BLOCKS = [
   // Legs and boots
   ...[-1, 1].flatMap((side) => {
@@ -57,6 +62,9 @@ const BLOCKS = [
   ['head', 'team', [0.27, 0.045, 0.28], [0, 1.775, 0], [1, 1]],
   ['head', EYES, [0.04, 0.035, 0.01], [-0.055, 1.7, -0.126], [1, 1]],
   ['head', EYES, [0.04, 0.035, 0.01], [0.055, 1.7, -0.126], [1, 1]],
+  // The salakot, over the hair and above the headband, with its knob on top
+  ['head', SALAKOT, [0.29, 0.13, 0.04], [0, 1.895, 0], 'cone'],
+  ['head', SALAKOT_TOP, [0.045, 0.04, 0.02], [0, 1.975, 0], 'cone'],
   // Arms: sleeves to the elbow, then skin
   ...[-1, 1].flatMap((side) => {
     const s = side < 0 ? 'L' : 'R', x = 0.27 * side;
@@ -70,15 +78,24 @@ const BLOCKS = [
 
 const linear = (hex) => new THREE.Color(hex);
 
-// One block: a box with its top widened (or narrowed), coloured, and bound
-// whole to one joint.
-function block([joint, color, [w, h, d], [x, y, z], [topX, topZ]], teamColor) {
-  const g = new THREE.BoxGeometry(w, h, d);
+// One block: a box with its top widened (or narrowed), or a cone,
+// coloured, and bound whole to one joint.
+function block([joint, color, size, [x, y, z], shape], teamColor) {
+  let g;
+  if (shape === 'cone') {
+    const [bottom, h, top] = size;
+    g = new THREE.CylinderGeometry(top, bottom, h, 10).toNonIndexed();
+  } else {
+    const [w, h, d] = size, [topX, topZ] = shape;
+    g = new THREE.BoxGeometry(w, h, d);
+    const box = g.attributes.position;
+    for (let i = 0; i < box.count; i++) {
+      if (box.getY(i) > 0) box.setXYZ(i, box.getX(i) * topX, box.getY(i), box.getZ(i) * topZ);
+    }
+    g = g.toNonIndexed();   // like the cones, so they all merge
+  }
   g.deleteAttribute('uv');
   const p = g.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    if (p.getY(i) > 0) p.setXYZ(i, p.getX(i) * topX, p.getY(i), p.getZ(i) * topZ);
-  }
   g.translate(x, y, z);
   g.computeVertexNormals();   // each face has its own corners, so it stays flat-shaded
   const c = linear(color === 'team' ? teamColor : color);
