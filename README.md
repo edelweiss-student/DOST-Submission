@@ -101,13 +101,15 @@ blacking out.
 "Build phase · barriers down in 9:59" at the top of the screen, amber in the
 last minute, with a warning when one minute is left.
 
-- **Barriers.** A wall in each team's colour rings every base, 50 m out. It
-  follows the ground and the sea, with a glowing line where it meets them,
-  a tinted curtain to above head height, and seams and rising bands.
-- **Who gets through.** Other teams can't walk or swim through it; you're
-  pushed back to its edge, with a message saying how long until it
-  opens. Your own team's barrier is fainter and lets you through, so you
-  can leave your base to gather and come back.
+- **Barriers.** A solid wall in each team's colour rings every base, 50 m
+  out: 4 m high and 0.4 m thick, following the ground and the sea, so you
+  can't see into a base from outside it. It's lit, shadowed and fogged
+  like the rest of the world, with lighter ribs every few metres, a glowing
+  top edge and faint glowing bands rising up it, so it shows at night too.
+- **Who gets through.** Other teams can't walk or swim through it: you're
+  stopped at its face, with a message saying how long until it opens. Your
+  own team's barrier lets you through, so you can leave your base to
+  gather and come back.
 - **The map** (`K`) rings each base with its barrier while the phase lasts.
 - **When it ends,** the server opens the bases. The barriers sink into the
   ground, a message says every base is open, and anyone can go anywhere.
@@ -782,7 +784,7 @@ src/
   ui/mapUI.js           the map (K): terrain, the sea, standing trees, what you've built, bases, you
   match/teams.js        the four multiplayer teams (shared with the game server)
   match/bases.js        where each team's base is: inland from its diagonal shore
-  match/barriers.js     the build phase's barriers around each base: drawing them, keeping
+  match/barriers.js     the build phase's solid walls around each base: building them, keeping
                         other teams out, and sinking them when it ends
   match/multiplayer.js  multiplayer: connecting, the lobby, and starting the match
   net/net.js            the connection to the game server (Socket.IO, loaded only for multiplayer)
