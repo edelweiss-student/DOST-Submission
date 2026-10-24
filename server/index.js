@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import { extname, join, normalize, sep } from 'node:path';
@@ -14,14 +14,16 @@ import { Lobby } from './lobby.js';
 // starts. It decides the island (its seed), so every player generates the
 // same one. It also serves the built game (npm run build), so on a LAN
 // everyone just opens the address it prints. While developing, the Vite dev
-// server passes Socket.IO through to it instead (see vite.config.js).
+// server passes Socket.IO through to it instead (see vite.config.js). Online,
+// Render runs it the same way (see render.yaml).
 //
 //   npm run server                    a new island each time it starts
 //   npm run server -- --seed 1234     a chosen island
-//   npm run server -- --port 4000     another port (default 3001)
+//   npm run server -- --port 4000     another port (default: $PORT, else 3001)
 
 const { values: args } = parseArgs({ options: { seed: { type: 'string' }, port: { type: 'string' } } });
-const PORT = Number(args.port) || 3001;
+// A host such as Render says which port to use in PORT.
+const PORT = Number(args.port) || Number(process.env.PORT) || 3001;
 const SEED = Number(args.seed) || randomInt(1, 2 ** 31);
 const DIST = fileURLToPath(new URL('../dist', import.meta.url));
 
@@ -49,8 +51,23 @@ async function serveFile(req, res) {
   const file = normalize(join(DIST, path));
   if (!file.startsWith(DIST + sep)) return reply(res, 403, 'Forbidden');
   try {
+    const info = await stat(file);
+    if (!info.isFile()) throw new Error('Not a file');
+    const modified = info.mtime.toUTCString();
+    const headers = {
+      'Content-Type': TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream',
+      // Built scripts and styles have a hash in their names, so a browser can
+      // keep them. Everything else (the page, the models) is checked on each
+      // visit, and only downloaded again when it has changed.
+      'Cache-Control': path.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache',
+      'Last-Modified': modified,
+    };
+    if (req.headers['if-modified-since'] === modified) {
+      res.writeHead(304, headers);
+      return res.end();
+    }
     const body = await readFile(file);
-    res.writeHead(200, { 'Content-Type': TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream' });
+    res.writeHead(200, headers);
     res.end(body);
   } catch {
     if (path === '/index.html') return reply(res, 503, 'The game isn’t built yet. Run npm run build (or npm run lan), then reload.');
@@ -103,11 +120,14 @@ http.on('error', (e) => {
 });
 
 http.listen(PORT, () => {
+  console.log(`Washed Away game server, island ${SEED}`);
+  // On Render: the address the game is reached at online.
+  const online = process.env.RENDER_EXTERNAL_URL;
+  if (online) return console.log(`  Online:   ${online}   (multiplayer: ${online}/?mp)`);
   // Every network this computer is on, named, since some are virtual ones (WSL, VPNs).
   const lan = Object.entries(networkInterfaces()).flatMap(([name, addresses]) => addresses
     .filter((a) => a.family === 'IPv4' && !a.internal)
     .map((a) => `http://${a.address}:${PORT}/?mp  (${name})`));
-  console.log(`Washed Away game server, island ${SEED}`);
   if (existsSync(join(DIST, 'index.html'))) {
     console.log(`  On this computer:   http://localhost:${PORT}/?mp`);
     for (const url of lan) console.log(`  On your network:    ${url}`);

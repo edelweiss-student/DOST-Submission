@@ -1,0 +1,17 @@
+# Hosting on Render (https://render.com), as a Blueprint: one free web
+# service runs the whole game, multiplayer included. It builds the game, then
+# starts the game server (server/index.js), which serves the built game and
+# Socket.IO on the port Render gives it. Every push to master deploys again.
+# See "Play online" in the README.
+services:
+  - type: web
+    name: washed-away
+    runtime: node
+    plan: free
+    branch: master
+    buildCommand: npm ci && npm run build
+    startCommand: node server/index.js
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22"

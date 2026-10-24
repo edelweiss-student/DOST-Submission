@@ -15,7 +15,30 @@ npm run dev
 
 Open http://localhost:5173 in Chrome, Edge or Firefox and click to play.
 `npm run build` makes a static build in `dist/`. To play with others on the
-same network, see Multiplayer below.
+same network, see Multiplayer below; to play from a link, see Play online.
+
+## Play online
+
+The game is hosted on [Render](https://render.com) as one free web service,
+set up by `render.yaml`. Render builds the game and runs the game server,
+which serves it, multiplayer included. Open the address Render gives the
+service (such as https://washed-away.onrender.com) to play, and add `/?mp`
+for multiplayer. Every push to `master` deploys the new version within a few
+minutes.
+
+On the free plan the server sleeps after 15 minutes without visitors. The
+next visit wakes it, which takes about a minute, and a woken server picks a
+new multiplayer island.
+
+**Setting it up** (once):
+
+1. Sign in at https://dashboard.render.com with your GitHub account.
+2. Choose **New > Blueprint** and give Render access to this repository. It
+   can stay private.
+3. Pick the repository. Render reads `render.yaml`; apply it to create the
+   `washed-away` service.
+4. The first build takes a few minutes. The service's page then shows its
+   address.
 
 ## Multiplayer
 
@@ -36,6 +59,9 @@ their browser; the host can use http://localhost:3001/?mp. If Windows asks,
 allow Node.js on private networks. The server picks a new island each time it
 starts: `npm run server -- --seed 1234` plays a chosen one, and `--port`
 picks another port.
+
+**Online.** The hosted game (see Play online) runs the same server: everyone
+opens its address with `/?mp`.
 
 **While developing,** run `npm run server` beside `npm run dev` and open
 http://localhost:5173/?mp: the dev server passes Socket.IO through to the
@@ -726,7 +752,8 @@ src/
   net/net.js            the connection to the game server (Socket.IO, loaded only for multiplayer)
   audio/ambience.js     synthesized wind, rain, surf, underwater, thunder, splashes, wood sounds
 server/
-  index.js              the game server: serves the built game, runs the lobby over Socket.IO
+  index.js              the game server: serves the built game (with caching), runs the lobby
+                        over Socket.IO
   lobby.js              the lobby's rules: joining, teams, ready, the host, starting
 scripts/
   gltf.mjs              glTF, GLB and PNG reading and writing for the import scripts
@@ -734,6 +761,7 @@ scripts/
   import-tools.mjs      packs the knife, axe and pickaxe into public/models/tools.glb
 public/models/trees/    the packed tree models: one .glb per species, plus deadwood
 public/models/tools.glb the packed tool models
+render.yaml             hosting on Render: the build and start commands (see Play online)
 ```
 
 There are no hostile creatures yet. The fish are passive.
