@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { randomInt } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { Server } from 'socket.io';
-import { TEAMS } from '../src/match/teams.js';
+import { TEAMS, BUILD_TIME } from '../src/match/teams.js';
 import { Lobby } from './lobby.js';
 
 // The multiplayer game server: a lobby of up to four teams, and the match it
@@ -20,11 +20,13 @@ import { Lobby } from './lobby.js';
 //   npm run server                    a new island each time it starts
 //   npm run server -- --seed 1234     a chosen island
 //   npm run server -- --port 4000     another port (default: $PORT, else 3001)
+//   npm run server -- --build 60      a 60-second build phase, for testing (default 600)
 
-const { values: args } = parseArgs({ options: { seed: { type: 'string' }, port: { type: 'string' } } });
+const { values: args } = parseArgs({ options: { seed: { type: 'string' }, port: { type: 'string' }, build: { type: 'string' } } });
 // A host such as Render says which port to use in PORT.
 const PORT = Number(args.port) || Number(process.env.PORT) || 3001;
 const SEED = Number(args.seed) || randomInt(1, 2 ** 31);
+const BUILD = Number(args.build) > 0 ? Number(args.build) : BUILD_TIME;
 const DIST = fileURLToPath(new URL('../dist', import.meta.url));
 
 const TYPES = {
@@ -78,9 +80,12 @@ async function serveFile(req, res) {
 const http = createServer(serveFile);
 // Lobby messages are tiny; nothing a player sends should come near this.
 const io = new Server(http, { maxHttpBufferSize: 64 * 1024 });
-const lobby = new Lobby(SEED);
+const lobby = new Lobby(SEED, BUILD);
 const broadcast = () => io.emit('lobby', lobby.state);
 const teamOf = (id) => TEAMS[lobby.players.get(id)?.team]?.name;
+const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+// When the build phase ends, the barriers come down and every base is open.
+let opening = null;
 
 io.on('connection', (socket) => {
   socket.emit('welcome', { seed: lobby.seed });
@@ -103,14 +108,22 @@ io.on('connection', (socket) => {
   socket.on('start', () => {
     const error = lobby.start(socket.id);
     if (error) return socket.emit('notice', error);
-    console.log(`Match started: ${lobby.players.size} player${lobby.players.size === 1 ? '' : 's'}, island ${lobby.seed}`);
-    io.emit('start', { seed: lobby.seed, players: lobby.state.players });
+    console.log(`Match started: ${lobby.players.size} player${lobby.players.size === 1 ? '' : 's'}, island ${lobby.seed}, ${clock(BUILD)} to build`);
+    io.emit('start', { seed: lobby.seed, players: lobby.state.players, buildLeft: lobby.buildLeft });
     broadcast();
+    clearTimeout(opening);
+    opening = setTimeout(() => {
+      console.log('The build phase is over: every base is open');
+      io.emit('basesOpen');
+      broadcast();
+    }, lobby.buildLeft);
   });
   socket.on('disconnect', () => {
     const player = lobby.players.get(socket.id), playing = lobby.phase === 'playing';
     if (!act(() => lobby.leave(socket.id))) return;
-    console.log(`${player.name} left${playing && lobby.phase === 'lobby' ? '; the match is over and the lobby is open again' : ''}`);
+    const over = playing && lobby.phase === 'lobby';
+    if (over) clearTimeout(opening);
+    console.log(`${player.name} left${over ? '; the match is over and the lobby is open again' : ''}`);
   });
 });
 
@@ -120,7 +133,7 @@ http.on('error', (e) => {
 });
 
 http.listen(PORT, () => {
-  console.log(`Washed Away game server, island ${SEED}`);
+  console.log(`Washed Away game server, island ${SEED}, ${clock(BUILD)} build phase`);
   // On Render: the address the game is reached at online.
   const online = process.env.RENDER_EXTERNAL_URL;
   if (online) return console.log(`  Online:   ${online}   (multiplayer: ${online}/?mp)`);

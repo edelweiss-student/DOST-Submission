@@ -2,8 +2,19 @@ import { connect } from '../net/net.js';
 import { LobbyUI } from '../ui/lobbyUI.js';
 import { TEAMS } from './teams.js';
 import { findBases } from './bases.js';
+import { Barriers } from './barriers.js';
 
 const NAME_KEY = 'washed-away.name';
+
+// Milliseconds as m:ss, rounded up (so 0:00 is the end), and as words.
+const clock = (ms) => {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+const span = (ms) => {
+  const s = Math.round(ms / 1000);
+  return s >= 90 ? `${Math.round(s / 60)} minutes` : s >= 60 ? 'minute' : `${s} seconds`;
+};
 
 // Multiplayer, when the address has ?mp. The game server decides the island
 // (its seed), so this connects before the island is generated. Returns
@@ -19,9 +30,12 @@ export async function joinServer() {
 
 // The start screen becomes the lobby until the host starts the match; then
 // everyone spawns at their team's base (and comes back there after blacking
-// out). overlay: the start screen. Returns { inLobby, intro, team, bases }:
-// while inLobby, clicking the start screen doesn't start the game.
-export function createMatch({ net, seed, error }, { terrain, player, hud, overlay }) {
+// out). The match opens with the server's build phase: a countdown, and
+// barriers that keep each team out of the others' bases until it ends.
+// overlay: the start screen. Returns { inLobby, intro, team, bases,
+// barriersUp, update(dt) }: while inLobby, clicking the start screen doesn't
+// start the game.
+export function createMatch({ net, seed, error }, { terrain, player, hud, overlay, scene, sea }) {
   overlay.classList.add('mp', 'lobby');
   const leave = () => { location.href = location.pathname; };
   let name = '';
@@ -29,6 +43,28 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
   let joined = false;   // asked to join, so ask again after a reconnect
   let team = null;      // ours, once the match is on
   let bases = null;     // every team's, once the match is on
+  let barriers = null;
+  let buildEnds = 0;    // when the build phase ends (performance.now() time), while it lasts
+  let warned = false, bumped = -Infinity, hideTimer = 0;
+  const timer = document.getElementById('match-timer');
+
+  // The build phase is over (the server says so): the barriers come down.
+  const open = () => {
+    if (!buildEnds) return;
+    buildEnds = 0;
+    barriers.open();
+    hud.message('The barriers are down: every base is open.', 8);
+    timer.textContent = 'Barriers down · every base is open';
+    timer.className = 'open';
+    hideTimer = performance.now() + 6000;
+  };
+  // Running into another team's barrier.
+  const keepOut = (pos, vel) => {
+    const hit = barriers?.keepOut(pos, vel) ?? -1;
+    if (hit < 0 || performance.now() - bumped < 4000) return;
+    bumped = performance.now();
+    hud.message(`Team ${TEAMS[hit].name}’s base is closed until the barriers come down (${clock(buildEnds - bumped)}).`, 3);
+  };
 
   const ui = new LobbyUI(overlay.querySelector('#lobby'), {
     name,
@@ -45,9 +81,34 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
   });
   const match = {
     get inLobby() { return overlay.classList.contains('lobby'); },
-    get intro() { return team && `You’re on Team ${team.name}. Your base is on the ${team.shore} shore.`; },
+    get intro() {
+      if (!team) return null;
+      const where = `You’re on Team ${team.name}, on the ${team.shore} shore.`;
+      const left = buildEnds - performance.now();
+      return buildEnds && left > 1000 ? `${where} For the next ${span(left)}, barriers keep the other teams out of every base: build while you can.` : where;
+    },
     get team() { return team; },
     get bases() { return bases; },
+    get barriersUp() { return !!barriers?.up; },
+
+    // Every frame: the barriers, and the countdown at the top of the screen.
+    update(dt) {
+      barriers?.update(dt);
+      const now = performance.now();
+      if (hideTimer && now > hideTimer) {
+        hideTimer = 0;
+        timer.hidden = true;
+      }
+      if (!buildEnds) return;
+      const left = buildEnds - now;
+      timer.textContent = `Build phase · barriers down in ${clock(left)}`;
+      timer.classList.toggle('soon', left < 60000);
+      if (!warned && left < 60000) {
+        warned = true;
+        hud.message('One minute until the barriers come down.', 5);
+      }
+      if (left < -3000) open();   // in case the server's word went missing
+    },
   };
   if (error) {
     ui.offline(`No game server answered at ${location.host}. Start one with npm run server, then try again.`, () => location.reload());
@@ -56,7 +117,7 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
 
   net.on('lobby', (state) => { if (!team) ui.render(state, net.id); });
   net.on('notice', (text) => ui.notice(text));
-  net.on('start', ({ players }) => {
+  net.on('start', ({ players, buildLeft = 0 }) => {
     const me = players.find((p) => p.id === net.id);
     if (!me) return;   // it started without us
     team = TEAMS[me.team];
@@ -65,7 +126,16 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
     player.respawn();
     overlay.classList.remove('lobby');
     ui.showMatch(team, players);
+    if (buildLeft > 0) {
+      buildEnds = performance.now() + buildLeft;
+      warned = buildLeft <= 60000;   // no warning for a phase shorter than that
+      barriers = new Barriers(scene, terrain, bases, me.team, sea.level);
+      player.keepOut = keepOut;
+      timer.className = '';
+      timer.hidden = false;
+    }
   });
+  net.on('basesOpen', open);
   // After a reconnect the server says hello again.
   net.on('welcome', (hello) => {
     if (hello.seed !== seed) location.reload();   // it restarted with another island

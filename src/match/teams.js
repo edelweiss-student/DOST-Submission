@@ -11,3 +11,8 @@ export const TEAMS = [
 
 export const TEAM_SIZE = 4;      // most players on one team
 export const NAME_LENGTH = 16;   // longest player name
+
+// A match opens with a build phase: for BUILD_TIME seconds a barrier keeps
+// the other teams out of every base, within BASE_RADIUS metres of it.
+export const BUILD_TIME = 600;
+export const BASE_RADIUS = 50;

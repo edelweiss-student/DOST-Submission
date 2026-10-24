@@ -12,6 +12,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "server"],
       "port": 3001
+    },
+    {
+      "name": "server-quick-build",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "server", "--", "--build", "75"],
+      "port": 3001
     }
   ]
 }

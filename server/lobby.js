@@ -1,23 +1,31 @@
-import { TEAMS, TEAM_SIZE, NAME_LENGTH } from '../src/match/teams.js';
+import { TEAMS, TEAM_SIZE, NAME_LENGTH, BUILD_TIME } from '../src/match/teams.js';
 
 // The lobby: who's in, on which team, who's ready, and who hosts (the first
 // to join, then the next in line when they leave). The host starts the
-// match once everyone is ready. There's one match at a time: once everyone
-// has left it, the lobby opens again.
+// match once everyone is ready, and it opens with a build phase of
+// buildTime seconds, while barriers keep each team out of the others'
+// bases. There's one match at a time: once everyone has left it, the lobby
+// opens again.
 // Each change returns an error to show the player who asked, or null, and
 // counts up `version` if it changed anything (so only real changes go out).
 export class Lobby {
-  constructor(seed) {
+  constructor(seed, buildTime = BUILD_TIME) {
     this.seed = seed;
+    this.buildTime = buildTime;
     this.phase = 'lobby';         // or 'playing', once the match has started
+    this.buildEnds = 0;           // when the build phase ends (Date.now() time)
     this.players = new Map();     // by socket id, in the order they joined: { id, name, team, ready }
     this.version = 0;
   }
 
   get host() { return this.players.keys().next().value ?? null; }
 
+  // Milliseconds of the build phase left (0 once the bases are open, or
+  // outside a match).
+  get buildLeft() { return this.phase === 'playing' ? Math.max(0, this.buildEnds - Date.now()) : 0; }
+
   get state() {
-    return { phase: this.phase, seed: this.seed, host: this.host, players: [...this.players.values()] };
+    return { phase: this.phase, seed: this.seed, host: this.host, players: [...this.players.values()], buildLeft: this.buildLeft };
   }
 
   // How many players each team has.
@@ -63,6 +71,7 @@ export class Lobby {
     if (id !== this.host) return 'Only the host can start the match.';
     if (![...this.players.values()].every((p) => p.ready)) return 'Everyone has to be ready first.';
     this.phase = 'playing';
+    this.buildEnds = Date.now() + this.buildTime * 1000;
     this.version++;
     return null;
   }

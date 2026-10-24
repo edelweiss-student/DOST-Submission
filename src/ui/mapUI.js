@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TEAMS } from '../match/teams.js';
+import { TEAMS, BASE_RADIUS } from '../match/teams.js';
 
 const R = 310;           // metres shown either side of the middle: the island and its islet
 const S = 620;           // map pixels across (one a metre)
@@ -158,12 +158,24 @@ export class MapUI {
       ctx.stroke();
     }
 
-    // Team bases, in a multiplayer match.
+    // Team bases, in a multiplayer match, ringed by their barriers while
+    // the build phase lasts.
     const bases = this.match?.bases;
     if (bases) {
       ctx.font = '600 12px system-ui, sans-serif';
       bases.forEach((b, i) => {
         const team = TEAMS[i], x = px(b.x), y = px(b.z), ours = team === this.match.team;
+        if (this.match.barriersUp) {
+          ctx.setLineDash([6, 5]);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = team.color;
+          ctx.fillStyle = `${team.color}26`;
+          ctx.beginPath();
+          ctx.arc(x, y, BASE_RADIUS / M, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
         ctx.strokeStyle = team.color;
         ctx.lineWidth = ours ? 3 : 2;
         ctx.beginPath();

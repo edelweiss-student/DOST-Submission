@@ -61,6 +61,9 @@ export class Player {
     this.climbing = false;      // on a ladder
     // What you've built (world/building.js): floorAt, collide, ladderAt and shelterAt.
     this.structures = null;
+    // keepOut(pos, vel): pushes you back out of anywhere you can't go (in a
+    // multiplayer match, the other teams' bases while their barriers are up).
+    this.keepOut = null;
     this.onMessage = null;
     this.onSplash = null;
     this.onBlackout = null;
@@ -274,6 +277,7 @@ export class Player {
         p.z = c.z + (dz / d) * min;
       }
     }
+    this.keepOut?.(p, this.vel);
     const r = Math.hypot(p.x, p.z);
     if (r > WORLD.maxRadius) {
       p.x *= WORLD.maxRadius / r;

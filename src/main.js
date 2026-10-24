@@ -262,7 +262,7 @@ let started = false;
 const isPlaying = () => player.controls.isLocked || player.dragLook || inventoryUI.open;
 player.enableDragLook(renderer.domElement);
 // Multiplayer: the start screen is the lobby until the match starts.
-const match = server && createMatch(server, { terrain, player, hud, overlay });
+const match = server && createMatch(server, { terrain, player, hud, overlay, scene, sea });
 const map = new MapUI({ terrain, trees: vegetation.sources.trees, building, sea, climate, match });
 
 function onPlay() {
@@ -630,6 +630,7 @@ function step() {
   inventoryUI.setCarrying(carrying && `Carrying ${carrying.count} ${woodName(carrying.kind, carrying.count)} · Q to put down`);
   inventoryUI.update(dt);
   map.update(dt, player, camera);
+  match?.update(dt);
   held.update(sdt, inventory.current, Math.hypot(player.vel.x, player.vel.z), timber.carried);
   precip.update(sdt, t, camera, weather);
   const env = sky.update(sdt, camera, weather.current, precip.flash);

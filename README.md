@@ -44,7 +44,9 @@ new multiplayer island.
 
 A match mode for four teams is being built in phases. Phase 1, the lobby,
 works: players join a match on a game server, are put on teams, and spawn at
-their team's base when the host starts it.
+their team's base when the host starts it. The match then opens with a
+10-minute build phase, behind barriers that keep each team out of the
+others' bases.
 
 **On a LAN.** On the computer that hosts, run:
 
@@ -57,8 +59,9 @@ open, such as http://192.168.1.20:3001/?mp (with the name of each network,
 since some are virtual, like WSL's). Everyone on the same network opens it in
 their browser; the host can use http://localhost:3001/?mp. If Windows asks,
 allow Node.js on private networks. The server picks a new island each time it
-starts: `npm run server -- --seed 1234` plays a chosen one, and `--port`
-picks another port.
+starts: `npm run server -- --seed 1234` plays a chosen one, `--port`
+picks another port, and `--build 60` shortens the build phase to 60 seconds
+for testing.
 
 **Online.** The hosted game (see Play online) runs the same server: everyone
 opens its address with `/?mp`.
@@ -93,6 +96,22 @@ the island, so every player finds the same spots, about 180 m apart. You
 spawn at yours facing the middle of the island, and come back there after
 blacking out.
 
+**The build phase.** A match opens with 10 minutes of building
+(`match/barriers.js`), timed by the server so every player's countdown agrees:
+"Build phase · barriers down in 9:59" at the top of the screen, amber in the
+last minute, with a warning when one minute is left.
+
+- **Barriers.** A wall in each team's colour rings every base, 50 m out. It
+  follows the ground and the sea, with a glowing line where it meets them,
+  a tinted curtain to above head height, and seams and rising bands.
+- **Who gets through.** Other teams can't walk or swim through it; you're
+  pushed back to its edge, with a message saying how long until it
+  opens. Your own team's barrier is fainter and lets you through, so you
+  can leave your base to gather and come back.
+- **The map** (`K`) rings each base with its barrier while the phase lasts.
+- **When it ends,** the server opens the bases. The barriers sink into the
+  ground, a message says every base is open, and anyone can go anywhere.
+
 **The server** (`server/`) decides the island (its seed), so every player
 generates the same one, and a player whose server restarts with another
 island reloads onto it. It checks every request: names lose invisible
@@ -110,9 +129,9 @@ to come:
 - Phase 3, a shared world: felling, gathering and building go through the
   server, which keeps opponents from building within about 50 m of another
   team's base.
-- Phase 4, the match: a bed per team, a 10-minute building countdown, then
-  raids. Tools damage enemy pieces and beds, and a team whose bed is
-  destroyed is out.
+- Phase 4, the rest of the match: a bed per team, and raids once the
+  barriers are down. Tools damage enemy pieces and beds, and a team whose
+  bed is destroyed is out. (The build phase and its barriers are done.)
 - Phase 5, weather hazards: storm cells, heat domes and surges at random,
   more often and worse the more the teams strip the island.
 
@@ -167,7 +186,7 @@ and a 100 m scale bar. It shows:
 - what you've built: floors and pilings as cells, walls, windows, doorways,
   railings and ladders along their edges, and blueprints in outline;
 - in a multiplayer match, the four team bases in their colours, with yours
-  marked;
+  marked, and their barriers ringed while the build phase lasts;
 - you, as an arrow pointing the way you face, and the name of the region
   you're in.
 
@@ -763,6 +782,8 @@ src/
   ui/mapUI.js           the map (K): terrain, the sea, standing trees, what you've built, bases, you
   match/teams.js        the four multiplayer teams (shared with the game server)
   match/bases.js        where each team's base is: inland from its diagonal shore
+  match/barriers.js     the build phase's barriers around each base: drawing them, keeping
+                        other teams out, and sinking them when it ends
   match/multiplayer.js  multiplayer: connecting, the lobby, and starting the match
   net/net.js            the connection to the game server (Socket.IO, loaded only for multiplayer)
   audio/ambience.js     synthesized wind, rain, surf, underwater, thunder, splashes, wood sounds

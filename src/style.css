@@ -169,6 +169,17 @@ html, body {
 }
 #dev-badge[hidden] { display: none; }
 
+/* A multiplayer match's build-phase countdown, with the dev badge below it */
+#match-timer {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+  padding: 6px 16px; border-radius: 999px; background: var(--panel);
+  font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; pointer-events: none;
+}
+#match-timer[hidden] { display: none; }
+#match-timer.soon { color: var(--accent); }
+#match-timer.open { color: var(--stamina); }
+#match-timer:not([hidden]) ~ #dev-badge { top: 58px; }
+
 /* Joinery mini-game */
 #joinery {
   position: fixed; left: 50%; top: 50%; transform: translate(-50%, -54%); z-index: 8;
