@@ -67,9 +67,14 @@ export class Player {
     this.onMessage = null;
     this.onSplash = null;
     this.onBlackout = null;
+    // In a multiplayer match, going down is the match's to decide (respawn,
+    // or out): onDeath() replaces blacking out, and you stay `dead` (not
+    // breathing, healing or moving) until it brings you back.
+    this.onDeath = null;
+    this.dead = false;
     this.edgeWarned = 0;
     this.tiredWarned = -Infinity;
-    addEventListener('keydown', (e) => { if (this.inputEnabled) this.keys.add(e.code); });
+    addEventListener('keydown', (e) => { if (this.inputEnabled && !this.dead) this.keys.add(e.code); });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => this.keys.clear());
     this.spawn = terrain.findSpawn();
@@ -290,12 +295,20 @@ export class Player {
   }
 
   breathe(dt) {
+    if (this.dead) return;
     if (this.underwater) this.oxygen = Math.max(0, this.oxygen - dt);
     else this.oxygen = Math.min(MAX_OXYGEN, this.oxygen + dt * 6);
     if (this.oxygen <= 0) this.health -= 12 * dt;
     else this.health = Math.min(100, this.health + 2 * dt);
     if (this.health <= 0) {
       this.onBlackout?.();
+      if (this.onDeath) {
+        this.dead = true;
+        this.health = 0;
+        this.keys.clear();
+        this.onDeath();
+        return;
+      }
       this.onMessage?.('You blacked out… and woke up on the shore.');
       this.respawn();
     }

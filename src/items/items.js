@@ -30,7 +30,7 @@ export const ITEMS = {
     stack: 1, color: '#8a8780', floats: false, tool: 'axe', durability: 150,
   },
   pickaxe: {
-    name: 'Stone pickaxe', description: 'Breaks twice the stones off boulders.',
+    name: 'Stone pickaxe', description: 'A heavy stone head on a stick: in a multiplayer match, the fastest way through an enemy bed.',
     stack: 1, color: '#8a8780', floats: false, tool: 'pickaxe', durability: 50,
   },
 };

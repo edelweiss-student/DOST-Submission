@@ -3,6 +3,7 @@ import { LobbyUI } from '../ui/lobbyUI.js';
 import { TEAMS } from './teams.js';
 import { findBases } from './bases.js';
 import { Barriers } from './barriers.js';
+import { BedWars } from './bedwars.js';
 
 const NAME_KEY = 'washed-away.name';
 
@@ -29,13 +30,13 @@ export async function joinServer() {
 }
 
 // The start screen becomes the lobby until the host starts the match; then
-// everyone spawns at their team's base (and comes back there after blacking
-// out). The match opens with the server's build phase: a countdown, and
-// barriers that keep each team out of the others' bases until it ends.
-// overlay: the start screen. Returns { inLobby, intro, team, bases,
-// barriersUp, update(dt) }: while inLobby, clicking the start screen doesn't
-// start the game.
-export function createMatch({ net, seed, error }, { terrain, player, hud, overlay, scene, sea }) {
+// everyone spawns at their team's base, next to its bed. The match opens
+// with the server's build phase: a countdown, and barriers that keep each
+// team out of the others' bases until it ends. Then it's bed wars
+// (bedwars.js) until one team is left. overlay: the start screen. Returns
+// { inLobby, intro, team, bases, barriersUp, fighting, strike, update(dt) }:
+// while inLobby, clicking the start screen doesn't start the game.
+export function createMatch({ net, seed, error }, { terrain, player, hud, overlay, scene, sea, camera }) {
   overlay.classList.add('mp', 'lobby');
   const leave = () => { location.href = location.pathname; };
   let name = '';
@@ -44,6 +45,7 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
   let team = null;      // ours, once the match is on
   let bases = null;     // every team's, once the match is on
   let barriers = null;
+  let wars = null;      // the fighting, once the match is on
   let buildEnds = 0;    // when the build phase ends (performance.now() time), while it lasts
   let warned = false, bumped = -Infinity, hideTimer = 0;
   const timer = document.getElementById('match-timer');
@@ -53,7 +55,8 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
     if (!buildEnds) return;
     buildEnds = 0;
     barriers.open();
-    hud.message('The barriers are down: every base is open.', 8);
+    wars.peace = false;
+    hud.message('The barriers are down: every base is open. Guard your bed!', 8);
     timer.textContent = 'Barriers down · every base is open';
     timer.className = 'open';
     hideTimer = performance.now() + 6000;
@@ -90,9 +93,16 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
     get team() { return team; },
     get bases() { return bases; },
     get barriersUp() { return !!barriers?.up; },
+    // Up and about in the match, so a swing can hit someone.
+    get fighting() { return !!wars?.fighting; },
+    // A swing landing (ray: from your eye; tool: what's in your hand, or
+    // 'none'). Returns true if it hit another team's player or bed.
+    strike: (ray, tool) => wars?.strike(ray, tool) ?? false,
 
-    // Every frame: the barriers, and the countdown at the top of the screen.
+    // Every frame: the fighting, the barriers, and the countdown at the top
+    // of the screen.
     update(dt) {
+      wars?.update(dt);
       barriers?.update(dt);
       const now = performance.now();
       if (hideTimer && now > hideTimer) {
@@ -115,7 +125,10 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
     return match;
   }
 
-  net.on('lobby', (state) => { if (!team) ui.render(state, net.id); });
+  net.on('lobby', (state) => {
+    if (!team) ui.render(state, net.id);
+    else wars?.left(state.players);
+  });
   net.on('notice', (text) => ui.notice(text));
   net.on('start', ({ players, buildLeft = 0 }) => {
     const me = players.find((p) => p.id === net.id);
@@ -126,6 +139,7 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
     player.respawn();
     overlay.classList.remove('lobby');
     ui.showMatch(team, players);
+    wars = new BedWars({ net, players, me: net.id, bases, terrain, scene, player, camera, hud, peace: buildLeft > 0 });
     if (buildLeft > 0) {
       buildEnds = performance.now() + buildLeft;
       warned = buildLeft <= 60000;   // no warning for a phase shorter than that

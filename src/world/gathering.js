@@ -7,18 +7,17 @@ import { SPECIES } from './trees.js';
 
 const REACH = 2.4;          // how far past an object's edge you can reach (m)
 const MAX_DROPPED = 150;    // oldest dropped items vanish past this
+const STICKS = 0.6;         // loose sticks lying around each tree, on average
+const STONE_PILES = 110;    // little piles of loose stones along the beaches
 
 // What each kind of source gives. stock: gathers before it runs out;
 // regrow: seconds of game time for one gather to come back (grass never
-// runs out). tool: the tool that does better here; label and give(rng,
-// { tool, dead }) depend on whether it's the one selected. With the axe,
-// trees are felled and fallen trunks give logs instead (see timber.js).
+// runs out). tool: the tool that does better here, or (needs) the only one
+// that works; label and give(rng, { tool, dead }) depend on whether it's
+// selected. Trees are felled with the axe, and fallen trunks give logs
+// (see timber.js); sticks and stones lie loose on the ground instead.
 const SOURCES = {
-  tree: {
-    stock: 3, regrow: 90, tool: 'axe',
-    label: () => 'Gather sticks',
-    give: (r) => [['stick', r() < 0.5 ? 2 : 1]],
-  },
+  tree: { tool: 'axe', needs: 'Fell it with an axe' },
   bush: {
     stock: 3, regrow: 120, tool: 'knife',
     label: (knife) => (knife ? 'Cut fibre and berries' : 'Gather fibre and berries'),
@@ -28,15 +27,9 @@ const SOURCES = {
       ...(!dead && r() < 0.6 ? [['berries', r() < 0.3 ? 2 : 1]] : []),
     ],
   },
-  rock: {
-    stock: 4, regrow: 300, tool: 'pickaxe',
-    label: (pickaxe) => (pickaxe ? 'Mine stones' : 'Pick up stones'),
-    give: (r, { tool }) => [['stone', (r() < 0.3 ? 2 : 1) * (tool ? 2 : 1)]],
-  },
   log: {
-    stock: 3, regrow: 600, tool: 'axe',
-    label: (axe) => (axe ? 'Cut a log off' : 'Break off sticks'),
-    give: (r) => [['stick', r() < 0.5 ? 2 : 1]],
+    stock: 3, regrow: 600, tool: 'axe', needs: 'Cut logs off it with an axe',
+    label: () => 'Cut a log off',
   },
   grass: {
     tool: 'knife', label: () => 'Cut grass',
@@ -71,19 +64,19 @@ class Grid {
   }
 }
 
-// Gathering from trees, bushes, boulders, fallen trunks and (with a knife)
-// grass, and items lying in the world (dropped, or thrown out of a full
-// bag). Stones and tools sink; everything else floats, drifting with the
-// waves and the wind. groundAt(x, z, y): the terrain, or a floor built
-// there, for items to land on. onImpact({ kind, x, z, amount }): stones
-// mined ('mine') or bushes and grass cut back ('strip'), for the climate
-// (climate/entity.js). Dead wood is free.
+// Gathering from bushes and (with a knife) grass, felling trees and cutting
+// logs off fallen trunks (with an axe), picking up the sticks and stones
+// lying loose on the ground, and items in the world (dropped, or thrown out
+// of a full bag). Stones and tools sink; everything else floats, drifting
+// with the waves and the wind. groundAt(x, z, y): the terrain, or a floor
+// built there, for items to land on. onImpact({ kind: 'strip', x, z,
+// amount }): bushes and grass cut back, for the climate (climate/entity.js).
+// Loose sticks and stones are free.
 export function createGathering(scene, { terrain, water, vegetation, inventory, timber, groundAt, rng, onImpact }) {
   const grid = new Grid();
-  const { trees, bushes, rocks, logs } = vegetation.sources;
+  const { trees, bushes, logs } = vegetation.sources;
   for (const t of trees) grid.add(t.x, t.z, { kind: 'tree', x: t.x, z: t.z, r: SPECIES[t.species].trunk * t.s, tree: t });
   for (const b of bushes) grid.add(b.x, b.z, { kind: 'bush', x: b.x, z: b.z, y: b.y, r: 1.1 * b.s });
-  for (const r of rocks) grid.add(r.x, r.z, { kind: 'rock', x: r.x, z: r.z, r: 0.9 * Math.max(r.sx, r.sz) });
   for (const l of logs) {
     const source = { kind: 'log', x: l.x, z: l.z, dx: l.dx, dz: l.dz, len: l.len, yaw: l.yaw, r: 0.55 * l.s };
     for (let d = 0; d <= l.len; d += 4) grid.add(l.x + l.dx * d, l.z + l.dz * d, source);
@@ -94,6 +87,61 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
   const dropped = [];
   const meshes = {};
   const material = patchMaterial(new THREE.MeshLambertMaterial({ vertexColors: true }), { key: 'world-item', snowMin: 0.6 });
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1);
+  const Y = new THREE.Vector3(0, 1, 0);
+
+  // --- Loose sticks and stones: sticks lie around the trees they fell
+  // from, stones in little piles along the beaches. Each is picked up for
+  // good (felled crowns drop more sticks). They never move, so each kind is
+  // one instanced mesh, set up once and changed only when one is taken.
+  // Placed with the island's own random numbers, so every player on it
+  // finds the same ones.
+  const loose = { stick: [], stone: [] };
+  const looseGrid = new Grid();
+  const looseMeshes = {};
+  const lay = (id, x, z) => {
+    const y = terrain.heightAt(x, z);
+    if (y < 0.4) return;   // not in the sea
+    const item = { id, x, y, z, yaw: rng() * Math.PI * 2, index: loose[id].length };
+    loose[id].push(item);
+    looseGrid.add(x, z, item);
+  };
+  for (const t of trees) {
+    if (rng() > STICKS) continue;
+    const a = rng() * Math.PI * 2, d = SPECIES[t.species].trunk * t.s + 0.8 + rng() * 2.8;
+    lay('stick', t.x + Math.cos(a) * d, t.z + Math.sin(a) * d);
+  }
+  for (let k = 0, piles = 0; k < 40000 && piles < STONE_PILES; k++) {
+    const x = (rng() - 0.5) * 640, z = (rng() - 0.5) * 640;
+    const h = terrain.heightAt(x, z);
+    if (h < 0.5 || h > 2.4 || terrain.slopeAt(x, z) > 0.2) continue;
+    piles++;
+    for (let n = 1 + Math.floor(rng() * 3); n > 0; n--) lay('stone', x + (rng() - 0.5) * 2.4, z + (rng() - 0.5) * 2.4);
+  }
+  const looseMatrix = (it) => m.compose(new THREE.Vector3(it.x, it.y + REST[it.id], it.z), q.setFromAxisAngle(Y, it.yaw), one);
+  for (const [id, list] of Object.entries(loose)) {
+    const mesh = new THREE.InstancedMesh(lyingGeometry(id), material, Math.max(1, list.length));
+    list.forEach((it) => mesh.setMatrixAt(it.index, looseMatrix(it)));
+    mesh.count = list.length;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.computeBoundingSphere();
+    scene.add(mesh);
+    looseMeshes[id] = mesh;
+  }
+  // Taken: the last of its kind fills its place.
+  function removeLoose(it) {
+    const list = loose[it.id], mesh = looseMeshes[it.id];
+    const last = list.pop();
+    if (last !== it) {
+      list[it.index] = last;
+      last.index = it.index;
+      mesh.setMatrixAt(it.index, looseMatrix(last));
+    }
+    mesh.count = list.length;
+    mesh.instanceMatrix.needsUpdate = true;
+    looseGrid.remove(it.x, it.z, it);
+  }
   for (const id of Object.keys(ITEMS)) {
     const mesh = new THREE.InstancedMesh(lyingGeometry(id), material, MAX_DROPPED);
     mesh.count = 0;
@@ -111,8 +159,6 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
   }
 
   const surf = {};
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1);
-  const Y = new THREE.Vector3(0, 1, 0);
   function updateDropped(dt, t) {
     const wind = uniforms.uWind.value, wd = uniforms.uWindDir.value;
     const counts = {};
@@ -159,10 +205,11 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
     }
   }
 
-  // What you're looking at within reach: dropped items first, then
-  // sources, then (holding a knife) the grass in front of you. Returns
-  // { item } or { source, cx, cz } (the nearest point on it), with a score.
-  const found = [];
+  // What you're looking at within reach: items (dropped or loose) first,
+  // then sources, then (holding a knife) the grass in front of you. Returns
+  // { item }, { loose } or { source, cx, cz } (the nearest point on it),
+  // with a score.
+  const found = [], foundLoose = [];
   const fwd = new THREE.Vector3();
   function findTarget(player, camera, tool) {
     camera.getWorldDirection(fwd);
@@ -180,6 +227,10 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
     for (const it of dropped) {
       if (Math.abs(it.pos.y - (py + 0.9)) > 2.6) continue;
       consider({ item: it }, it.pos.x, it.pos.z, Math.hypot(it.pos.x - px, it.pos.z - pz), 1);
+    }
+    for (const it of looseGrid.near(px, pz, foundLoose)) {
+      if (Math.abs(it.y - (py + 0.9)) > 2.6) continue;
+      consider({ loose: it }, it.x, it.z, Math.hypot(it.x - px, it.z - pz), 1);
     }
     for (const s of grid.near(px, pz, found)) {
       let cx = s.x, cz = s.z;
@@ -213,6 +264,13 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
     return { got, full: left > 0 };
   }
 
+  // E: pick up a loose stick or stone, which is gone from the world for good.
+  function pickUpLoose(it) {
+    if (inventory.addStack({ id: it.id, count: 1 }) > 0) return { got: [], full: true };
+    removeLoose(it);
+    return { got: [{ id: it.id, count: 1 }] };
+  }
+
   // E: gather from a source (or chop at it). Returns what went into the
   // bag, whether the bag was full or the source empty, and whether the
   // selected tool was used (so it swings and wears).
@@ -244,8 +302,7 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
     }
     if (added === 0) return { got, full: true };
     if (kind.stock) s.stock--;
-    if (s.kind === 'rock') onImpact?.({ kind: 'mine', x: s.x, z: s.z, amount: added });
-    else if (s.kind === 'bush') onImpact?.({ kind: 'strip', x: s.x, z: s.z, amount: 1 });
+    if (s.kind === 'bush') onImpact?.({ kind: 'strip', x: s.x, z: s.z, amount: 1 });
     else if (s.kind === 'grass') onImpact?.({ kind: 'strip', x: player.pos.x, z: player.pos.z, amount: 0.3 });
     return { got, full, used };
   }
@@ -270,9 +327,19 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
           act: () => pickUp(target.item),
         };
       }
+      if (target.loose) {
+        return {
+          score: target.score, key: target.loose,
+          prompt: [['E', `Pick up ${ITEMS[target.loose.id].name}`]],
+          act: () => pickUpLoose(target.loose),
+        };
+      }
       const s = target.source, kind = SOURCES[s.kind];
       const act = () => gather(target, simTime, tool, player);
-      if (s.kind === 'tree' && tool === 'axe') {
+      if (kind.needs && tool !== kind.tool) {
+        return { score: target.score, key: s, dim: true, prompt: [[null, kind.needs]] };
+      }
+      if (s.kind === 'tree') {
         const [done, needed] = timber.chopProgress(s.tree);
         return { score: target.score, key: s, hands: true, swing: true, prompt: [['E', `Chop down (${done}/${needed})`]], act };
       }
@@ -285,5 +352,7 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
     },
 
     get count() { return dropped.length; },
+    // Loose sticks and stones still lying about.
+    get loose() { return { sticks: loose.stick.length, stones: loose.stone.length }; },
   };
 }

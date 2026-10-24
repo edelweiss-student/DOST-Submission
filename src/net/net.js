@@ -35,7 +35,9 @@ export async function connect(timeout = 6000) {
     welcome,
     get id() { return socket.id; },
     get connected() { return socket.connected; },
-    send(type, data) { socket.emit(type, data); },
+    // volatile: fine to drop if the connection is busy (where you are, 20
+    // times a second), rather than queue up.
+    send(type, data, volatile = false) { (volatile ? socket.volatile : socket).emit(type, data); },
     // Also takes Socket.IO's own 'connect' and 'disconnect'.
     on(type, handler) {
       listened.add(type);

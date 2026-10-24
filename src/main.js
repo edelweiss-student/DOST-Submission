@@ -230,7 +230,7 @@ const TIER_DOWN = [
 ];
 const CAUSES = {
   felling: 'Too many trees have come down.',
-  mining: 'Too much of the ground has been dug up and stripped bare.',
+  stripping: 'Too much of the ground has been stripped bare.',
   building: 'Too much of the island is built over.',
 };
 climate.onTier = (tier, previous, cause) => {
@@ -262,7 +262,7 @@ let started = false;
 const isPlaying = () => player.controls.isLocked || player.dragLook || inventoryUI.open;
 player.enableDragLook(renderer.domElement);
 // Multiplayer: the start screen is the lobby until the match starts.
-const match = server && createMatch(server, { terrain, player, hud, overlay, scene, sea });
+const match = server && createMatch(server, { terrain, player, hud, overlay, scene, sea, camera });
 const map = new MapUI({ terrain, trees: vegetation.sources.trees, building, sea, climate, match });
 
 function onPlay() {
@@ -399,6 +399,17 @@ function interact() {
   }
 }
 
+// In a multiplayer match, left-click or F swings at another team's player
+// or bed under the crosshair (match/bedwars.js), with whatever is in your
+// hand: the hit counts as the swing lands.
+function attack() {
+  if (!match?.fighting || held.busy || build.on || timber.carrying) return;
+  const tool = inventory.current, kind = selectedTool();
+  held.swing(() => {
+    if (match.strike(aimRay, kind ?? 'none')) report({ used: !!kind }, tool);
+  });
+}
+
 // Holding X takes apart what you built (or clears a blueprint).
 const HOLD_TIME = 0.8;
 const hold = { down: false, key: null, time: 0 };
@@ -449,8 +460,10 @@ function useSelected() {
 // inventory, E gathers, chops, picks up, builds and repairs, Q drops one of
 // the selected item (or puts down wood you're carrying), B builds (1-8 or
 // the wheel pick the piece, R turns a roof or raises pilings), holding X
-// takes apart, K opens the map, P toggles the performance readout, M mutes.
-// In the joinery mini-game, E or Space works and X skips.
+// takes apart, F strikes (in a match), K opens the map, P toggles the
+// performance readout, M mutes. In the joinery mini-game, E or Space works
+// and X skips. Knocked out in a match, you can't do anything until you're
+// back.
 //
 // Dev mode, for testing, is off and out of sight until ` is pressed five
 // times in quick succession (five more turn it off). Then ` and 1-7 forces
@@ -524,12 +537,15 @@ addEventListener('keydown', (e) => {
     if (digit >= 1 && inventoryUI.hover >= 0) inventory.swap(inventoryUI.hover, digit - 1);
     return;
   }
+  if (player.dead) return;
   if (digit >= 1 && build.on) {
     if (digit <= PIECES.length) choosePiece(digit - 1);
   } else if (digit >= 1) {
     inventory.select(digit - 1);
   } else if (e.code === 'KeyE') {
     interact();
+  } else if (e.code === 'KeyF') {
+    if (!e.repeat) attack();
   } else if (e.code === 'KeyB') {
     setBuilding(!build.on);
   } else if (e.code === 'KeyR') {
@@ -562,17 +578,19 @@ addEventListener('wheel', (e) => {
   else inventory.select(inventory.selected + Math.sign(e.deltaY));
 }, { passive: true });
 renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
-// Right-click eats (or leaves build mode); in build mode with the mouse
-// captured, left-click places too. In the joinery mini-game a click works.
+// Right-click eats (or leaves build mode); with the mouse captured,
+// left-click places in build mode, and strikes in a match. In the joinery
+// mini-game a click works.
 renderer.domElement.addEventListener('mousedown', (e) => {
-  if (!isPlaying() || inventoryUI.open) return;
+  if (!isPlaying() || inventoryUI.open || player.dead) return;
   if (joinery.open) {
     if (e.button === 0) joinery.act();
   } else if (e.button === 2) {
     if (build.on) setBuilding(false);
     else useSelected();
-  } else if (e.button === 0 && build.on && player.controls.isLocked) {
-    interact();
+  } else if (e.button === 0 && player.controls.isLocked) {
+    if (build.on) interact();
+    else attack();
   }
 });
 
@@ -600,7 +618,9 @@ function step() {
   uniforms.uTime.value = t;
 
   weather.update(sdt);
-  climate.update(sdt, { rain: weather.current.rain, x: player.pos.x, z: player.pos.z });
+  // A multiplayer match is a fast bed-wars game: no climate change in it,
+  // so the weather stays fair to all and the sea doesn't rise.
+  if (!match) climate.update(sdt, { rain: weather.current.rain, x: player.pos.x, z: player.pos.z });
   sea.update(sdt, weather, sky.state.time);
   player.burden = timber.burden;
   player.update(sdt, t, weather.heatIndex);
@@ -611,8 +631,9 @@ function step() {
   joinery.update(sdt);
 
   // What's under the crosshair, or where a blueprint would go.
-  // (With the map up you can still move, but not act on what's in front of you.)
-  const playing = isPlaying() && !inventoryUI.open && !joinery.open && !map.open;
+  // (With the map up you can still move, but not act on what's in front of
+  // you; knocked out in a match, neither.)
+  const playing = isPlaying() && !inventoryUI.open && !joinery.open && !map.open && !player.dead;
   camera.getWorldDirection(aimDir);
   aimRay.set(camera.position, aimDir);
   focus = null;
@@ -660,7 +681,7 @@ function step() {
   renderer.shadowMap.needsUpdate = sky.sun.intensity > 0.02 && shadowFrame === 0;
 
   audio.update(weather, player.underwater, water.waves.hs);
-  hud.update(dt, { weather, sea, climate, clock: sky.clock(), player, waves: water.waves });
+  hud.update(dt, { weather, sea, climate: match ? null : climate, clock: sky.clock(), player, waves: water.waves });
   gpuTimer.begin(perf.visible);
   renderer.render(scene, camera);
   gpuTimer.end();

@@ -9,6 +9,8 @@ import { parseArgs } from 'node:util';
 import { Server } from 'socket.io';
 import { TEAMS, BUILD_TIME } from '../src/match/teams.js';
 import { Lobby } from './lobby.js';
+import { Match } from './match.js';
+import { RESPAWN_TIME } from '../src/match/rules.js';
 
 // The multiplayer game server: a lobby of up to four teams, and the match it
 // starts. It decides the island (its seed), so every player generates the
@@ -84,8 +86,26 @@ const lobby = new Lobby(SEED, BUILD);
 const broadcast = () => io.emit('lobby', lobby.state);
 const teamOf = (id) => TEAMS[lobby.players.get(id)?.team]?.name;
 const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-// When the build phase ends, the barriers come down and every base is open.
-let opening = null;
+// The bed-wars match while it's on (server/match.js). When its build phase
+// ends, the barriers come down and every base is open; until it's over,
+// everyone's whereabouts go out 20 times a second.
+let match = null, opening = null, tick = null;
+const endMatch = () => {
+  clearTimeout(opening);
+  clearInterval(tick);
+  match = null;
+};
+// Once only one team is left: tell everyone who won, and open the lobby again.
+const settle = () => {
+  const result = match?.result();
+  if (!result) return;
+  const name = TEAMS[result.winner]?.name;
+  console.log(name ? `Team ${name} wins the match` : 'Nobody is left: the match is over');
+  io.emit('matchOver', result);
+  endMatch();
+  lobby.reset();
+  broadcast();
+};
 
 io.on('connection', (socket) => {
   socket.emit('welcome', { seed: lobby.seed });
@@ -111,19 +131,55 @@ io.on('connection', (socket) => {
     console.log(`Match started: ${lobby.players.size} player${lobby.players.size === 1 ? '' : 's'}, island ${lobby.seed}, ${clock(BUILD)} to build`);
     io.emit('start', { seed: lobby.seed, players: lobby.state.players, buildLeft: lobby.buildLeft });
     broadcast();
-    clearTimeout(opening);
+    endMatch();
+    match = new Match(lobby.state.players);
+    tick = setInterval(() => io.volatile.emit('moves', match.snapshot()), 50);
     opening = setTimeout(() => {
       console.log('The build phase is over: every base is open');
       io.emit('basesOpen');
       broadcast();
     }, lobby.buildLeft);
   });
+
+  // The match: where you are, swings at other players and beds, going down.
+  // Nothing can be hurt while the build phase lasts.
+  socket.on('move', (state) => match?.move(socket.id, state));
+  socket.on('beds', (beds) => match?.setBeds(beds));
+  socket.on('hit', (data) => {
+    const { target, tool } = data ?? {};
+    if (!match || lobby.buildLeft > 0) return;
+    const hit = match.hit(socket.id, target, tool, Date.now());
+    if (hit) io.to(target).emit('hurt', hit);
+  });
+  socket.on('hitBed', (data) => {
+    const { team, tool } = data ?? {};
+    if (!match || lobby.buildLeft > 0) return;
+    const hit = match.hitBed(socket.id, team, tool, Date.now());
+    if (!hit) return;
+    io.emit('bed', { team, hp: hit.hp });
+    if (!hit.destroyed) return;
+    console.log(`Team ${TEAMS[team].name}'s bed was destroyed by ${hit.by}`);
+    io.emit('bedDestroyed', { team, by: hit.by });
+  });
+  socket.on('died', () => {
+    const down = match?.died(socket.id, Date.now());
+    if (!down) return;
+    console.log(`${down.name} went down${down.by ? ` (${down.by})` : ''}${down.out ? ' and is out' : ''}`);
+    io.emit('death', { id: socket.id, ...down });
+    if (down.out) return settle();
+    setTimeout(() => { if (match?.respawn(socket.id)) io.emit('respawned', { id: socket.id }); }, RESPAWN_TIME * 1000);
+  });
+
   socket.on('disconnect', () => {
     const player = lobby.players.get(socket.id), playing = lobby.phase === 'playing';
     if (!act(() => lobby.leave(socket.id))) return;
     const over = playing && lobby.phase === 'lobby';
-    if (over) clearTimeout(opening);
+    if (over) endMatch();
     console.log(`${player.name} left${over ? '; the match is over and the lobby is open again' : ''}`);
+    if (match) {
+      match.leave(socket.id);
+      settle();
+    }
   });
 });
 

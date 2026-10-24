@@ -4,7 +4,8 @@ Every tree you fell brings the sea closer. A survival and exploration game
 built with three.js: a realistic island, a smooth wave-driven ocean with a
 reef and kelp forest to dive into, and a climate that keeps shifting and
 answers what you do to the island. Strip it bare and the rising sea washes
-it away.
+it away. With friends, it's a fast bed-wars match for up to four teams (see
+Multiplayer).
 
 ## Run
 
@@ -42,11 +43,13 @@ new multiplayer island.
 
 ## Multiplayer
 
-A match mode for four teams is being built in phases. Phase 1, the lobby,
-works: players join a match on a game server, are put on teams, and spawn at
-their team's base when the host starts it. The match then opens with a
-10-minute build phase, behind barriers that keep each team out of the
-others' bases.
+Bed wars for up to four teams, on a game server. Players join a lobby, are
+put on teams, and spawn at their team's base, next to its bed, when the host
+starts the match. It opens with a 10-minute build phase behind barriers that
+keep each team out of the others' bases; then it's a fast fight to be the
+last team standing. There's no climate change in a match: nothing anyone
+does raises the climate's pressure, so the sea doesn't rise and the weather
+keeps to its mildest mix.
 
 **On a LAN.** On the computer that hosts, run:
 
@@ -86,15 +89,16 @@ call a player, with arms and legs that swing at the shoulders and hips and
 bend at the elbows and knees. It walks in step with its speed and, standing
 still, breathes and looks about. It's 1.85 m tall with its eyes at 1.7 m,
 where the first-person camera is, and it renders in the world with the
-game's own lighting, fog and weather, ready for phase 2.
+game's own lighting, fog and weather: in a match, it's how you see the
+others.
 
 **The bases.** Red, Blue, Green and Yellow are based a little inland from
 the island's north-east, south-east, south-west and north-west shores: the
 first flat ground 20 to 80 m in from the beach that's at least 5 m above the
 sea (it can rise 2.4 m, and storm surges 1.4 m more). They're worked out from
 the island, so every player finds the same spots, about 180 m apart. You
-spawn at yours facing the middle of the island, and come back there after
-blacking out.
+spawn at yours facing the middle of the island, with your team's bed 3 m
+behind you.
 
 **The build phase.** A match opens with 10 minutes of building
 (`match/barriers.js`), timed by the server so every player's countdown agrees:
@@ -113,29 +117,58 @@ last minute, with a warning when one minute is left.
 - **The map** (`K`) rings each base with its barrier while the phase lasts.
 - **When it ends,** the server opens the bases. The barriers sink into the
   ground, a message says every base is open, and anyone can go anywhere.
+- Nothing can be hurt until then: a swing at another team's player only
+  gets a reminder.
+
+**Bed wars** (`match/bedwars.js`, with the rules in `match/rules.js`):
+
+- **The others.** Every other player shows as a survivor in their team's
+  colour, with their name overhead. Each game sends where its player is 20
+  times a second, through the server, and draws the others a tenth of a
+  second behind, so they move smoothly and walk in step.
+- **Fighting.** Left-click (with the mouse captured) or `F` swings what's in
+  your hand at another team's player or bed under the crosshair, within
+  3.2 m; the hit counts as the swing lands. A hit flashes the crosshair red
+  and wears the tool. Being hit flashes the edges of the screen red and
+  knocks you back. Health is 100 and slowly comes back. Each hit does:
+
+  | In your hand | To a player | To a bed |
+  | --- | --- | --- |
+  | Nothing | 5 | 3 |
+  | Knife | 14 | 5 |
+  | Axe | 20 | 12 |
+  | Pickaxe | 16 | 20 |
+
+  A bed has 200 health: 10 blows of a pickaxe, 17 of an axe.
+- **Beds.** Each team's bed stands at its base, in its colour. While it
+  stands, a player who goes down (knocked out, or drowned) lies where they
+  fell and comes back at it 5 seconds later. Once it's destroyed, going down
+  is for good: you're out. A few seconds later you can walk about and
+  watch, unseen and unable to fight.
+- **The end.** The last team with anyone left wins (players who leave are
+  out). Everyone sees who won, and "Back to the lobby" goes back for the
+  next match.
+- **On screen,** under the weather: every team's bed (its health, or "no
+  bed") and how many of its players are left, and below it a feed of who
+  went down and which beds broke. You're warned when your bed is under
+  attack.
 
 **The server** (`server/`) decides the island (its seed), so every player
 generates the same one, and a player whose server restarts with another
 island reloads onto it. It checks every request: names lose invisible
 characters and are cut to 16, only the host can start, and only once
-everyone is ready. It only sends out real changes. Newcomers wait while a
-match is on; once everyone has left it, the lobby opens again.
-Single-player never loads Socket.IO.
+everyone is ready. It only sends out real changes. It also referees the
+fight (`server/match.js`): it checks every hit (other team, both up, within
+reach, not too often), keeps the beds' health, and decides who comes back
+and who's out. Newcomers wait while a match is on; when it's over, or once
+everyone has left it, the lobby opens again. Single-player never loads
+Socket.IO.
 
-**Not shared yet:** you don't see the other players, and felling, building,
-the weather and the sea still run separately on each player's machine. Still
-to come:
-
-- Phase 2, players: seeing each other move as these survivors, smoothly, at
-  20 updates a second.
-- Phase 3, a shared world: felling, gathering and building go through the
-  server, which keeps opponents from building within about 50 m of another
-  team's base.
-- Phase 4, the rest of the match: a bed per team, and raids once the
-  barriers are down. Tools damage enemy pieces and beds, and a team whose
-  bed is destroyed is out. (The build phase and its barriers are done.)
-- Phase 5, weather hazards: storm cells, heat domes and surges at random,
-  more often and worse the more the teams strip the island.
+**Not shared yet:** felling, gathering, building, the weather and the sea
+still run separately on each player's machine, so a wall you build around
+your bed only stands in your own game. Still to come: a shared world, where
+felling, gathering and building go through the server, tools damage enemy
+pieces, and opponents can't build within about 50 m of another team's base.
 
 ## Controls
 
@@ -147,6 +180,7 @@ to come:
 | Space | Jump / swim up |
 | C | Dive |
 | E | Gather from what you're looking at, pick something up, or (with the axe) chop a tree or split a log |
+| Left-click / F | In a multiplayer match: strike another team's player or bed under the crosshair |
 | 1–9 / mouse wheel | Choose a hotbar slot |
 | I / Tab | Open or close the inventory and crafting |
 | K | Open or close the map |
@@ -207,15 +241,21 @@ you get more, or something else:
 
 | Source | Gives | With the right tool | Gathers before it runs out | One gather comes back every |
 | --- | --- | --- | --- | --- |
-| Tree | 1–2 sticks | Axe: fells it (see Timber and building) | 3 | 90 s |
 | Bush | 1–2 plant fibre, often 1–2 berries | Knife: twice the fibre | 3 | 2 min |
-| Boulder | 1–2 stones | Pickaxe: twice the stones | 4 | 5 min |
-| Fallen trunk | 1–2 sticks | Axe: cuts a log off it | 3 | 10 min |
 | Grass | — | Knife: 1–2 fibre, never runs out | — | — |
+| Tree | — | Axe: fells it (see Timber and building) | — | — |
+| Fallen trunk | — | Axe: cuts a log off it | 3 | 10 min |
 
 Sources regrow in game time, so not while paused. Bushes the sea has killed
-give only fibre. A message tells you when your bag is full; anything that
+give only fibre. Without the right tool, a tree or a fallen trunk only says
+what it needs. A message tells you when your bag is full; anything that
 doesn't fit is left behind.
+
+**Sticks and stones** lie loose on the ground: sticks near the trees (about
+3 in 5 trees have one within a few metres, and a felled tree's crown leaves
+more), and stones in little piles of 1 to 3 on the beaches. Look at one and
+press `E` to pick it up. It's gone for good, so they get scarcer as the
+island is picked over. Boulders give nothing.
 
 Items stack (sticks and stones 32, fibre 48, berries 24). Wood isn't an
 item: it never goes in the bag (see below). Berries are food: right-click
@@ -242,8 +282,9 @@ A tool is used up one gather at a time, and only where it does better (an
 axe at a bush wears nothing). A bar under its slot shows the uses left, and
 the tooltip gives the exact number. A selected tool is in your hand at the
 lower right; it bobs as you walk and swings when you use it, and its work
-is done when the swing lands, not when you press `E`. The knife and pickaxe
-strike down and forward. The axe chops level: it swings back to the right,
+is done when the swing lands, not when you press `E`. The pickaxe has no
+work on the island for now; in a multiplayer match it's the quickest way
+through an enemy bed. The knife and pickaxe strike down and forward. The axe chops level: it swings back to the right,
 sweeps across from right to left and bites in edge first right where the
 crosshair is, jolts with the blow, then pulls back. You can't start another
 swing until one is nearly over. Tools keep their wear when moved, dropped or
@@ -386,10 +427,11 @@ far and how fast it breaks down is up to you.
   like: "South woods", "Central hills", "North-east shore".
 - **What it keeps track of.** A felled tree takes its wood (height × trunk
   thickness²) out of its region's forest for good, so big eucalyptus and
-  oaks count far more than yerba mate. Mining stones and cutting bushes and
-  grass strip the ground, which recovers by half every 15 minutes. Building
-  covers the ground (a floor 4 m², a wall a strip of it) until it comes
-  down. Dead wood is free: sticks, and logs cut off fallen trunks.
+  oaks count far more than yerba mate. Cutting bushes and grass strips the
+  ground, which recovers by half every 15 minutes. Building covers the
+  ground (a floor 4 m², a wall a strip of it) until it comes down. What's
+  lying about is free: loose sticks and stones, and logs cut off fallen
+  trunks.
 - **Stress.** A region's stress (0–1) weighs how much of its forest is gone
   (0.45), how stripped its ground is (0.2) and how built over it is (0.05),
   scaled to the causes the game has so far (fire and hunting will join
@@ -406,9 +448,9 @@ far and how fast it breaks down is up to you.
   47%, 70%) for two minutes to come back down, so it doesn't flicker. A
   message says when it turns, and why. Clearing about 30 big trees out of
   one valley, or the whole valley, makes it unstable (30 small ones
-  don't). Mining that valley out too, or clear-cutting three, makes it
-  severe, and about four wrecked valleys (clear-cut, then mined or washed
-  out by the rain) bring on a crisis.
+  don't). Stripping that valley's ground bare too, or clear-cutting three,
+  makes it severe, and about four wrecked valleys (clear-cut, then stripped
+  or washed out by the rain) bring on a crisis.
 - **Weather.** The weather blends between seven presets, each setting cloud
   cover, rain, snow, fog, wind, waves, temperature, humidity, haze and
   lightning. What comes next isn't rolled: each kind comes round in
@@ -771,8 +813,8 @@ src/
   items/recipes.js      crafting recipes
   items/models.js       item models: the imported tools, simple shapes for the rest (in the world
                         and in your hand)
-  world/gathering.js    gathering from trees, bushes, boulders, fallen trunks and grass, tool
-                        bonuses; items in the world
+  world/gathering.js    gathering from bushes and grass, felling, cutting fallen trunks, tool
+                        bonuses; loose sticks and stones; items in the world
   player/heldItem.js    the selected tool in your hand (bobbing and swinging), or the wood you carry
   player/playerModel.js the low-poly player model in team colours: skeleton, walk and idle
   ui/hud.js             HUD panels, bars, messages, heat warnings and the climate readout
@@ -786,13 +828,22 @@ src/
   match/bases.js        where each team's base is: inland from its diagonal shore
   match/barriers.js     the build phase's solid walls around each base: building them, keeping
                         other teams out, and sinking them when it ends
-  match/multiplayer.js  multiplayer: connecting, the lobby, and starting the match
+  match/multiplayer.js  multiplayer: connecting, the lobby, starting the match, the build phase
+  match/rules.js        the bed-wars rules: health, damage, reach, respawning (shared with the
+                        game server)
+  match/bedwars.js      bed wars in your game: striking, being hit, going down, coming back or
+                        being out, the teams panel and feed, the end of the match
+  match/remotePlayers.js  the other players: drawn smoothly from the server's updates, name tags,
+                        what a swing hits
+  match/beds.js         each team's bed: the model, where it stands, what a swing hits
   net/net.js            the connection to the game server (Socket.IO, loaded only for multiplayer)
   audio/ambience.js     synthesized wind, rain, surf, underwater, thunder, splashes, wood sounds
 server/
   index.js              the game server: serves the built game (with caching), runs the lobby
-                        over Socket.IO
+                        and the match over Socket.IO
   lobby.js              the lobby's rules: joining, teams, ready, the host, starting
+  match.js              the match's referee: where everyone is, hits, beds, who's down or out,
+                        who won
 scripts/
   gltf.mjs              glTF, GLB and PNG reading and writing for the import scripts
   import-trees.mjs      packs the tree pack's .glb files into public/models/trees

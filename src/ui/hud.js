@@ -17,7 +17,7 @@ const HEAT_WARNINGS = [
 ];
 
 // What's stressing the land where you are (see climate/entity.js).
-const CAUSES = { felling: 'felling', mining: 'mining and clearing', building: 'building' };
+const CAUSES = { felling: 'felling', stripping: 'stripped bare', building: 'building' };
 
 export class HUD {
   constructor() {
@@ -89,11 +89,16 @@ export class HUD {
     e.sea.textContent = `Sea level +${sea.rise.toFixed(2)} m · ${tide}${surge}`;
     // The climate's tier and pressure, with an arrow while it's on its way
     // to the next tier up or down; then how the land you're on is doing.
-    const heading = climate.timers.up > 0 ? ' ▲' : climate.timers.down > 0 ? ' ▼' : '';
-    e.climate.dataset.tier = climate.tier;
-    e.climate.textContent = `Climate: ${TIERS[climate.tier].name} · pressure ${Math.round(climate.pressure * 100)}%${heading}`;
-    const r = climate.here, cause = r.land && climate.causeOf(r);
-    e.region.textContent = r.land ? `${r.name}: ${climate.statusOf(r)}${cause ? ` · ${CAUSES[cause]}` : ''}` : '';
+    // (A multiplayer match has no climate change: no climate.)
+    if (climate) {
+      const heading = climate.timers.up > 0 ? ' ▲' : climate.timers.down > 0 ? ' ▼' : '';
+      e.climate.dataset.tier = climate.tier;
+      e.climate.textContent = `Climate: ${TIERS[climate.tier].name} · pressure ${Math.round(climate.pressure * 100)}%${heading}`;
+      const r = climate.here, cause = r.land && climate.causeOf(r);
+      e.region.textContent = r.land ? `${r.name}: ${climate.statusOf(r)}${cause ? ` · ${CAUSES[cause]}` : ''}` : '';
+    } else {
+      e.climate.textContent = e.region.textContent = '';
+    }
     e.depth.textContent = player.underwater ? `Depth ${player.depth.toFixed(1)} m` : '';
   }
 }

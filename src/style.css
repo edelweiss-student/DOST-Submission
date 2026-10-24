@@ -51,14 +51,16 @@ html, body {
 #climate[data-tier="2"] { color: var(--heat); }
 #climate[data-tier="3"] { color: var(--health); }
 #region { color: var(--muted); }
-#region:empty { display: none; }
+#region:empty, #climate:empty { display: none; }
 
 #crosshair {
   position: fixed; left: 50%; top: 50%;
   width: 4px; height: 4px; margin: -2px 0 0 -2px;
   border-radius: 50%; background: rgba(255, 255, 255, 0.8);
-  pointer-events: none;
+  pointer-events: none; transition: transform 0.12s, background-color 0.12s;
 }
+/* A swing that hit someone (or a bed) in a match */
+#crosshair.hit { transform: scale(2.4); background: var(--health); }
 
 #bars {
   position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%);
@@ -180,6 +182,60 @@ html, body {
 #match-timer.open { color: var(--stamina); }
 #match-timer:not([hidden]) ~ #dev-badge { top: 58px; }
 
+/* Bed wars: every team's bed and players, with what just happened below */
+#match-hud {
+  position: fixed; left: 16px; top: 168px; width: 210px;
+  display: flex; flex-direction: column; gap: 6px; pointer-events: none;
+}
+#teams-panel {
+  padding: 8px 12px; border-radius: 10px; background: var(--panel); backdrop-filter: blur(4px);
+  font-size: 13px; line-height: 1.7;
+}
+.team-row { display: flex; align-items: center; gap: 7px; }
+.team-row i { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--team); }
+.team-row b { color: var(--team); font-weight: 600; }
+.team-row.ours b::after { content: ' (you)'; color: var(--muted); font-weight: 400; }
+.team-row span { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.team-row.gone { opacity: 0.45; }
+.team-row.gone b { text-decoration: line-through; }
+#match-feed { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+#match-feed div { padding: 3px 10px; border-radius: 6px; background: var(--panel); font-size: 13px; animation: match-feed 5s forwards; }
+@keyframes match-feed {
+  0% { opacity: 0; transform: translateX(-10px); }
+  6%, 85% { opacity: 1; transform: none; }
+  100% { opacity: 0; }
+}
+
+/* Hit by another player: a red flash at the edges */
+#hurt {
+  position: fixed; inset: 0; pointer-events: none; opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(200, 24, 24, 0.55) 100%);
+  transition: opacity 0.6s ease-out;
+}
+#hurt.show { opacity: 1; transition: none; }
+
+/* Knocked out: until you're back at your bed (or out) */
+#death {
+  position: fixed; inset: 0; z-index: 7; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  background: radial-gradient(ellipse at center, rgba(70, 8, 8, 0.35), rgba(30, 2, 2, 0.82));
+  text-align: center; animation: fade-in 0.4s;
+}
+#death b { font-size: 34px; letter-spacing: 0.05em; color: var(--health); }
+#death span { max-width: 80vw; font-size: 16px; }
+@keyframes fade-in { from { opacity: 0; } }
+
+/* The end of a match, over everything else */
+#match-end {
+  position: fixed; inset: 0; z-index: 20;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  background: radial-gradient(ellipse at center, rgba(10, 16, 24, 0.75), rgba(5, 8, 14, 0.94));
+  text-align: center;
+}
+#match-end h2 { margin: 0; font-size: 42px; letter-spacing: 0.06em; color: var(--team, var(--accent)); }
+#match-end p { margin: 0 0 12px; color: var(--muted); }
+#match-end .pill { font-size: 15px; padding: 8px 22px; }
+
 /* Joinery mini-game */
 #joinery {
   position: fixed; left: 50%; top: 50%; transform: translate(-50%, -54%); z-index: 8;
@@ -295,6 +351,7 @@ html, body {
 /* Multiplayer: the button on the start screen, and the lobby that takes its place */
 .card .mode { display: block; margin: 14px auto 0; font-size: 13px; }
 #overlay.mp .mode { display: none; }
+#overlay:not(.mp) .mp-only { display: none; }
 #overlay.lobby { cursor: default; }
 #overlay.lobby .play, #overlay.lobby .controls, #overlay.lobby .dev { display: none; }
 #lobby { margin-bottom: 20px; font-size: 14px; }

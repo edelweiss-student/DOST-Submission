@@ -3,17 +3,17 @@ import { SPECIES } from '../world/trees.js';
 
 // The Climate Entity: the island's climate as something that answers what
 // you do to the island, not dice. It keeps a tally, region by region, of
-// the damage done (trees felled, stone mined, plants stripped, ground built
-// over), turns it into ecological stress, and from the island's stress
-// works out the climate's pressure P (0..1): nothing else drives it. The
-// pressure sets the weather's mix and strength, the temperature and the
-// sea's rise (weather/weather.js, weather/sealevel.js), and moves the
-// climate through four tiers: Balanced, Unstable, Severe and Crisis.
+// the damage done (trees felled, plants stripped, ground built over),
+// turns it into ecological stress, and from the island's stress works out
+// the climate's pressure P (0..1): nothing else drives it. The pressure
+// sets the weather's mix and strength, the temperature and the sea's rise
+// (weather/weather.js, weather/sealevel.js), and moves the climate through
+// four tiers: Balanced, Unstable, Severe and Crisis.
 
 const N = 16;                         // regions per side
 const SIZE = WORLD.size / N;          // 45 m
 const AREA = SIZE * SIZE;
-const HALF_LIFE = 900;                // s: mined and stripped ground recovers by half in 15 min
+const HALF_LIFE = 900;                // s: stripped ground recovers by half in 15 min
 const TIPPED = 0.6;                   // stress past which a region starts getting worse by itself
 const SPREAD = 3;                     // regions' worth of stress that makes the island's spread 63%
 const STEP = 0.5;                     // s between updates
@@ -21,7 +21,7 @@ const STEP = 0.5;                     // s between updates
 // How much each kind of damage stresses a region. Fire (0.2) and hunting
 // (0.1) will join these when the game has them; until then a region's
 // stress is scaled to the causes it has, so it can still reach 1.
-const WEIGHT = { felling: 0.45, mining: 0.2, building: 0.05 };
+const WEIGHT = { felling: 0.45, stripping: 0.2, building: 0.05 };
 const WEIGHTS = Object.values(WEIGHT).reduce((a, b) => a + b, 0);
 
 // The tiers, with hysteresis: the pressure has to stay past `up` for a
@@ -62,7 +62,7 @@ export class ClimateEntity {
           i, j, x: x0 + SIZE / 2, z: z0 + SIZE / 2, land: dry > 0, coast: dry < 25, height: dry ? height / dry : 0,
           wood0: 0, wood: 0,          // tree biomass at the start, and now
           stone0: 0, plants0: 0,      // stones in its boulders, and gatherings in its bushes
-          mined: 0, stripped: 0, eroded: 0, built: 0,
+          stripped: 0, eroded: 0, built: 0,
           D: 0, E: 0, U: 0, base: 0, stress: 0,
         });
       }
@@ -82,7 +82,7 @@ export class ClimateEntity {
     for (const r of this.land) r.name = regionName(r, woods);
 
     this.pressure = 0;           // P: the island's stress, 0..1
-    this.causes = { felling: 0, mining: 0, building: 0 };   // how far each has gone, island-wide (0..1)
+    this.causes = { felling: 0, stripping: 0, building: 0 };   // how far each has gone, island-wide (0..1)
     this.tier = 0;
     this.dT = 0;                 // warming now (eases towards the tier's)
     this.here = this.regions[0]; // the region you're in
@@ -99,15 +99,12 @@ export class ClimateEntity {
 
   // Something you did to the island:
   //   { kind: 'fell', tree }           a tree came down
-  //   { kind: 'mine', x, z, amount }   stones taken from a boulder
   //   { kind: 'strip', x, z, amount }  bushes or grass cut back (gatherings)
   //   { kind: 'build', x, z, area }    ground built over (m²; negative when taken down)
   record(e) {
     if (e.kind === 'fell') {
       const r = this.regionAt(e.tree.x, e.tree.z);
       r.wood = Math.max(0, r.wood - biomass(e.tree));
-    } else if (e.kind === 'mine') {
-      this.regionAt(e.x, e.z).mined += e.amount;
     } else if (e.kind === 'strip') {
       this.regionAt(e.x, e.z).stripped += e.amount;
     } else if (e.kind === 'build') {
@@ -116,10 +113,10 @@ export class ClimateEntity {
     }
   }
 
-  // What's stressing a region most ('felling', 'mining' or 'building'), or
+  // What's stressing a region most ('felling', 'stripping' or 'building'), or
   // null if hardly anything is.
   causeOf(r) {
-    const parts = { felling: WEIGHT.felling * r.D, mining: WEIGHT.mining * r.E, building: WEIGHT.building * r.U };
+    const parts = { felling: WEIGHT.felling * r.D, stripping: WEIGHT.stripping * r.E, building: WEIGHT.building * r.U };
     const top = Object.keys(parts).reduce((a, b) => (parts[b] > parts[a] ? b : a));
     return parts[top] / WEIGHTS > 0.03 ? top : null;
   }
@@ -154,14 +151,13 @@ export class ClimateEntity {
       // A tipped region recovers half as fast, and its bare ground washes away in the rain.
       const tipped = r.stress > TIPPED;
       const keep = 0.5 ** (step / (HALF_LIFE * (tipped ? 2 : 1)));
-      r.mined *= keep;
       r.stripped *= keep;
       r.eroded *= keep;
       if (tipped) r.eroded += 0.1 * rain * (step / 60);
       r.D = r.wood0 > 0 ? 1 - r.wood / r.wood0 : 0;
-      r.E = Math.min(1, r.mined / Math.max(8, r.stone0) + (0.3 * r.stripped) / Math.max(10, r.plants0) + r.eroded);
+      r.E = Math.min(1, (0.3 * r.stripped) / Math.max(10, r.plants0) + r.eroded);
       r.U = Math.min(1, (10 * r.built) / AREA);
-      r.base = clamp((WEIGHT.felling * r.D + WEIGHT.mining * r.E + WEIGHT.building * r.U) / WEIGHTS, 0, 1);
+      r.base = clamp((WEIGHT.felling * r.D + WEIGHT.stripping * r.E + WEIGHT.building * r.U) / WEIGHTS, 0, 1);
     }
     // Stress spills over into the regions around.
     for (const r of this.regions) {
@@ -184,7 +180,7 @@ export class ClimateEntity {
     };
     this.pressure = island(this.land.map((r) => r.stress));
     for (const cause of Object.keys(this.causes)) {
-      const key = { felling: 'D', mining: 'E', building: 'U' }[cause];
+      const key = { felling: 'D', stripping: 'E', building: 'U' }[cause];
       this.causes[cause] = island(this.land.map((r) => r[key]));
     }
 

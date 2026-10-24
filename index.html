@@ -9,7 +9,9 @@
     <div id="game"></div>
 
     <div id="underwater"></div>
+    <div id="hurt"></div>
     <div id="crosshair"></div>
+    <div id="death" hidden><b></b><span></span></div>
 
     <div id="weather-panel" class="panel">
       <div class="now"><span id="w-icon"></span><span id="w-label"></span><span id="w-temp"></span><span id="w-feels"></span></div>
@@ -44,6 +46,10 @@
     <div id="message"></div>
     <pre id="perf"></pre>
     <div id="match-timer" hidden></div>
+    <div id="match-hud" hidden>
+      <div id="teams-panel"></div>
+      <div id="match-feed"></div>
+    </div>
     <div id="dev-badge" hidden>Dev mode</div>
 
     <div id="prompt"></div>
@@ -101,6 +107,7 @@
           <b>Space</b><span>Jump / swim up</span>
           <b>C</b><span>Dive</span>
           <b>E</b><span>Gather, pick up, chop / split with the axe</span>
+          <b class="mp-only">Click / F</b><span class="mp-only">Strike another team’s players and bed</span>
           <b>1–9 / Wheel</b><span>Choose a hotbar slot</span>
           <b>I / Tab</b><span>Inventory and crafting</span>
           <b>K</b><span>Map</span>
@@ -123,6 +130,12 @@
         <div id="gpu-tip"></div>
         <div class="credits">Trees from the 3D Retro World pack. Tools from KayKit by Kay Lousberg. Thank you to their creators.</div>
       </div>
+    </div>
+
+    <div id="match-end" hidden>
+      <h2></h2>
+      <p></p>
+      <button type="button" class="pill">Back to the lobby</button>
     </div>
 
     <script type="module" src="/src/main.js"></script>

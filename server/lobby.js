@@ -81,6 +81,15 @@ export class Lobby {
     if (!this.players.size) this.phase = 'lobby';
     this.version++;
   }
+
+  // The match is over: the lobby opens again, empty, and everyone joins
+  // afresh (their games reload, so the island starts over untouched).
+  reset() {
+    this.phase = 'lobby';
+    this.buildEnds = 0;
+    this.players.clear();
+    this.version++;
+  }
 }
 
 // A name to show other players: no control or invisible characters, trimmed,
