@@ -9,14 +9,15 @@ const SEND = 0.05;   // seconds between telling the server where you are
 const FEED = 5000;   // ms a line stays in the match feed
 
 // The bed-wars side of a match (see rules.js), from the start on: the other
-// players, the beds, swinging at them, being hurt, going down and coming
-// back at your bed, being out once it's gone, the teams' state on screen,
-// and the end. net: the connection; players: the match's ([{ id, name,
-// team }]); me: your id; peace: true while the build phase lasts (nothing
-// can be hurt until the barriers come down).
+// players, your team's bed (in your inventory until someone places it), the
+// beds, swinging at them, being hurt, going down and coming back at your
+// bed, being out once it's gone, the teams' state on screen, and the end.
+// net: the connection; players: the match's ([{ id, name, team }]); me:
+// your id; peace: true while the build phase lasts (nothing can be hurt
+// until the barriers come down).
 export class BedWars {
-  constructor({ net, players, me, bases, terrain, scene, player, camera, hud, building, peace }) {
-    Object.assign(this, { net, player, camera, hud, building, peace });
+  constructor({ net, players, me, bases, terrain, scene, player, camera, hud, building, inventory, peace }) {
+    Object.assign(this, { net, player, camera, hud, building, inventory, peace });
     this.me = me;
     ({ team: this.team, name: this.name } = players.find((p) => p.id === me));
     this.out = false;
@@ -37,8 +38,15 @@ export class BedWars {
     }
     this.remotes = new RemotePlayers(scene);
     this.remotes.add(players, me);
-    this.beds = new Beds(scene, terrain, bases, [...this.teams.keys()]);
-    net.send('beds', this.beds.positions);
+    // Your team's bed starts in your inventory (and your teammates'): the
+    // first to place it decides where it stands. The server hears where
+    // the bases are and where a bed nobody placed would go.
+    this.beds = new Beds(scene, terrain, building, bases, [...this.teams.keys()]);
+    this.bedTurn = 0;       // quarter turns (R) for placing it
+    this.placing = false;   // asked the server to place it, waiting to hear
+    inventory.add('bed', 1);
+    net.send('beds', this.beds.defaults);
+    net.send('bases', bases.map(({ x, z }) => ({ x, z })));
 
     this.panel = $('teams-panel');
     this.feedList = $('match-feed');
@@ -54,6 +62,11 @@ export class BedWars {
     net.on('death', (down) => this.death(down));
     net.on('respawned', ({ id }) => this.respawned(id));
     net.on('matchOver', ({ winner, time }) => this.end(winner, time));
+    net.on('bedPlaced', (bed) => this.bedPlaced(bed));
+    net.on('bedRefused', ({ reason }) => {
+      this.placing = false;
+      hud.message(reason, 3);
+    });
     // What's built is shared, and another team's tools can break it.
     building.share({ team: this.team, teamName: (team) => `Team ${TEAMS[team].name}`, send: (msg) => net.send('build', msg) });
     net.on('build', (msg) => building.apply(msg));
@@ -79,6 +92,52 @@ export class BedWars {
     this.camera.getWorldDirection(this.dir);
     const r = (x) => Math.round(x * 100) / 100;
     this.net.send('move', [r(p.x), r(p.y), r(p.z), r(Math.atan2(-this.dir.x, -this.dir.z)), r(Math.hypot(v.x, v.z))], true);
+  }
+
+  // With your team's bed selected: where it would go, aiming along ray (a
+  // see-through bed shows it), as { ok, reason, ... }, or null. A null ray
+  // hides it.
+  aimBed(ray) {
+    if (!ray || this.placing || !this.fighting) {
+      this.beds.hideGhost();
+      return null;
+    }
+    return this.beds.plan(ray, this.team, this.bedTurn);
+  }
+
+  turnBed() { this.bedTurn = (this.bedTurn + 1) % 4; }
+
+  // Right-click with the bed selected: ask the server to put it down where
+  // you're aiming. It takes it out of everyone's inventory once it's down.
+  placeBed(ray) {
+    if (this.placing || !this.fighting || this.beds.placed(this.team)) return;
+    const plan = this.beds.plan(ray, this.team, this.bedTurn);
+    if (!plan?.ok) {
+      this.hud.message(plan ? `${plan.reason}.` : 'Aim at the ground to place the bed.', 2);
+      return;
+    }
+    const r = (v) => Math.round(v * 100) / 100;
+    this.placing = true;
+    this.net.send('placeBed', { x: r(plan.x), y: r(plan.y), z: r(plan.z), yaw: r(plan.yaw) });
+  }
+
+  // A team's bed was put down: by a player ({ by }), or at its base when
+  // the barriers came down without anyone placing it ({ auto }). Yours:
+  // out of your inventory, and from now on you come back beside it.
+  bedPlaced({ team, x, y, z, yaw, by, auto }) {
+    this.beds.place(team, { x, y, z, yaw });
+    if (team === this.team) {
+      this.placing = false;
+      this.beds.hideGhost();
+      this.inventory.remove('bed', this.inventory.count('bed'));
+      this.player.spawn = this.beds.spawnBeside(team);
+      this.hud.message(auto
+        ? 'Nobody placed your team’s bed, so it went down at your base.'
+        : by === this.name
+          ? 'Your team’s bed is down. While it stands, you come back beside it.'
+          : `${by} placed your team’s bed. While it stands, you come back beside it.`, 5);
+    }
+    this.render();
   }
 
   // A swing landing (ray: from your eye, the way you look; tool: what's in
@@ -247,7 +306,8 @@ export class BedWars {
       row.style.setProperty('--team', TEAMS[team].color);
       const dot = document.createElement('i'), label = document.createElement('b'), state = document.createElement('span');
       label.textContent = TEAMS[team].name;
-      state.textContent = left ? `${t.hp > 0 ? `bed ${Math.round((t.hp / BED_HP) * 100)}%` : 'no bed'} · ${left} left` : 'out';
+      const bed = t.hp <= 0 ? 'no bed' : this.beds.placed(team) ? `bed ${Math.round((t.hp / BED_HP) * 100)}%` : 'bed not placed';
+      state.textContent = left ? `${bed} · ${left} left` : 'out';
       row.append(dot, label, state);
       return row;
     }));

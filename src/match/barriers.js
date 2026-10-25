@@ -1,15 +1,12 @@
 import * as THREE from 'three';
-import { TEAMS, BASE_RADIUS } from './teams.js';
+import { TEAMS, BASE_RADIUS, KEEP_OUT } from './teams.js';
 import { patchMaterial } from '../world/materials.js';
 
-const HEIGHT = 4;        // metres a barrier stands above the ground (or the sea): over your head
-const BELOW = 1.5;       // and reaches below it, so no gap shows on slopes or in the waves
+const HEIGHT = 12;       // metres a barrier stands above the ground (or the sea): far over any build
+const BELOW = 1.5;       // and reaches below the ground (or the seabed), so no gap shows anywhere
 const THICKNESS = 0.4;   // metres through
 const SEGMENTS = 160;    // around each one, about 2 m apiece
 const DROP = 2.5;        // seconds it takes to sink away when the build phase ends
-// How close the other teams can come to a base's middle: up to the wall's
-// outer face, less half a body's width.
-const KEEP_OUT = BASE_RADIUS + THICKNESS / 2 + 0.4;
 
 // The wall's look, on the world's own material, so it's lit, shadowed,
 // fogged, wet and snowy like everything else: the team's colour in panels
@@ -31,8 +28,9 @@ const COLOR = /* glsl */ `
 }
 `;
 
-// A solid ring of wall around a base: its outside, inside and top, following
-// the ground (or the sea, where that's higher) from under it to HEIGHT above.
+// A solid ring of wall around a base: its outside, inside and top, from
+// under the ground (the seabed, in the water, so there's no swimming under
+// it) to HEIGHT above the ground or the sea, whichever is higher.
 function ring(terrain, { x: cx, z: cz }, seaLevel) {
   const position = [], normal = [], wall = [], index = [];
   const vertex = (x, y, z, nx, ny, nz, u, v) => {
@@ -45,8 +43,8 @@ function ring(terrain, { x: cx, z: cz }, seaLevel) {
   let last = null;
   for (let k = 0; k <= SEGMENTS; k++) {
     const a = (k / SEGMENTS) * Math.PI * 2, c = Math.cos(a), s = Math.sin(a), u = a * BASE_RADIUS;
-    const ground = Math.max(terrain.heightAt(cx + c * BASE_RADIUS, cz + s * BASE_RADIUS), seaLevel);
-    const bottom = ground - BELOW, top = ground + HEIGHT;
+    const ground = terrain.heightAt(cx + c * BASE_RADIUS, cz + s * BASE_RADIUS);
+    const bottom = ground - BELOW, top = Math.max(ground, seaLevel) + HEIGHT;
     const v = {
       outerFoot: vertex(cx + c * outer, bottom, cz + s * outer, c, 0, s, u, 0),
       outerTop: vertex(cx + c * outer, top, cz + s * outer, c, 0, s, u, 1),
@@ -73,8 +71,9 @@ function ring(terrain, { x: cx, z: cz }, seaLevel) {
 
 // The barriers of a match's build phase: a solid wall in each team's colour
 // around its base, BASE_RADIUS metres out. The other teams can't get
-// through (keepOut); your own team's lets you through. When the build phase
-// ends they sink into the ground.
+// through, over or under it (keepOut), and nothing can break it or take it
+// apart; your own team's lets you through. Only the end of the build phase
+// (the server's word) brings them down: they sink into the ground.
 export class Barriers {
   // bases: every team's ({ x, z }) in TEAMS order; team: yours (its index).
   constructor(scene, terrain, bases, team, seaLevel) {
@@ -126,7 +125,7 @@ export class Barriers {
   update(dt) {
     if (this.up || !this.meshes.length) return;
     this.sinking = Math.min(1, this.sinking + dt / DROP);
-    for (const mesh of this.meshes) mesh.position.y = -(HEIGHT + BELOW) * this.sinking ** 2;
+    for (const mesh of this.meshes) mesh.position.y = -(HEIGHT + 2 * BELOW) * this.sinking ** 2;
     if (this.sinking < 1) return;
     for (const mesh of this.meshes) {
       this.scene.remove(mesh);

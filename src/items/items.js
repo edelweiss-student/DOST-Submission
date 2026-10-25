@@ -2,7 +2,7 @@
 // lying in the world. floats: drifts on the water instead of sinking.
 // eat: what eating one gives back (right-click with it selected).
 // tool: what it does when selected while gathering (see world/gathering.js);
-// durability: uses before it breaks.
+// durability: uses before it breaks. keep: can't be dropped or thrown out.
 // Wood isn't an item: logs and planks are carried in your arms (world/timber.js).
 export const ITEMS = {
   stick: {
@@ -36,6 +36,10 @@ export const ITEMS = {
   pickaxe: {
     name: 'Stone pickaxe', description: 'A heavy stone head on a stick: in a multiplayer match, the fastest way through an enemy bed.',
     stack: 1, color: '#8a8780', floats: false, tool: 'pickaxe', durability: 50,
+  },
+  bed: {
+    name: 'Team bed', description: 'Your team’s one bed, in a multiplayer match. Select it, aim at the ground and right-click to place it, anywhere outside the other teams’ bases (R turns it). While it stands, your team comes back at it after going down.',
+    stack: 1, color: '#6e4a2c', floats: false, keep: true,
   },
 };
 
@@ -135,6 +139,30 @@ const DRAW = {
     ctx.ellipse(36, 14, 7, 4, 0.2, 0, Math.PI * 2);
     ctx.fill();
     stroke(ctx, () => { ctx.moveTo(22, 24); ctx.quadraticCurveTo(18, 36, 24, 48); }, 2, 'rgba(255, 255, 255, 0.3)');
+  },
+  // A bed seen from the foot end, a little from above: wooden frame and
+  // legs, a headboard, a pillow and a blanket.
+  bed(ctx) {
+    ctx.fillStyle = '#3b2616';
+    for (const x of [12, 48]) ctx.fillRect(x, 40, 5, 14);   // legs
+    ctx.fillRect(14, 12, 36, 18);                            // headboard
+    ctx.fillStyle = '#8a6440';
+    ctx.fillRect(16, 14, 32, 14);
+    ctx.fillStyle = '#6e4a2c';
+    ctx.beginPath();                                         // frame
+    ctx.moveTo(8, 42); ctx.lineTo(56, 42); ctx.lineTo(52, 30); ctx.lineTo(12, 30);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#e9e3d2';
+    ctx.beginPath();                                         // pillow
+    ctx.ellipse(32, 30, 12, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#b8483f';
+    ctx.beginPath();                                         // blanket
+    ctx.moveTo(9, 40); ctx.lineTo(55, 40); ctx.lineTo(52, 33); ctx.lineTo(12, 33);
+    ctx.closePath();
+    ctx.fill();
+    stroke(ctx, () => { ctx.moveTo(8, 42); ctx.lineTo(56, 42); }, 3, '#3b2616');
   },
   berries(ctx) {
     ctx.fillStyle = '#4f8a32';

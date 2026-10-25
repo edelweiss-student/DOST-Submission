@@ -48,10 +48,10 @@ new multiplayer island.
 ## Multiplayer
 
 Bed wars for up to four teams, on a game server. Players join a lobby, are
-put on teams, and spawn at their team's base, next to its bed, when the host
-starts the match. It opens with a 10-minute build phase behind barriers that
-keep each team out of the others' bases; then it's a fast fight to be the
-last team standing. Climate change comes as a typhoon on a fixed clock, the
+put on teams, and spawn at their team's base, with its bed in their
+inventory to place wherever they choose, when the host starts the match. It
+opens with a 10-minute build phase behind barriers that keep each team out
+of the others' bases; then it's a fast fight to be the last team standing. Climate change comes as a typhoon on a fixed clock, the
 same for every team: the weather worsens, the sea rises, and at the storm's
 peak its surge washes every bed away.
 
@@ -104,8 +104,7 @@ the island's north-east, south-east, south-west and north-west shores: the
 first flat ground 20 to 80 m in from the beach that's at least 5 m above the
 sea (it can rise 2.4 m, and storm surges 1.4 m more). They're worked out from
 the island, so every player finds the same spots, about 180 m apart. You
-spawn at yours facing the middle of the island, with your team's bed 3 m
-behind you.
+spawn at yours facing the middle of the island.
 
 **The build phase.** A match opens with 10 minutes of building
 (`match/barriers.js`), timed by the server so every player's countdown agrees:
@@ -113,17 +112,23 @@ behind you.
 last minute, with a warning when one minute is left.
 
 - **Barriers.** A solid wall in each team's colour rings every base, 50 m
-  out: 4 m high and 0.4 m thick, following the ground and the sea, so you
-  can't see into a base from outside it. It's lit, shadowed and fogged
-  like the rest of the world, with lighter ribs every few metres, a glowing
-  top edge and faint glowing bands rising up it, so it shows at night too.
-- **Who gets through.** Other teams can't walk or swim through it: you're
-  stopped at its face, with a message saying how long until it opens. Your
-  own team's barrier lets you through, so you can leave your base to
-  gather and come back.
+  out: 12 m high, far over anything you could build next to it, and 0.4 m
+  thick, following the ground and the sea and reaching down to the seabed,
+  so there's no seeing into a base from outside it or swimming under it.
+  It's lit, shadowed and fogged like the rest of the world, with lighter
+  ribs every few metres, a glowing top edge and faint glowing bands rising
+  up it, so it shows at night too.
+- **Who gets through.** Nobody from another team, however they try:
+  walking, swimming, diving, climbing a ladder or jumping off something
+  built, you're stopped at its face, with a message saying how long until
+  it opens. Nothing breaks it or takes it apart, and the game server
+  ignores anyone who claims to be inside another team's base while it's
+  up. Your own team's barrier lets you through, so you can leave your base
+  to gather and come back.
 - **The map** (`K`) rings each base with its barrier while the phase lasts.
-- **When it ends,** the server opens the bases. The barriers sink into the
-  ground, a message says every base is open, and anyone can go anywhere.
+- **When it ends,** and only then, the server opens the bases. The
+  barriers sink into the ground, a message says every base is open, and
+  anyone can go anywhere.
 - Nothing can be hurt until then: a swing at another team's player only
   gets a reminder.
 
@@ -168,19 +173,29 @@ the weather panel says what's coming next.
   so walls around your bed keep raiders out until they hack through. Nobody
   can build within 50 m of another team's base, and in a match what's built
   doesn't weather.
-- **Beds.** Each team's bed stands at its base, in its colour. While it
-  stands, a player who goes down (knocked out, or drowned) lies where they
-  fell and comes back at it 5 seconds later. Once it's destroyed, going down
-  is for good: you're out. A few seconds later you can walk about and
-  watch, unseen and unable to fight.
+- **Beds.** Each team has one bed, in its colour (`match/beds.js`). It
+  starts in every player's inventory (it can't be dropped), and whoever
+  places it first decides where it stands; it leaves everyone else's
+  inventory then. Select it and the bed shows see-through where it would
+  go (green, or red with the reason); right-click puts it down and `R`
+  turns it. It goes anywhere dry: in your base or out in the woods, on the
+  ground (it tips to follow a slope; only cliffs are too steep) or on a
+  finished floor you've built. Only another team's base is out of bounds,
+  and the game server checks that too, and that you're within 5 m. A bed
+  nobody has placed when the barriers come down goes down at its team's
+  base. While it stands (or is still in your inventory), a player who goes
+  down (knocked out, or drowned) lies where they fell and comes back beside
+  it 5 seconds later. Once it's destroyed, going down is for good: you're
+  out. A few seconds later you can walk about and watch, unseen and unable
+  to fight.
 - **The end.** The last team with anyone left wins (players who leave are
   out), or, when time runs out after the surge, the team with the most
   players still standing. Everyone sees who won, and "Back to the lobby"
   goes back for the next match.
-- **On screen,** under the weather: every team's bed (its health, or "no
-  bed") and how many of its players are left, and below it a feed of who
-  went down and which beds broke. You're warned when your bed is under
-  attack.
+- **On screen,** under the weather: every team's bed (its health, "bed not
+  placed" or "no bed") and how many of its players are left, and below it
+  a feed of who went down and which beds broke. You're warned when your
+  bed is under attack.
 
 **The server** (`server/`) decides the island (its seed), so every player
 generates the same one, and a player whose server restarts with another
@@ -219,7 +234,7 @@ they agree.
 | E on a build | Add the wood you carry, repair it with a plank (or log), or with empty arms rework its joints |
 | W / S on a ladder | Climb up or down |
 | Hold X | Take apart something you built, or clear a blueprint |
-| Right-click | Eat the selected item |
+| Right-click | Eat the selected item, or in a match place your team's bed (`R` turns it) |
 | M | Mute |
 | N | Music on or off |
 | H | Hide the tips |
@@ -898,11 +913,13 @@ src/
                         the storm on the match's clock, no-build zones
   match/rules.js        the bed-wars rules: health, damage, reach, respawning, the storm and its
                         surge (shared with the game server)
-  match/bedwars.js      bed wars in your game: striking, being hit, going down, coming back or
-                        being out, the teams panel and feed, the end of the match
+  match/bedwars.js      bed wars in your game: your team's bed from your inventory, striking,
+                        being hit, going down, coming back or being out, the teams panel and
+                        feed, the end of the match
   match/remotePlayers.js  the other players: drawn smoothly from the server's updates, name tags,
                         what a swing hits
-  match/beds.js         each team's bed: the model, where it stands, what a swing hits
+  match/beds.js         each team's bed: the model, where it can go (and the see-through preview),
+                        where it stands, coming back beside it, what a swing hits
   net/net.js            the connection to the game server (Socket.IO, loaded only for multiplayer)
   audio/ambience.js     synthesized wind, rain, surf, underwater, thunder, splashes, wood sounds
   audio/music.js        kulintang-style gong music, made up as it plays
@@ -910,8 +927,9 @@ server/
   index.js              the game server: serves the built game (with caching), runs the lobby
                         and the match over Socket.IO
   lobby.js              the lobby's rules: joining, teams, ready, the host, starting
-  match.js              the match's referee: where everyone is, hits, beds, who's down or out,
-                        who won
+  match.js              the match's referee: where everyone is (and nobody in another team's base
+                        during the build phase), where beds are placed, hits, beds, who's down
+                        or out, who won
 scripts/
   gltf.mjs              glTF, GLB and PNG reading and writing for the import scripts
   import-trees.mjs      packs the tree pack's .glb files into public/models/trees

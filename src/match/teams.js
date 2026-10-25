@@ -17,3 +17,9 @@ export const NAME_LENGTH = 16;   // longest player name
 // the other teams out of every base, within BASE_RADIUS metres of it.
 export const BUILD_TIME = 600;
 export const BASE_RADIUS = 50;
+// How close another team can come to a base's middle while its barrier is
+// up: the wall's outer face (0.2 m beyond BASE_RADIUS), less half a body's
+// width. It holds at any height: climbing, jumping off a build, swimming or
+// diving. The games keep their players out, and the game server ignores
+// anyone who claims to be inside (server/match.js).
+export const KEEP_OUT = BASE_RADIUS + 0.6;

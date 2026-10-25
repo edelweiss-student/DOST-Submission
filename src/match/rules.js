@@ -1,14 +1,19 @@
 // The rules of a bed-wars match, shared by the game and the game server
 // (server/match.js), so both count the same.
 //
-// Every team has a bed at its base. While it stands, a player who goes down
-// (knocked out, or drowned) comes back at it after RESPAWN_TIME; once it's
-// destroyed, going down is for good: they're out. The last team with
-// anyone left wins. Nothing can be hurt during the build phase.
+// Every team has one bed. It starts in every team member's inventory, and
+// whoever places it first decides where it stands: anywhere outside the
+// other teams' bases, within PLACE_REACH of them. A bed nobody has placed
+// when the barriers come down goes down at its team's base. While it
+// stands (or hasn't been placed yet), a player who goes down (knocked out,
+// or drowned) comes back at it after RESPAWN_TIME; once it's destroyed,
+// going down is for good: they're out. The last team with anyone left wins.
+// Nothing can be hurt during the build phase.
 
 export const BED_HP = 200;      // a bed's health
 export const RESPAWN_TIME = 5;   // seconds from going down to coming back at your bed
 export const REACH = 3.2;        // metres a swing reaches
+export const PLACE_REACH = 5;    // metres from your eye to where you can put the bed down
 export const SWING_GAP = 200;    // ms: the server counts at most one hit per player this often
 
 // What a swing does, by what's in your hand ('none' for a fist): to another

@@ -153,7 +153,14 @@ const gathering = createGathering(scene, {
   onImpact: (e) => climate.record(e),
 });
 const throwDir = new THREE.Vector3();
+// Some things can't be dropped or thrown out (your team's bed).
+const keepsWithYou = (id) => hud.message(`The ${ITEMS[id].name.toLowerCase()} stays with you: right-click to place it.`, 3);
 function throwStack(stack) {
+  if (ITEMS[stack.id].keep) {
+    inventory.add(stack.id, stack.count);   // back in the bag
+    keepsWithYou(stack.id);
+    return;
+  }
   camera.getWorldDirection(throwDir);
   const from = camera.position.clone().addScaledVector(throwDir, 0.6);
   from.y -= 0.3;
@@ -284,7 +291,7 @@ let started = false;
 const isPlaying = () => player.controls.isLocked || player.dragLook || inventoryUI.open;
 player.enableDragLook(renderer.domElement);
 // Multiplayer: the start screen is the lobby until the match starts.
-const match = server && createMatch(server, { terrain, player, hud, overlay, scene, sea, camera, weather, building });
+const match = server && createMatch(server, { terrain, player, hud, overlay, scene, sea, camera, weather, building, inventory });
 const map = new MapUI({ terrain, trees: vegetation.sources.trees, building, sea, climate, match });
 // Tips for a first game (H hides them).
 const tutorial = new Tutorial(match ? MATCH : SOLO);
@@ -377,6 +384,7 @@ overlay.querySelector('.mode').addEventListener('click', (e) => {
 // swing when the act is done with the tool in hand.
 const aimRay = new THREE.Ray(), aimDir = new THREE.Vector3();
 let focus = null;
+let bedAim = null;   // where your team's bed would go, while it's selected in a match
 function updateFocus() {
   const carrying = timber.carrying;
   const tool = carrying ? null : selectedTool();   // your hands are full
@@ -469,14 +477,20 @@ function promptFor(playing) {
     const turn = piece.id === 'roof' ? [['R', 'Turn']] : piece.id === 'pilings' ? [['R', 'Raise or lower the deck']] : [];
     return [[['E', `Place ${piece.name.toLowerCase()} blueprint`], ...turn]];
   }
+  if (bedAim) return bedAim.ok ? [[['Right-click', 'Place your team’s bed'], ['R', 'Turn']]] : [[['Right-click', bedAim.reason], ['R', 'Turn']], true];
   if (!focus) return [null];
   if (hold.time > 0) return [[['X', `Taking apart… ${Math.round((hold.time / HOLD_TIME) * 100)}%`]]];
   return [focus.prompt, focus.dim];
 }
 
-// Right-click: eat the selected item, if it's food.
+// Right-click: eat the selected item, if it's food, or put down your team's
+// bed in a match.
 function useSelected() {
   const stack = inventory.current;
+  if (stack?.id === 'bed') {
+    match?.placeBed(aimRay);
+    return;
+  }
   const food = stack && ITEMS[stack.id].eat;
   if (!food) return;
   inventory.take(inventory.selected, 1);
@@ -579,12 +593,15 @@ addEventListener('keydown', (e) => {
     setBuilding(!build.on);
   } else if (e.code === 'KeyR') {
     if (build.on) build.turn++;
+    else if (inventory.current?.id === 'bed') match?.turnBed();
   } else if (e.code === 'KeyX') {
     if (!e.repeat) hold.down = true;
   } else if (e.code === 'KeyQ') {
     if (timber.carrying) {
       camera.getWorldDirection(throwDir);
       timber.putDown(camera.position, throwDir, player.vel);
+    } else if (ITEMS[inventory.current?.id]?.keep) {
+      keepsWithYou(inventory.current.id);
     } else {
       const stack = inventory.take(inventory.selected, 1);
       if (stack) throwStack(stack);
@@ -683,6 +700,8 @@ function step() {
     updateFocus();
   }
   updateHold(sdt);
+  // Your team's bed, selected in a match: where it would go.
+  bedAim = match?.aimBed(playing && !build.on && !timber.carrying && inventory.current?.id === 'bed' ? aimRay : null) ?? null;
   inventoryUI.setPrompt(...promptFor(playing));
   const carrying = timber.carrying;
   inventoryUI.setCarrying(carrying && `Carrying ${carrying.count} ${woodName(carrying.kind, carrying.count)} · Q to put down`);

@@ -19,9 +19,10 @@ export const SOLO = [
 ];
 
 export const MATCH = [
+  { text: 'Your team’s bed is in your hotbar. Select it, aim at the ground and right-click to place it, anywhere outside the other bases (R turns it). You come back beside it after going down.', done: (s) => !s.has('bed') || s.open },
   { text: 'Pick up sticks and stones with E. Sticks lie near the trees, stones on the beaches.', done: (s) => s.has('stick', 2) && s.has('stone', 3) },
   { text: 'Open the inventory with I and craft a stone pickaxe: it breaks beds fastest.', done: (s) => s.has('pickaxe') },
-  { text: 'Your bed is just behind where you started. Wall it in with B before the barriers come down.', done: (s) => s.built || s.open },
+  { text: 'Wall your bed in with B before the barriers come down.', done: (s) => s.built || s.open },
   { text: 'Once the barriers are down, left-click or F strikes. Break the other beds before the storm surge washes every bed away.', done: (s) => s.struck || s.shown > 16 },
 ];
 

@@ -148,6 +148,11 @@ io.on('connection', (socket) => {
     opening = setTimeout(() => {
       console.log('The build phase is over: every base is open, and the storm is building');
       io.emit('basesOpen', { surge: STORM, final: STORM_FINAL });
+      // Beds nobody placed go down at their team's base.
+      for (const bed of match?.autoPlace() ?? []) {
+        console.log(`Team ${TEAMS[bed.team].name}'s bed went down at its base`);
+        io.emit('bedPlaced', bed);
+      }
       broadcast();
       storm = [
         setTimeout(() => {
@@ -161,9 +166,19 @@ io.on('connection', (socket) => {
   });
 
   // The match: where you are, swings at other players and beds, going down.
-  // Nothing can be hurt while the build phase lasts.
-  socket.on('move', (state) => match?.move(socket.id, state));
+  // Nothing can be hurt while the build phase lasts, and nobody gets into
+  // another team's base.
+  socket.on('move', (state) => match?.move(socket.id, state, lobby.buildLeft > 0));
   socket.on('beds', (beds) => match?.setBeds(beds));
+  socket.on('bases', (bases) => match?.setBases(bases));
+  // Putting your team's bed down: everyone sees where, or you hear why not.
+  socket.on('placeBed', (where) => {
+    if (!match) return;
+    const { bed, error } = match.placeBed(socket.id, where);
+    if (error) return socket.emit('bedRefused', { reason: error });
+    console.log(`${bed.by} placed Team ${TEAMS[bed.team].name}'s bed`);
+    io.emit('bedPlaced', bed);
+  });
   socket.on('hit', (data) => {
     const { target, tool } = data ?? {};
     if (!match || lobby.buildLeft > 0) return;

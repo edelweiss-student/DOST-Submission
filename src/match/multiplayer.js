@@ -43,7 +43,7 @@ export async function joinServer() {
 // update(dt) }: while inLobby, clicking the start screen doesn't start the
 // game; pressure is the climate's (0..1), and forecast the weather panel's
 // line about what's coming.
-export function createMatch({ net, seed, error }, { terrain, player, hud, overlay, scene, sea, camera, weather, building }) {
+export function createMatch({ net, seed, error }, { terrain, player, hud, overlay, scene, sea, camera, weather, building, inventory }) {
   overlay.classList.add('mp', 'lobby');
   const leave = () => { location.href = location.pathname; };
   let name = '';
@@ -127,7 +127,7 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
       const where = `You’re on Team ${team.name}, on the ${team.shore} shore.`;
       const left = buildEnds - performance.now();
       return buildEnds && left > 1000
-        ? `${where} Barriers keep the other teams out of every base for ${span(left)}: build while you can. Then a bagyo builds, and its storm surge will wash every bed away.`
+        ? `${where} Barriers keep the other teams out of every base for ${span(left)}. Place your team’s bed from your inventory (right-click), wherever you like outside the other bases, and build while you can. Then a bagyo builds, and its storm surge will wash every bed away.`
         : where;
     },
     get team() { return team; },
@@ -138,6 +138,11 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
     // A swing landing (ray: from your eye; tool: what's in your hand, or
     // 'none'). Returns true if it hit another team's player or bed.
     strike: (ray, tool) => wars?.strike(ray, tool) ?? false,
+    // Your team's bed, while it's in your inventory: where it would go
+    // (aiming along ray; null hides it), putting it down, turning it.
+    aimBed: (ray) => wars?.aimBed(ray) ?? null,
+    placeBed: (ray) => wars?.placeBed(ray),
+    turnBed: () => wars?.turnBed(),
     get pressure() { return stormStart ? pressureAt(stormTime(), surgeAt) : 0; },
     get opened() { return !!stormStart; },
     // A building plan, refused within BASE_RADIUS of another team's base
@@ -197,7 +202,7 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
     player.respawn();
     overlay.classList.remove('lobby');
     ui.showMatch(team, players);
-    wars = new BedWars({ net, players, me: net.id, bases, terrain, scene, player, camera, hud, building, peace: buildLeft > 0 });
+    wars = new BedWars({ net, players, me: net.id, bases, terrain, scene, player, camera, hud, building, inventory, peace: buildLeft > 0 });
     if (buildLeft > 0) {
       buildEnds = performance.now() + buildLeft;
       warned = buildLeft <= 60000;   // no warning for a phase shorter than that

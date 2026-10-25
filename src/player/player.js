@@ -108,11 +108,17 @@ export class Player {
   }
 
   respawn() {
-    // If the rising sea swallowed the old beach, walk inland until dry.
+    // If the rising sea swallowed the old beach, walk inland until dry. A
+    // spawn with a height (beside a bed on a built floor) stands on that.
     let { x, z } = this.spawn;
+    let ground = Math.max(this.terrain.heightAt(x, z), this.spawn.y ?? -Infinity);
     const sea = uniforms.uWaterLevel.value;
-    for (let i = 0; i < 60 && this.terrain.heightAt(x, z) < sea + 1.2; i++) { x *= 0.97; z *= 0.97; }
-    this.pos.set(x, this.terrain.heightAt(x, z) + 0.05, z);
+    for (let i = 0; i < 60 && ground < sea + 1.2; i++) {
+      x *= 0.97;
+      z *= 0.97;
+      ground = this.terrain.heightAt(x, z);
+    }
+    this.pos.set(x, ground + 0.05, z);
     this.vel.set(0, 0, 0);
     this.roll = 0;
     this.camera.rotation.set(0, this.spawn.yaw, 0, 'YXZ');
