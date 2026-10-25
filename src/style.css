@@ -517,3 +517,7 @@ body.in-menu :is(#weather-panel, #climate-panel, #bars, #hotbar, #hotbar-name, #
   #hotbar-name { bottom: 56px; }
   .build-help { display: none; }
 }
+
+/* The trailer (?trailer): its frame, words and all, over everything; none of the game's screen furniture */
+#trailer-frame { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: contain; background: #000; z-index: 30; }
+body.trailer :is(#weather-panel, #climate-panel, #bars, #hotbar, #hotbar-name, #prompt, #crosshair, #tutorial, #message, #feed, #perf, #throw-meter, #spectate, #match-timer, #match-hud, #dev-badge, #underwater, #hurt) { display: none !important; }

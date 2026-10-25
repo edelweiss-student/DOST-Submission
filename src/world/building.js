@@ -44,7 +44,7 @@ const WINDOW = { width: 0.8, sill: 1.2, top: 2 };
 const RAIL = 1.05;                 // railing height (m)
 const RISE = 0.95;                 // roof ridge above the walls (m)
 const EAVE = 0.3;                  // roof overhang past the walls (m)
-const DECK = 0.21;                 // a floor's joists and boards (m)
+export const DECK = 0.21;          // a floor's joists and boards (m)
 const MAX_POST = 5;                // longest post under a floor (m)
 const MAX_PILING = 10;             // longest piling, from the seabed (m)
 // Pilings: how high the deck stands above the water (or the ground), Z to change.

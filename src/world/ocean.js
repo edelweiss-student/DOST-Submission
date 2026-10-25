@@ -275,5 +275,6 @@ export function createOcean(scene, terrain, rng, { ground, anisotropy = 4, cloud
     fish.instanceMatrix.needsUpdate = true;
   }
 
-  return { update };
+  // schools: where the fish circle ({ x, z, floor (the seabed), radius }).
+  return { update, schools };
 }

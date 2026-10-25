@@ -21,8 +21,9 @@ function mix(rgb, a, b, t) {
 // The map (K): the island from above, drawn from the terrain itself, north
 // up. It shows the sea where it is now (it rises, and it floods the
 // beaches), the trees still standing (felled ones are gone from it), what
-// you've built, the team bases in a multiplayer match, and you, pointing
-// the way you face. It stays up while you move, redrawn a few times a
+// you've built, the team bases in a multiplayer match (and, once the
+// barriers are down, any other team's player inside yours; watching,
+// everyone), and you, pointing the way you face. It stays up while you move, redrawn a few times a
 // second.
 export class MapUI {
   // trees: the vegetation's trees; match: the multiplayer match, or null.
@@ -71,7 +72,7 @@ export class MapUI {
 
   showLegend() {
     const items = [['#fff', 'You'], ['#1c401e', 'Trees'], [WOOD, 'What you’ve built']];
-    if (this.match?.bases) items.push(['transparent', 'Team bases']);
+    if (this.match?.bases) items.push(['transparent', 'Team bases'], ['#ff6b6b', this.match.spectating ? 'Players' : 'Intruders in your base']);
     this.legend.replaceChildren(...items.map(([color, text]) => {
       const item = document.createElement('span');
       const swatch = document.createElement('i');
@@ -192,11 +193,28 @@ export class MapUI {
       });
     }
 
-    // You, pointing the way you face.
+    // Other players revealed: a dot in their team's colour, named.
+    ctx.font = '600 11px system-ui, sans-serif';
+    for (const p of this.match?.revealed ?? []) {
+      const x = px(p.x), y = px(p.z), color = TEAMS[p.team].color;
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeText(p.name, x + 8, y - 6);
+      ctx.fillText(p.name, x + 8, y - 6);
+    }
+
+    // You, pointing the way you face (watching: where the camera is).
     camera.getWorldDirection(this.dir);
     const angle = Math.atan2(this.dir.z, this.dir.x);
+    const me = this.match?.spectating ? camera.position : player.pos;
     ctx.save();
-    ctx.translate(px(player.pos.x), px(player.pos.z));
+    ctx.translate(px(me.x), px(me.z));
     ctx.rotate(angle);
     ctx.beginPath();
     ctx.moveTo(10, 0);

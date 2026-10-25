@@ -81,7 +81,7 @@ export class HUD {
     }
     const gusts = weather.gustiness > 0.15 ? `, gusting ${Math.round(weather.gustSpeed * 3.6)}` : '';
     e.wind.textContent = `Wind ${Math.round(weather.windSpeed * 3.6)} km/h${gusts}`;
-    e.signal.textContent = weather.signal ? `PAGASA Signal No. ${weather.signal}` : '';
+    e.signal.textContent = weather.signal ? `Wind Signal No. ${weather.signal}` : '';
     e.seaState.textContent = `Sea: ${seaState(waves.hs)} · ${waves.hs.toFixed(1)} m waves`;
     const s = Math.max(0, Math.ceil(weather.timeLeft));
     e.forecast.textContent = forecast ?? `Next: ${WEATHER[weather.next].label} in ${Math.floor(s / 60)}:${pad(s % 60)}`;

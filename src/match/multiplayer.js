@@ -159,6 +159,8 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, menu, 
     // (spectator.js), moved by the keys held (keys); click follows the next
     // player, right-click flies freely.
     get spectating() { return !!wars?.spectating; },
+    // Players to show on the map: intruders in your base, or (watching) everyone.
+    get revealed() { return wars?.revealed() ?? []; },
     spectate: (dt, keys) => wars?.spectator.update(dt, keys),
     followNext: () => wars?.spectator.next(),
     flyFreely: () => wars?.spectator.free(),

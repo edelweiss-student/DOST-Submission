@@ -81,6 +81,24 @@ Quality and anti-aliasing are set as the game loads. Changed from the menu
 before you've started on your own, the game loads again at once and comes
 back to the Graphics page; otherwise they wait for the next time it loads.
 
+## Trailer
+
+`/?trailer` opens the menu on a **Trailer** page (`trailer/trailer.js`): an
+81-second trailer played live in the game, on this island, with nothing but
+what the game does. **Preview** plays it; **Record** plays it and saves
+`washed-away-trailer.mp4` (1920 × 1080 at 60 fps with the game's sound,
+about 160 MB) to your downloads when it ends. Record it in a browser
+drawing on the graphics card, so no frames drop.
+
+Its shots, after a cold open looking down on a lone survivor ("Every tree
+you fell brings the sea closer"): walking inland with an axe, felling a
+tree, a house on stilts going up over the shallows, the fish over a reef, a
+storm rolling in as the sea rises, the flood across the beach, four teams
+round a bahay kubo with spears flying, a charge that breaks Team Asul's bed,
+and the title over a storm at dusk. Captions name each feature, lower left.
+`game.playTrailer(false, seconds)` in the console starts it partway, to
+look at one shot.
+
 ## Multiplayer
 
 Bed wars for up to four teams, on a game server. Players join a lobby, are
@@ -178,13 +196,17 @@ last minute, with a warning when one minute is left.
 - **When it ends,** and only then, the server opens the bases. The
   barriers sink into the ground, a message says every base is open, and
   anyone can go anywhere.
+- **Intruders show.** From then on, anyone from another team inside your
+  base (within its barrier's ring, 50 m) shows on your map as a dot in
+  their team's colour with their name, and when they come in, a message and
+  the feed say so.
 - Nothing can be hurt until then: a swing at another team's player only
   gets a reminder.
 
 **The storm** (`match/rules.js`). Climate change in a match is the same for
 every team, on the server's clock, not what anyone does. When the barriers
 come down a bagyo (typhoon) builds in stages two minutes apart: rain bands
-first, then storms of about 58, 76 and 98 km/h, which raise PAGASA wind
+first, then storms of about 58, 76 and 98 km/h, which raise wind
 Signals No. 1, 2 and 3. The climate's pressure climbs with it to Crisis, so
 the sea rises (up to 2.4 m, and the storm's surge on top, peaking eight
 minutes in) and floods the beaches. **Any bed the water reaches is washed
@@ -363,7 +385,9 @@ and a 100 m scale bar. It shows:
 - what you've built: floors and pilings as cells, walls, windows, doorways,
   railings and stairs along their edges, and blueprints in outline;
 - in a multiplayer match, the four team bases in their colours, with yours
-  marked, and their barriers ringed while the build phase lasts;
+  marked, and their barriers ringed while the build phase lasts; once it's
+  over, other teams' players inside your base, as dots in their colours
+  with their names (spectators see every player);
 - you, as an arrow pointing the way you face, and the name of the region
   you're in.
 
@@ -629,7 +653,7 @@ follows the match's typhoon instead: see Multiplayer.)
 - **Storms** come as a Thunderstorm, Severe thunderstorm or Violent storm,
   by the pressure, and worse if the land where you are is stressed.
 - **Wind signals.** As a storm's sustained wind passes 39, 62, 89, 118 and
-  185 km/h, PAGASA's Tropical Cyclone Wind Signals No. 1 to 5 go up. The
+  185 km/h, the Philippines' Tropical Cyclone Wind Signals No. 1 to 5 go up. The
   weather panel shows the signal, and a message gives its advice as it
   rises. The game's storms reach Signal No. 3.
 - **Temperature.** Warm weather runs 1.5, 3 and 5 °C hotter in the
@@ -1025,7 +1049,8 @@ src/
   ui/menu.js            the menu: its pages, settings rows, the keybinds screen, Esc to go back
   ui/lobbyUI.js         the multiplayer lobby, in the menu
   ui/lineupUI.js        the lobby's line-up of everyone who has joined, in team colours
-  ui/mapUI.js           the map (K): terrain, the sea, standing trees, what you've built, bases, you
+  ui/mapUI.js           the map (K): terrain, the sea, standing trees, what you've built, bases,
+                        intruders in your base, you
   match/teams.js        the four multiplayer teams (shared with the game server)
   match/bases.js        where each team's base is: inland from its diagonal shore
   match/barriers.js     the build phase's solid walls around each base: building them, keeping
@@ -1035,6 +1060,8 @@ src/
   match/rules.js        the bed-wars rules: health, damage, reach, respawning, the storm and its
                         surge, the stairs limit (shared with the game server)
   match/spectator.js    watching a match: flying freely, or following a player
+  trailer/trailer.js    the trailer (/?trailer): its shots, captions and title, played and
+                        recorded live in the game
   match/bedwars.js      bed wars in your game: your team's bahay kubo and bed from your
                         inventory, the flood washing beds away, striking, being hit, going down,
                         coming back or being out, the teams panel and feed, the end of the match

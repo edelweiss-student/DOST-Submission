@@ -40,6 +40,7 @@ import { SPEAR, spearSpeed } from './match/rules.js';
 import { loadToolModels } from './items/models.js';
 import { joinServer, createMatch } from './match/multiplayer.js';
 import { MapUI } from './ui/mapUI.js';
+import { createTrailer } from './trailer/trailer.js';
 import { Menu } from './ui/menu.js';
 
 // The menu is up from the start, while the island is made: its own pages
@@ -48,7 +49,7 @@ const params = new URLSearchParams(location.search);
 let ready = false;     // the island is made and its shaders compiled
 let started = false;   // you've started playing (so it's the pause menu now)
 const menu = new Menu({ onAction: (name, button) => menuAction(name, button) });
-menu.open(...(params.has('mp') ? ['lobby'] : Menu.remembered() ?? ['main']));
+menu.open(...(params.has('mp') ? ['lobby'] : params.has('trailer') ? ['trailer'] : Menu.remembered() ?? ['main']));
 const singleButton = menu.button('single');
 singleButton.disabled = true;
 
@@ -295,11 +296,11 @@ climate.onTier = (tier, previous, cause) => {
   hud.message(tier > previous ? `${TIER_UP[tier]} ${CAUSES[cause] ?? ''}`.trim() : TIER_DOWN[tier], 8);
 };
 weather.onChange = () => hud.message(`Weather shifting: ${weather.label}`);
-// PAGASA's wind signals as a storm's winds rise, with what each calls for.
+// The wind signals as a storm's winds rise, with what each calls for.
 let signalShown = 0;
 function announceSignal() {
   const signal = weather.signal;
-  if (signal > signalShown) hud.message(`PAGASA raises wind Signal No. ${signal}. ${SIGNAL_ADVICE[signal]}`, 7);
+  if (signal > signalShown) hud.message(`Wind Signal No. ${signal} is raised. ${SIGNAL_ADVICE[signal]}`, 7);
   else if (!signal && signalShown) hud.message('All wind signals are lifted.', 4);
   signalShown = signal;
 }
@@ -330,6 +331,11 @@ if (match) menu.button('quit').textContent = 'Leave the match';
 const map = new MapUI({ terrain, trees: vegetation.sources.trees, building, sea, climate, match });
 // Tips for a first game (H hides them).
 const tutorial = new Tutorial(match ? MATCH : SOLO);
+// The trailer (?trailer): scripted shots through the game, recorded to a
+// video file (trailer/trailer.js).
+const trailer = params.has('trailer') && !server ? createTrailer({
+  scene, camera, renderer, terrain, water, sea, sky, weather, player, held, inventory, timber, building, spears, vegetation, ocean, audio, uniforms,
+}) : null;
 
 function onPlay() {
   menu.close();
@@ -368,6 +374,8 @@ function menuAction(name, button) {
     if (ready && (menu.page === 'pause' || menu.page === 'lobby')) play();
   } else if (name === 'bedwars') {
     location.search = '?mp';   // multiplayer has its own address, answered by the game server
+  } else if (name === 'trailer-preview' || name === 'trailer-record') {
+    playTrailer(name === 'trailer-record');
   } else if (name === 'keybinds') {
     menu.keybinds(true);
   } else if (name === 'quit') {
@@ -385,6 +393,24 @@ function menuAction(name, button) {
     }
     location.href = location.pathname;   // the main menu, without ?mp
   }
+}
+
+// The trailer page: plays it, or records it, at full resolution, then
+// comes back here.
+// from: seconds in to start at (for looking at one shot).
+function playTrailer(record, from = 0) {
+  if (!ready || !trailer || trailer.running) return;
+  audio.start();
+  menu.close();
+  adaptive.setTarget('off');
+  trailer.play({ record, from }, (file) => {
+    adaptive.setTarget(graphics.target);
+    dispatchEvent(new Event('resize'));
+    menu.open('trailer');
+    document.getElementById('trailer-note').textContent = file
+      ? `Saved washed-away-trailer.${file.type.startsWith('video/mp4') ? 'mp4' : 'webm'} (${(file.size / 1e6).toFixed(1)} MB) to your downloads.`
+      : 'That was the preview. Record it when you like.';
+  });
 }
 
 // Settings > Water.
@@ -901,7 +927,7 @@ function frame() {
 function step() {
   const dt = Math.min(clock.getDelta(), 0.05);
   // While paused, waves and particles keep moving but the simulation stops.
-  const sdt = isPlaying() ? dt : 0;
+  const sdt = isPlaying() || trailer?.running ? dt : 0;
   t += dt;
   uniforms.uTime.value = t;
 
@@ -914,7 +940,8 @@ function step() {
   sea.update(sdt, weather, sky.state.time);
   player.burden = timber.burden;
   // Watching a match, the camera is the spectator's; otherwise it's your eyes.
-  if (match?.spectating) match.spectate(sdt, player.keys);
+  if (trailer?.running) trailer.update(dt);
+  else if (match?.spectating) match.spectate(sdt, player.keys);
   else player.update(sdt, t, weather.heatIndex);
   uniforms.uPlayerPos.value.copy(player.pos);
   gathering.update(sdt, t);
@@ -926,7 +953,7 @@ function step() {
   // What's under the crosshair, or where a blueprint would go.
   // (With the map up you can still move, but not act on what's in front of
   // you; knocked out in a match, neither.)
-  const playing = isPlaying() && !inventoryUI.open && !joinery.open && !map.open && !player.dead && !match?.spectating;
+  const playing = isPlaying() && !inventoryUI.open && !joinery.open && !map.open && !player.dead && !match?.spectating && !trailer?.running;
   camera.getWorldDirection(aimDir);
   aimRay.set(camera.position, aimDir);
   focus = null;
@@ -965,8 +992,8 @@ function step() {
   if (playing) tutorial.update(sdt, { player, inventory, open: !!match?.opened });
   held.update(sdt, match?.spectating ? null : inventory.current, Math.hypot(player.vel.x, player.vel.z), timber.carried);
   // What's drawn from: your eyes, or until you start, the menu's view.
-  const view = started ? camera : menuCamera;
-  if (!started) updateMenuView(dt);
+  const view = started || trailer?.running ? camera : menuCamera;
+  if (view === menuCamera) updateMenuView(dt);
   precip.update(sdt, t, view, weather);
   const env = sky.update(sdt, view, weather.current, precip.flash);
   weather.dayF = env.dayF;
@@ -998,6 +1025,7 @@ function step() {
   hud.update(dt, { weather, sea, climate, regions: !match, forecast: match?.forecast, clock: sky.clock(), player, waves: water.waves });
   gpuTimer.begin(perf.visible);
   renderer.render(scene, view);
+  trailer?.frame();
   gpuTimer.end();
   adaptive.update(dt);
   perf.update(dt);
@@ -1026,7 +1054,7 @@ renderer.compileAsync(scene, camera).catch(() => {}).finally(async () => {
 if (import.meta.env.DEV) {
   window.game = {
     scene, camera, renderer, terrain, weather, sea, player, sky, water, uniforms, vegetation, step, inventory, gathering, audio, tutorial,
-    timber, building, build, joinery, held, climate, match, map, menu, menuView, menuCamera, spears, get devMode() { return devMode; },
+    timber, building, build, joinery, held, climate, match, map, menu, menuView, menuCamera, spears, trailer, playTrailer, get devMode() { return devMode; },
     counts: vegetation.counts, quality: { tier, gpu, adaptive, gpuTimer, graphics },
   };
 }

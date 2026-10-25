@@ -37,6 +37,8 @@ export class BedWars {
     this.sendClock = 0;
     this.warnedBed = -Infinity;
     this.warnedPeace = -Infinity;
+    this.intruders = new Set();   // other teams' players in your base, as last seen
+    this.intruderClock = 0;
     this.dir = new THREE.Vector3();
 
     // Each team in the match: its bed's health, and its players.
@@ -123,6 +125,7 @@ export class BedWars {
   update(dt) {
     this.remotes.update(dt);
     this.watchFlood(dt);
+    this.watchBase(dt);
     if (this.downAt && this.comingBack) {
       const left = Math.max(1, Math.ceil(RESPAWN_TIME - (performance.now() - this.downAt) / 1000));
       this.deathScreen.querySelector('span').textContent = `Back ${this.bedStands(this.team) ? 'at your bed ' : ''}in ${left}…`;
@@ -133,6 +136,36 @@ export class BedWars {
     this.camera.getWorldDirection(this.dir);
     const r = (x) => Math.round(x * 100) / 100;
     this.net.send('move', [r(p.x), r(p.y), r(p.z), r(Math.atan2(-this.dir.x, -this.dir.z)), r(Math.hypot(v.x, v.z))], true);
+  }
+
+  // Once the barriers are down, anyone from another team inside your base
+  // (within BASE_RADIUS of it, where its barrier stood) shows on your map
+  // (revealed()), and you hear when they come in.
+  watchBase(dt) {
+    if ((this.intruderClock += dt) < 0.5) return;
+    this.intruderClock = 0;
+    const now = new Set(this.spectating ? [] : this.revealed().map((p) => p.id));
+    for (const id of now) {
+      if (this.intruders.has(id)) continue;
+      const p = this.remotes.players.get(id);
+      this.hud.message(`${p.name} of Team ${TEAMS[p.team].name} is in your base! They show on your map (K).`, 4);
+      this.feed(`${p.name} came into your base`);
+    }
+    this.intruders = now;
+  }
+
+  // Who shows on your map: once the barriers are down, any other team's
+  // player inside your base; watching (a spectator, or out), everyone.
+  // [{ id, name, team, x, z }].
+  revealed() {
+    const base = this.bases[this.team], list = [];
+    for (const p of this.remotes.players.values()) {
+      const at = p.model.object;
+      if (!at.visible) continue;
+      const inside = !this.peace && p.team !== this.team && base && Math.hypot(at.position.x - base.x, at.position.z - base.z) < BASE_RADIUS;
+      if (this.spectating || inside) list.push({ id: p.id, name: p.name, team: p.team, x: at.position.x, z: at.position.z });
+    }
+    return list;
   }
 
   // The flood: a bed the water stays over for a moment (waves and all) is
