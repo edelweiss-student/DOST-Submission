@@ -24,12 +24,22 @@ export const SWING_GAP = 200;    // ms: the server counts at most one hit per pl
 // on your own island too: see world/building.js). The pickaxe is for beds,
 // the axe for walls.
 export const DAMAGE = {
-  player: { none: 5, knife: 14, axe: 20, pickaxe: 16 },
-  bed: { none: 3, knife: 5, axe: 12, pickaxe: 20 },
-  piece: { none: 2, knife: 4, axe: 15, pickaxe: 10 },
+  player: { none: 5, knife: 14, axe: 20, pickaxe: 16, spear: 16 },
+  bed: { none: 3, knife: 5, axe: 12, pickaxe: 20, spear: 4 },
+  piece: { none: 2, knife: 4, axe: 15, pickaxe: 10, spear: 3 },
 };
 export const PIECE_HP = 100;
 export const damageOf = (target, tool) => DAMAGE[target][tool] ?? DAMAGE[target].none;
+
+// The spear, thrown: held back for up to `draw` seconds (right-click held),
+// from a quick toss (0) to a full draw (1), it leaves your hand at `speed`
+// m/s and hits another team's player for `damage` (beds and builds it only
+// sticks in). The server counts one hit a throw, within `range` metres of
+// where it was thrown from, and a throw at most every `gap` ms.
+export const SPEAR = { draw: 1.1, speed: [11, 27], damage: [18, 45], range: 90, gap: 400 };
+const drawn = (charge) => Math.min(1, Math.max(0, Number(charge) || 0));
+export const spearSpeed = (charge) => SPEAR.speed[0] + (SPEAR.speed[1] - SPEAR.speed[0]) * drawn(charge);
+export const spearDamage = (charge) => Math.round(SPEAR.damage[0] + (SPEAR.damage[1] - SPEAR.damage[0]) * drawn(charge));
 
 // Climate change in a match: not what anyone does to the island, but the
 // same for every team, on the server's clock. Once the barriers are down a

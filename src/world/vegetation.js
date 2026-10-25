@@ -6,16 +6,19 @@ import { leafSprite } from './textures.js';
 import { SPECIES, placeTrees, createForest } from './trees.js';
 
 // Uniform grid of circular colliders (tree trunks, fallen trunks, boulders).
+// what: what stands there, { tree } (its record, which knows its height and
+// whether it's been felled) or { height } above the ground, for things
+// that fly (world/spears.js).
 export class ColliderGrid {
   constructor(cell = 8) {
     this.cell = cell;
     this.cells = new Map();
   }
   key(i, j) { return i * 73856093 ^ j * 19349663; }
-  add(x, z, r) {
+  add(x, z, r, what = null) {
     const k = this.key(Math.floor(x / this.cell), Math.floor(z / this.cell));
     if (!this.cells.has(k)) this.cells.set(k, []);
-    this.cells.get(k).push({ x, z, r });
+    this.cells.get(k).push({ x, z, r, ...what });
   }
   query(x, z, out = []) {
     out.length = 0;
@@ -145,7 +148,7 @@ function placeLogs(terrain, rng, colliders, spacingOk, lengths) {
     const he = terrain.heightAt(ex, ez);
     if (Math.abs(he - h) > len * 0.25) continue;
     logs.push({ x, y: h - 0.25 * s, z, yaw, pitch: Math.atan2(he - h, len), s, variant, dx, dz, len });
-    for (let d = 0.6; d < len - 0.3; d += 1.1) colliders.add(x + dx * d, z + dz * d, (variant === 0 ? 0.6 : 0.45) * s);
+    for (let d = 0.6; d < len - 0.3; d += 1.1) colliders.add(x + dx * d, z + dz * d, (variant === 0 ? 0.6 : 0.45) * s, { height: 0.9 * s });
   }
   return logs;
 }
@@ -184,7 +187,7 @@ export function createVegetation(scene, terrain, rng, { quality, ground, cloudSh
     if (!spacingOk(x, z, s + 1.5)) continue;
     const sy = s * range(rng, 0.7, 1.1);
     rocks.push({ x, y: h - 0.1 * sy, z, rot: rng() * 6.28, sx: s * range(rng, 0.9, 1.4), sy, sz: s, tone: rng(), variant: Math.floor(rng() * 3) });
-    if (s > 0.9) colliders.add(x, z, s * 0.95);
+    if (s > 0.9) colliders.add(x, z, s * 0.95, { height: sy });
   }
 
   // Tree crowns and bushes shade the ground beneath them (and you, see player.js).

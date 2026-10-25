@@ -56,11 +56,20 @@ const DRAW = {
     ctx.stroke();
   },
   pilings(ctx) {
-    // Log stilts standing in the water, a deck on top.
+    // Log stilts standing in the water, braced, a deck on top.
     ctx.fillStyle = '#2f6f8c';
     ctx.fillRect(4, 42, 56, 18);
     ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
     ctx.fillRect(4, 42, 56, 2);
+    // The brace: a log from low on one stilt to high on the other.
+    for (const [width, color] of [[7, DARK], [4, '#6b4a2a']]) {
+      ctx.lineWidth = width;
+      ctx.strokeStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(14, 38);
+      ctx.lineTo(50, 20);
+      ctx.stroke();
+    }
     for (const x of [14, 50]) {
       ctx.fillStyle = '#6b4a2a';
       ctx.fillRect(x - 5, 16, 10, 44);
@@ -77,17 +86,6 @@ const DRAW = {
     ctx.fillRect(22, 23, 20, 18);
     lines(ctx, [[20, 41, 44, 41]], 3);
     lines(ctx, [[32, 23, 32, 41], [22, 32, 42, 32]], 1.5);
-  },
-  ladder(ctx) {
-    lines(ctx, [[20, 6, 20, 60], [44, 6, 44, 60]], 6);
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = '#8a6440';
-    ctx.beginPath();
-    for (const y of [14, 25, 36, 47, 56]) {
-      ctx.moveTo(20, y);
-      ctx.lineTo(44, y);
-    }
-    ctx.stroke();
   },
   railing(ctx) {
     lines(ctx, [[10, 22, 10, 54], [32, 22, 32, 54], [54, 22, 54, 54]], 5);

@@ -156,7 +156,7 @@ last minute, with a warning when one minute is left.
   ribs every few metres, a glowing top edge and faint glowing bands rising
   up it, so it shows at night too.
 - **Who gets through.** Nobody from another team, however they try:
-  walking, swimming, diving, climbing a ladder or jumping off something
+  walking, swimming, diving, climbing stairs or jumping off something
   built, you're stopped at its face, with a message saying how long until
   it opens. Nothing breaks it or takes it apart, and the game server
   ignores anyone who claims to be inside another team's base while it's
@@ -232,9 +232,14 @@ to shed typhoon rain, and bamboo steps up to the door.
   | Knife | 14 | 5 | 4 |
   | Axe | 20 | 12 | 15 |
   | Pickaxe | 16 | 20 | 10 |
+  | Spear (jab) | 16 | 4 | 3 |
 
   A bed has 200 health (10 blows of a pickaxe, 17 of an axe) and a built
-  piece 100 (7 blows of an axe).
+  piece 100 (7 blows of an axe). A thrown spear hurts another team's
+  player for 18 to 45, by how far it was drawn back (beds and builds it only
+  sticks in). The thrower's game sees the hit and the server checks it: one
+  hit a throw, within 90 m of where it was thrown from, and none in the
+  build phase. Everyone sees a thrown spear fly.
 - **Building.** What's built is shared: every piece you place, build up,
   repair or take down shows in everyone's game, as your team's. Another
   team's pieces can't be built on or taken apart, only broken with tools,
@@ -295,14 +300,14 @@ they agree.
 | C | Dive |
 | E | With your hands: gather from what you're looking at, pick something up, build and repair |
 | Right-click | Use the selected item: swing a tool (fell a tree, split a log, cut a log off a fallen trunk, cut grass or a bush with the knife, break something built), eat food, or in a match put up your team's bahay kubo or place its bed (`R` turns it) |
-| Left-click / F | In a multiplayer match: strike with what's in your hand (a fist if nothing): another team's player or bed, or anything built in the way |
+| Hold right-click | With the spear: draw it back (the meter under the crosshair fills), let go to throw it |
+| Left-click / F | Jab with the spear; in a multiplayer match, strike with whatever's in your hand (a fist if nothing): another team's player or bed, or anything built in the way |
 | 1–9 / mouse wheel | Choose a hotbar slot |
 | I / Tab | Open or close the inventory and crafting |
 | K | Open or close the map |
 | Q | Drop one of the selected item, or put down the wood you're carrying |
-| B | Build mode: `1`–`9` or the wheel choose a piece, `R` turns a roof or raises pilings, `E` (or left-click) places it, `B` or right-click leaves |
+| B | Build mode: `1`–`8` or the wheel choose a piece, `R` turns it, `Z` raises or lowers pilings, `E` (or left-click) places it, `B` or right-click leaves |
 | E on a build | Add the wood you carry, repair it with a plank (or log), or with empty arms rework its joints |
-| W / S on a ladder | Climb up or down |
 | Hold X | Take apart something you built, or clear a blueprint |
 | M | Mute |
 | H | Hide the tips |
@@ -345,7 +350,7 @@ and a 100 m scale bar. It shows:
 - every tree still standing (felled trees disappear from it, so you can see
   where you've cleared);
 - what you've built: floors and pilings as cells, walls, windows, doorways,
-  railings and ladders along their edges, and blueprints in outline;
+  railings and stairs along their edges, and blueprints in outline;
 - in a multiplayer match, the four team bases in their colours, with yours
   marked, and their barriers ringed while the build phase lasts;
 - you, as an arrow pointing the way you face, and the name of the region
@@ -396,13 +401,14 @@ first.
 **Crafting** is on the inventory screen, next to the bag. Each recipe shows
 how much of each ingredient you have (red when it's not enough); Craft uses
 them up and puts the tool in your bag (or on the ground if the bag is full).
-For now there are three stone tools:
+There are three stone tools and a spear:
 
 | Tool | Needs | Uses before it breaks |
 | --- | --- | --- |
 | Makeshift knife | 1 stick, 1 stone | 40 |
 | Stone axe | 2 sticks, 2 stones | 150 |
 | Stone pickaxe | 2 sticks, 3 stones | 50 |
+| Spear | 2 sticks, 1 stone, 2 plant fibre | 30 throws |
 
 A tool is used up one blow at a time, and only when it hits something it
 works on (a swing at the air wears nothing). A bar under its slot shows the
@@ -416,6 +422,16 @@ sweeps across from right to left and bites in edge first right where the
 crosshair is, jolts with the blow, then pulls back. You can't start another
 swing until one is nearly over. Tools keep their wear when moved, dropped or
 picked back up, and they sink in water.
+
+**The spear** (`world/spears.js`) is thrown. With it selected, hold
+right-click to draw it back: a meter under the crosshair fills over about
+a second, and letting go throws it, from 11 m/s on a quick toss to 27 m/s
+fully drawn, plus however fast you were moving. It flies under gravity,
+point first, and sticks where it strikes: the ground, a tree, a fallen
+trunk, a boulder or something built. Go and pick it up again with `E`.
+Thrown into the sea it floats, to swim after. Each throw wears it a little
+(30 throws). Left-click (with the mouse captured) or `F` jabs with it
+instead, which breaks things built like a weak tool.
 
 `I` or `Tab` opens the inventory screen. It frees the mouse but doesn't
 pause the game:
@@ -459,20 +475,20 @@ rest along the ground, float, and drift with the waves and the wind.
 - `Q` puts one down in front of you, across your path. If you black out,
   you drop everything you carry.
 
-**Building.** Press `B` and the hotbar turns into the build bar. `1`–`9`
-or the mouse wheel choose a piece:
+**Building.** Press `B` and the hotbar turns into the build bar. `1`–`8`
+or the mouse wheel choose a piece, `R` turns it and `Z` sets how high
+pilings stand:
 
 | Key | Piece | Costs | Goes |
 | --- | --- | --- | --- |
-| 1 | Floor | 6 planks | On posts on the ground or out over the water, snapped to a 2 m grid, or on top of pilings |
-| 2 | Wall | 6 planks | Along the floor edge nearest the crosshair |
+| 1 | Floor | 6 planks | On posts on the ground or out over the water, snapped to a 2 m grid, or on top of pilings (`R` turns its boards) |
+| 2 | Wall | 6 planks | Along the floor edge nearest the crosshair (`R` turns it round the floor, a side at a time) |
 | 3 | Doorway | 4 planks | Like a wall, with an opening to walk through |
 | 4 | Roof | 8 planks | Over a floor: a pitched roof with boarded gable ends (`R` turns the ridge) |
-| 5 | Pilings | 4 logs | Four log stilts driven into the ground or the seabed. A floor goes on top of them, 2, 3, 4 or 5 m above the water (`R` changes the height) |
+| 5 | Pilings | 4 logs | Four log stilts driven into the ground or the seabed. A floor goes on top of them, 2, 3, 4 or 5 m above the water (`Z` changes the height). Two diagonal log braces stiffen two opposite sides (`R` turns them to the other two) |
 | 6 | Window | 5 planks | A wall with a window in it |
-| 7 | Ladder | 3 planks | Down the side of a floor, to the ground or the seabed |
-| 8 | Railing | 3 planks | Along a floor edge, so you don't fall off |
-| 9 | Stairs | 5 planks | Steps you walk up, at about 40° from a floor edge (an open one, or a doorway) down to the ground, for floors 0.6 to 4.4 m up. Everyone can build 3 at most (a bahay kubo's own steps don't count); take one apart to build another |
+| 7 | Railing | 3 planks | Along a floor edge, so you don't fall off |
+| 8 | Stairs | 5 planks | Steps you walk up, at about 40° from a floor edge (an open one, or a doorway) down to the ground or the seabed, for floors 0.6 to 6 m up. Everyone can build 3 at most (a bahay kubo's own steps don't count); take one apart to build another |
 
 A see-through preview follows the crosshair: green where the piece fits,
 red (with the reason) where it doesn't. A floor levels itself above the
@@ -489,11 +505,10 @@ onto them, even out of the water), walls, doorways and railings stop you,
 pilings stand in your way, and a roof shades you from the sun like a tree's
 crown and keeps the rain off what's under it.
 
-**Ladders.** Walk up to one and hold `W` (or `Space`) to climb, `S` to go
-down, `A` and `D` to shuffle sideways. At the top, keep climbing while
-facing the deck and you step onto it. Walk off a deck where a ladder hangs
-and you catch hold of it. From the water, swim to the foot of a ladder and
-climb out.
+**Getting up there.** There are no ladders: stairs take you up to a raised
+floor (6 m at most), a floor less than about 2 m above the water can be
+climbed onto straight out of it, and floors at the same height join, so a
+walkway on pilings can run out from a floor you reached by stairs.
 
 **Joinery.** When a piece gets its last plank, you make its joints in a
 quick mini-game. `E`, `Space` or a click works each step:
@@ -540,7 +555,7 @@ stood on it, and its wood falls or floats away.
 
 Holding `X` for a moment on a piece takes it apart and gives all its wood
 back; on a blueprint it clears it and gives back what it had. A floor can't
-be taken apart while walls, a roof or a ladder stand on it, nor pilings with
+be taken apart while walls, a roof or stairs stand on it, nor pilings with
 a floor on top.
 
 **Breaking it.** Any tool breaks what's built, faster than taking it
@@ -957,9 +972,10 @@ src/
   world/vegetation.js   tree, fallen trunk, bush and boulder placement, colliders, culled instancing
   world/wood.js         wood materials and shapes: bark, plank grain, cut ends, logs, boards
   world/timber.js       felling, stumps, logs and planks in the world, splitting, carrying
-  world/building.js     floors, pilings, walls, windows, doorways, ladders, railings, stairs and
+  world/spears.js       thrown spears: flight, sticking where they strike, picking up again, hits in a match
+  world/building.js     floors, pilings, walls, windows, doorways, railings, stairs and
                         roofs: placing, blueprints, building up, joints, weather and sea wear,
-                        high-water marks, repairs, taking apart, standing, climbing, colliding,
+                        high-water marks, repairs, taking apart, turning, standing, colliding,
                         roof shade; the bahay kubo; shared between the players of a match
   world/kubo.js         the bahay kubo's materials: bamboo, sawali, split-bamboo slats, nipa thatch
   world/grass.js        GPU grass around the player
@@ -977,7 +993,7 @@ src/
                         strength
   weather/sealevel.js   sea level rise, tides, storm surge, salt damage lines, structure exposure
   weather/precipitation.js  GPU rain and snow, lightning
-  player/player.js      walking, buoyant swimming, ladders, oxygen, health, stamina, heat strain, eating
+  player/player.js      walking, buoyant swimming, oxygen, health, stamina, heat strain, eating
   items/items.js        item definitions and their icons (drawn at startup)
   items/inventory.js    hotbar and bag slots: stacking, splitting, swapping, quick-move, tool wear
   items/recipes.js      crafting recipes

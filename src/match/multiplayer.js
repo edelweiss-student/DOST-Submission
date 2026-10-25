@@ -44,7 +44,7 @@ export async function joinServer() {
 // fighting, strike, pressure, forecast, update(dt) }: while inLobby, the
 // game can't be started; pressure is the climate's (0..1), and forecast
 // the weather panel's line about what's coming.
-export function createMatch({ net, seed, error }, { terrain, player, hud, menu, scene, sea, camera, weather, building, inventory }) {
+export function createMatch({ net, seed, error }, { terrain, player, hud, menu, scene, sea, camera, weather, building, inventory, spears }) {
   menu.classList.add('mp', 'lobby');
   const leave = () => { location.href = location.pathname; };
   let name = '';
@@ -139,6 +139,11 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, menu, 
     // A swing landing (ray: from your eye; tool: what's in your hand, or
     // 'none'). Returns true if it hit another team's player or bed.
     strike: (ray, tool) => wars?.strike(ray, tool) ?? false,
+    // Your spear thrown (from, vel: Vector3s; charge: how far it was drawn
+    // back), and a stretch of its flight (ray, length): how far along it
+    // passes through another team's player (reported), or null.
+    throwSpear: (from, vel, charge) => wars?.throwSpear(from, vel, charge),
+    spearStrike: (ray, length) => wars?.spearStrike(ray, length) ?? null,
     // Your team's bed, while it's in your inventory: where it would go
     // (aiming along ray; null hides it), putting it down, turning it.
     aimBed: (ray) => wars?.aimBed(ray) ?? null,
@@ -207,7 +212,7 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, menu, 
     player.respawn();
     menu.classList.remove('lobby');
     ui.showMatch(team, players);
-    wars = new BedWars({ net, players, me: net.id, bases, terrain, scene, player, camera, hud, building, inventory, sea, peace: buildLeft > 0 });
+    wars = new BedWars({ net, players, me: net.id, bases, terrain, scene, player, camera, hud, building, inventory, sea, spears, peace: buildLeft > 0 });
     if (buildLeft > 0) {
       buildEnds = performance.now() + buildLeft;
       warned = buildLeft <= 60000;   // no warning for a phase shorter than that

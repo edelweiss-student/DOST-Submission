@@ -5,13 +5,16 @@ import { boardGeometry, logGeometry } from './wood.js';
 
 // Building with wood. Pieces snap to a 2 m grid: floors on posts or on log
 // pilings (on land or out over the water), walls, windows, doorways,
-// ladders, railings and stairs along a floor's edges, and pitched roofs over
-// floors. A piece is placed as a blueprint, then built up a plank (or log)
-// at a time, carried in your arms (see timber.js). Finished, its joints are
-// made in the joinery mini-game (ui/joinery.js): the better they fit, the
-// longer it lasts. Then it's solid: you stand on floors, climb ladders and
-// stairs, walls and railings stop you and roofs give shade. Everyone can
-// build MAX_STAIRS stairs at most.
+// railings and stairs along a floor's edges, and pitched roofs over floors.
+// Every piece turns (R, the `turn` of a plan): a floor's boards, a roof's
+// ridge and the braces between pilings go either way, and the pieces on
+// an edge go round their floor a side at a time; pilings also stand at one
+// of DECK_LEVELS (`raise`, Z). A piece is placed as a blueprint, then built
+// up a plank (or log) at a time, carried in your arms (see timber.js).
+// Finished, its joints are made in the joinery mini-game (ui/joinery.js):
+// the better they fit, the longer it lasts. Then it's solid: you stand on
+// floors, walk up stairs, walls and railings stop you and roofs give
+// shade. Everyone can build MAX_STAIRS stairs at most.
 //
 // In a multiplayer match each team also puts up a bahay kubo (buildKubo):
 // the house on stilts of the Philippines, 2 × 2 cells, built all at once
@@ -44,14 +47,14 @@ const EAVE = 0.3;                  // roof overhang past the walls (m)
 const DECK = 0.21;                 // a floor's joists and boards (m)
 const MAX_POST = 5;                // longest post under a floor (m)
 const MAX_PILING = 10;             // longest piling, from the seabed (m)
-// Pilings: how high the deck stands above the water (or the ground), R to change.
+// Pilings: how high the deck stands above the water (or the ground), Z to change.
 export const DECK_LEVELS = [2, 3, 4, 5];
 const REACH = 4;                   // from your eyes (m)
 const MAX_SOLID = 6000, MAX_GHOST = 3000, MAX_LOGS = 400, MAX_SKIN = 2000;
-// Stairs: about 40° from a floor's edge down to the ground, a step every
-// 22 cm or so, 1 m wide. Lower than `min`, step up; higher than `max`, use
-// a ladder.
-const STAIRS = { width: 1, angle: 0.7, rise: 0.22, min: 0.6, max: 4.4 };
+// Stairs: about 40° from a floor's edge down to the ground (or the seabed),
+// a step every 22 cm or so, 1 m wide. Lower than `min`, step up; higher
+// than `max` is too long a climb.
+const STAIRS = { width: 1, angle: 0.7, rise: 0.22, min: 0.6, max: 6 };
 // A bahay kubo: its deck `raise` above the highest ground under it, a roof
 // `rise` high over its walls, overhanging them by `eave` (and `overhang`
 // past the gable ends).
@@ -62,15 +65,14 @@ const SIDES = [[0, -1], [1, 0], [0, 1], [-1, 0]];   // neighbouring cell across 
 
 // What can be built. cost: planks (or logs) to finish it.
 export const PIECES = [
-  { id: 'floor', name: 'Floor', cost: 6, hint: 'A plank deck on posts, or on pilings' },
-  { id: 'wall', name: 'Wall', cost: 6, hint: 'Along the edge of a floor' },
-  { id: 'doorway', name: 'Doorway', cost: 4, hint: 'A wall you can walk through' },
-  { id: 'roof', name: 'Roof', cost: 8, hint: 'Over a floor: shade, and shelter from the rain (R turns it)' },
+  { id: 'floor', name: 'Floor', cost: 6, hint: 'A plank deck on posts, or on pilings (R turns its boards)' },
+  { id: 'wall', name: 'Wall', cost: 6, hint: 'Along the edge of a floor (R turns it round the floor)' },
+  { id: 'doorway', name: 'Doorway', cost: 4, hint: 'A wall you can walk through (R turns it round the floor)' },
+  { id: 'roof', name: 'Roof', cost: 8, hint: 'Over a floor: shade, and shelter from the rain (R turns its ridge)' },
   { id: 'pilings', name: 'Pilings', cost: 4, material: 'log', hint: 'Log stilts in the ground or seabed, to build a floor on high above the sea' },
-  { id: 'window', name: 'Window', cost: 5, hint: 'A wall with a window in it' },
-  { id: 'ladder', name: 'Ladder', cost: 3, hint: 'Up the side of a raised floor' },
-  { id: 'railing', name: 'Railing', cost: 3, hint: 'Along a floor edge, so you don’t fall off' },
-  { id: 'stairs', name: 'Stairs', cost: 5, hint: `Steps up to a raised floor, from one of its edges (${MAX_STAIRS} each)` },
+  { id: 'window', name: 'Window', cost: 5, hint: 'A wall with a window in it (R turns it round the floor)' },
+  { id: 'railing', name: 'Railing', cost: 3, hint: 'Along a floor edge, so you don’t fall off (R turns it round the floor)' },
+  { id: 'stairs', name: 'Stairs', cost: 5, hint: `Steps up to a raised floor from one of its edges, ${MAX_STAIRS} each (R turns them round the floor)` },
 ];
 const PIECE = Object.fromEntries(PIECES.map((p) => [p.id, p]));
 
@@ -84,13 +86,13 @@ const WEAR = {
   surf: 0.0011,      // waves on pilings, by how rough the sea is
 };
 // How much wind gets at each piece.
-const EXPOSURE = { floor: 0.5, wall: 1, doorway: 1, window: 1.1, roof: 1.4, pilings: 0.3, ladder: 0.6, railing: 0.8, stairs: 0.6 };
+const EXPOSURE = { floor: 0.5, wall: 1, doorway: 1, window: 1.1, roof: 1.4, pilings: 0.3, railing: 0.8, stairs: 0.6 };
 // Thick logs outlast planks.
 const RESIST = { pilings: 5 };
 // Condition back per plank (or log) used in a repair.
 const REPAIR = { plank: 0.4, log: 0.5 };
 // Ground each piece covers (m²), which stresses the land under it (see climate/entity.js).
-const FOOTPRINT = { floor: CELL * CELL, pilings: 0.5, wall: 0.3, doorway: 0.3, window: 0.3, ladder: 0.2, railing: 0.2, roof: 0, stairs: 0.8 };
+const FOOTPRINT = { floor: CELL * CELL, pilings: 0.5, wall: 0.3, doorway: 0.3, window: 0.3, railing: 0.2, roof: 0, stairs: 0.8 };
 
 // Joinery decides how well a piece holds together (q 0..1): from rough
 // joints, which wear about as fast as unjoined ones, to masterful ones that
@@ -133,8 +135,8 @@ function uprightMatrix(up, bottom, top, m) {
 }
 
 // A deck of six boards on two joists, on four posts down to the ground (or
-// on pilings).
-function floorParts(terrain, x0, z0, y, onPilings) {
+// on pilings). dir 0 runs the boards along X, 1 along Z.
+function floorParts(terrain, x0, z0, y, onPilings, dir = 0) {
   const parts = [];
   const joist = y - 0.14;
   if (!onPilings) {
@@ -143,15 +145,42 @@ function floorParts(terrain, x0, z0, y, onPilings) {
       if (top - bottom > 0.05) upright(parts, 1, x0 + px, z0 + pz, bottom, top, 0.16, 0.16, 0);
     }
   }
-  for (const px of [0.12, 1.88]) board(parts, 1, x0 + px, joist, z0 + 1, CELL, 0.14, 0.14, HALF_PI, 0, 0, true);
-  for (let k = 0; k < 6; k++) board(parts, k + 1, x0 + 1, y - 0.035, z0 + (k + 0.5) / 3, CELL + 0.04, 0.07, 0.32);
+  // The joists run across the boards.
+  for (const k of [0.12, 1.88]) {
+    if (dir) board(parts, 1, x0 + 1, joist, z0 + k, CELL, 0.14, 0.14, 0, 0, 0, true);
+    else board(parts, 1, x0 + k, joist, z0 + 1, CELL, 0.14, 0.14, HALF_PI, 0, 0, true);
+  }
+  for (let k = 0; k < 6; k++) {
+    const across = (k + 0.5) / 3;
+    if (dir) board(parts, k + 1, x0 + across, y - 0.035, z0 + 1, CELL + 0.04, 0.07, 0.32, HALF_PI);
+    else board(parts, k + 1, x0 + 1, y - 0.035, z0 + across, CELL + 0.04, 0.07, 0.32);
+  }
   return parts;
 }
 
+// A log from one point to another, as a frame part (a brace).
+function brace(parts, step, x1, y1, z1, x2, y2, z2, r) {
+  const dx = x2 - x1, dy = y2 - y1, dz = z2 - z1, len = Math.hypot(dx, dy, dz);
+  e.set(0, Math.atan2(-dz, dx), Math.asin(dy / len));
+  parts.push({ step, frame: true, log: true, matrix: new THREE.Matrix4().compose(pos.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2), q.setFromEuler(e), scl.set(len, r, r)) });
+}
+
 // Four logs driven into the ground (or seabed) at the corners, up to `top`.
-function pilingParts(terrain, x0, z0, top) {
+// With `braces` (0 along X, 1 along Z), a diagonal log brace across each of
+// the two sides that way, rising opposite ways, from clear of the ground
+// or the sea up to just under the deck (none where they're too short).
+function pilingParts(terrain, x0, z0, top, braces = null) {
   const parts = [];
   CORNERS.forEach(([px, pz], k) => upright(parts, k + 1, x0 + px, z0 + pz, terrain.heightAt(x0 + px, z0 + pz) - 0.8, top, 0.14, 0.14, k * 1.7, true));
+  if (braces === null) return parts;
+  const a = 0.12, b = CELL - 0.12, sea = uniforms.uWaterLevel.value;
+  for (const s of [a, b]) {
+    // From the foot of one corner post to the top of the other along this side.
+    let [lx, lz, hx, hz] = braces ? [x0 + s, z0 + a, x0 + s, z0 + b] : [x0 + a, z0 + s, x0 + b, z0 + s];
+    if (s === b) [lx, lz, hx, hz] = [hx, hz, lx, lz];
+    const low = Math.max(terrain.heightAt(lx, lz), sea) + 0.4, high = top - 0.3;
+    if (high - low > 0.8) brace(parts, 4, lx, low, lz, hx, high, hz, 0.07);
+  }
   return parts;
 }
 
@@ -189,19 +218,6 @@ function wallParts({ ax, az, bx, bz }, y, type) {
       board(parts, step, mx, cy, mz, CELL, rowH - 0.02, 0.07, yaw);
     }
   }
-  return parts;
-}
-
-// Two rails and rungs every 30 cm, hanging off the edge of a floor at `top`
-// down to the ground or the seabed, with handholds above the deck.
-function ladderParts(terrain, { ax, az, bx, bz, nx, nz }, top) {
-  const parts = [];
-  const ux = (bx - ax) / CELL, uz = (bz - az) / CELL, yaw = Math.atan2(-uz, ux);
-  const cx = (ax + bx) / 2 + nx * 0.12, cz = (az + bz) / 2 + nz * 0.12;
-  const bottom = terrain.heightAt(cx, cz) - 0.1;
-  for (const s of [-0.28, 0.28]) upright(parts, 1, cx + ux * s, cz + uz * s, bottom, top + 0.75, 0.06, 0.05, yaw);
-  const rungs = Math.max(1, Math.floor((top - bottom - 0.15) / 0.3));
-  for (let r = 0; r < rungs; r++) board(parts, 1 + Math.floor((r / rungs) * 3), cx, bottom + 0.3 * (r + 1), cz, 0.6, 0.045, 0.045, yaw);
   return parts;
 }
 
@@ -401,7 +417,7 @@ function pushFromRect(p, r, x0, z0, x1, z1) {
 export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, shadows, takeWood, release, onMessage, onSound, onChange, onImpact }) {
   // Grid cells with a floor and/or pilings: { i, j, x0, z0, y (deck top), floor, roof, pilings, top (of the pilings) }.
   const cells = new Map();
-  const edges = new Map();   // walls, windows, doorways, ladders and railings by edge key
+  const edges = new Map();   // walls, windows, doorways and railings by edge key
   const stairs = new Map();  // stairs by edge key (they can share an edge with a doorway)
   const pieces = [];
   let dirty = true;
@@ -563,7 +579,8 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     return { high, low };
   }
 
-  function planFloor(ray) {
+  // dir: which way its boards run (R).
+  function planFloor(ray, dir) {
     if (!groundHit(ray, 9)) return null;
     let i = Math.floor(hit.x / CELL), j = Math.floor(hit.z / CELL);
     // Aiming at a floor that's already there: the next cell along, the way you're looking.
@@ -574,11 +591,11 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     }
     const x0 = i * CELL, z0 = j * CELL;
     const cell = cells.get(cellKey(i, j));
-    if (cell?.floor) return { type: 'floor', i, j, x0, z0, y: cell.y, parts: floorParts(terrain, x0, z0, cell.y, !!cell.pilings), reason: 'There’s a floor here already' };
+    if (cell?.floor) return { type: 'floor', i, j, x0, z0, y: cell.y, dir, parts: floorParts(terrain, x0, z0, cell.y, !!cell.pilings, dir), reason: 'There’s a floor here already' };
     // On pilings, the deck sits on top of them.
     if (cell?.pilings) {
       const y = cell.top + DECK;
-      return { type: 'floor', i, j, x0, z0, y, onPilings: true, parts: floorParts(terrain, x0, z0, y, true), ok: true };
+      return { type: 'floor', i, j, x0, z0, y, dir, onPilings: true, parts: floorParts(terrain, x0, z0, y, true, dir), ok: true };
     }
     const { high, low } = groundUnder(x0, z0);
     let y = Math.max(high, uniforms.uWaterLevel.value + 0.4) + 0.25;
@@ -592,17 +609,18 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
         y = n.y;
       }
     }
-    const plan = { type: 'floor', i, j, x0, z0, y, parts: floorParts(terrain, x0, z0, y, false) };
+    const plan = { type: 'floor', i, j, x0, z0, y, dir, parts: floorParts(terrain, x0, z0, y, false, dir) };
     if (y - low > MAX_POST) return { ...plan, reason: 'Too high off the ground here: build pilings first' };
     if (blocked(x0, z0)) return { ...plan, reason: 'Something’s in the way' };
     return { ...plan, ok: true };
   }
 
-  function planPilings(ray, turn) {
+  // dir: which way the braces go (R); raise: how high the deck stands (Z).
+  function planPilings(ray, dir, raise) {
     if (!groundHit(ray, 12)) return null;
     const i = Math.floor(hit.x / CELL), j = Math.floor(hit.z / CELL), x0 = i * CELL, z0 = j * CELL;
     const { high, low } = groundUnder(x0, z0);
-    let top = Math.max(high, uniforms.uWaterLevel.value) + DECK_LEVELS[turn % DECK_LEVELS.length];
+    let top = Math.max(high, uniforms.uWaterLevel.value) + DECK_LEVELS[raise % DECK_LEVELS.length];
     // Level with pilings or a floor next to it, so the decks line up.
     let nearest = Infinity;
     for (const [di, dj] of SIDES) {
@@ -613,29 +631,33 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
         top = t;
       }
     }
-    const plan = { type: 'pilings', i, j, x0, z0, top, low, parts: pilingParts(terrain, x0, z0, top) };
+    const plan = { type: 'pilings', i, j, x0, z0, top, low, dir, parts: pilingParts(terrain, x0, z0, top, dir) };
     if (cells.has(cellKey(i, j))) return { ...plan, reason: 'Something’s built here already' };
     if (top - low > MAX_PILING) return { ...plan, reason: 'Too deep here' };
     if (blocked(x0, z0)) return { ...plan, reason: 'Something’s in the way' };
     return { ...plan, ok: true };
   }
 
-  // Walls, windows, doorways, ladders and railings: on the floor edge nearest the crosshair.
-  function planEdge(type, ray) {
+  // The floor under the crosshair and the side of it a piece goes on: the
+  // edge nearest the crosshair, turned `turn` quarters round the floor (R).
+  function floorSide(ray, turn) {
     const h = floorHit(ray, false);
     if (!h) return null;
     const c = h.cell;
     const fx = h.x - c.x0, fz = h.z - c.z0;
     const near = [fz, CELL - fx, CELL - fz, fx];
-    const side = near.indexOf(Math.min(...near));
-    const edge = edgeOf(c.i, c.j, side);
-    const parts = type === 'ladder' ? ladderParts(terrain, edge, c.y) : type === 'railing' ? railingParts(edge, c.y) : wallParts(edge, c.y, type);
+    const side = (near.indexOf(Math.min(...near)) + turn) % 4;
+    return { c, side, edge: edgeOf(c.i, c.j, side) };
+  }
+
+  // Walls, windows, doorways and railings: on a floor's edge.
+  function planEdge(type, ray, turn) {
+    const at = floorSide(ray, turn);
+    if (!at) return null;
+    const { c, side, edge } = at;
+    const parts = type === 'railing' ? railingParts(edge, c.y) : wallParts(edge, c.y, type);
     const plan = { type, cell: c, edge, side, y: c.y, parts };
     if (edges.has(edge.key)) return { ...plan, reason: 'Something’s on this edge already' };
-    if (type === 'ladder') {
-      const other = cells.get(cellKey(c.i + SIDES[side][0], c.j + SIDES[side][1]));
-      if (other?.floor && Math.abs(other.y - c.y) < 1.5) return { ...plan, reason: 'There’s a floor on the other side' };
-    }
     return { ...plan, ok: true };
   }
 
@@ -651,15 +673,11 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
   // Stairs you've built yourself (not a kubo's own steps): MAX_STAIRS at most.
   const ownStairs = () => pieces.filter((p) => p.type === 'stairs' && !p.remote && !p.builtIn).length;
 
-  // Stairs: down from the floor edge nearest the crosshair to the ground.
-  function planStairs(ray) {
-    const h = floorHit(ray, false);
-    if (!h) return null;
-    const c = h.cell;
-    const fx = h.x - c.x0, fz = h.z - c.z0;
-    const near = [fz, CELL - fx, CELL - fz, fx];
-    const side = near.indexOf(Math.min(...near));
-    const edge = edgeOf(c.i, c.j, side);
+  // Stairs: down from a floor's edge to the ground.
+  function planStairs(ray, turn) {
+    const at = floorSide(ray, turn);
+    if (!at) return null;
+    const { c, side, edge } = at;
     const { parts, bottom, run } = stairsParts(terrain, edge, c.y);
     const plan = { type: 'stairs', cell: c, edge, side, y: c.y, bottom, run, parts };
     const on = edges.get(edge.key);
@@ -668,7 +686,7 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     const other = cells.get(cellKey(c.i + SIDES[side][0], c.j + SIDES[side][1]));
     if (other?.floor && Math.abs(other.y - c.y) < 1.5) return { ...plan, reason: 'There’s a floor on the other side' };
     if (c.y - bottom < STAIRS.min) return { ...plan, reason: 'Too low for stairs: just step up' };
-    if (c.y - bottom > STAIRS.max) return { ...plan, reason: 'Too high for stairs here: build a ladder' };
+    if (c.y - bottom > STAIRS.max) return { ...plan, reason: 'Too high for stairs here: build up to it from a lower floor' };
     if (ownStairs() >= MAX_STAIRS) return { ...plan, reason: `You can build ${MAX_STAIRS} stairs at most` };
     return { ...plan, ok: true };
   }
@@ -744,9 +762,9 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
   function planFrom(spec) {
     const { type, i, j } = spec;
     if (!PIECE[type] || !Number.isInteger(i) || !Number.isInteger(j)) return null;
-    const x0 = i * CELL, z0 = j * CELL;
-    if (type === 'floor') return { type, i, j, x0, z0, y: spec.y, onPilings: spec.onPilings, parts: floorParts(terrain, x0, z0, spec.y, spec.onPilings), ok: true };
-    if (type === 'pilings') return { type, i, j, x0, z0, top: spec.top, low: spec.low, parts: pilingParts(terrain, x0, z0, spec.top), ok: true };
+    const x0 = i * CELL, z0 = j * CELL, dir = spec.dir === 1 ? 1 : 0;
+    if (type === 'floor') return { type, i, j, x0, z0, y: spec.y, dir, onPilings: spec.onPilings, parts: floorParts(terrain, x0, z0, spec.y, spec.onPilings, dir), ok: true };
+    if (type === 'pilings') return { type, i, j, x0, z0, top: spec.top, low: spec.low, dir, parts: pilingParts(terrain, x0, z0, spec.top, dir), ok: true };
     const cell = cells.get(cellKey(i, j));
     if (!cell?.floor) return null;
     if (type === 'roof') return cell.roof ? null : { type, cell, dir: spec.dir, y: spec.y, parts: roofParts(cell.x0, cell.z0, spec.y, spec.dir), ok: true };
@@ -757,7 +775,7 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
       return { type, cell, edge, side: spec.side, y: cell.y, bottom, run, parts, ok: true };
     }
     if (edges.has(edge.key)) return null;
-    const parts = type === 'ladder' ? ladderParts(terrain, edge, cell.y) : type === 'railing' ? railingParts(edge, cell.y) : wallParts(edge, cell.y, type);
+    const parts = type === 'railing' ? railingParts(edge, cell.y) : wallParts(edge, cell.y, type);
     return { type, cell, edge, side: spec.side, y: cell.y, parts, ok: true };
   }
 
@@ -828,18 +846,15 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     if (piece.type === 'floor') {
       piece.deck = { x0: cell.x0, z0: cell.z0, x1: cell.x0 + CELL, z1: cell.z0 + CELL, top: cell.y, bottom: cell.y - DECK };
     } else if (piece.type === 'pilings') {
-      piece.posts = piece.parts.map(({ up }) => ({ x: up.x, z: up.z, r: up.w, y0: up.bottom, y1: up.top }));
+      piece.posts = piece.parts.filter((part) => part.up).map(({ up }) => ({ x: up.x, z: up.z, r: up.w, y0: up.bottom, y1: up.top }));
     } else if (piece.type === 'stairs') {
       // What you walk on: a slope from the floor's edge out to its foot.
       const { ax, az, bx, bz, nx, nz } = piece.edge;
       piece.steps = { mx: (ax + bx) / 2, mz: (az + bz) / 2, ux: (bx - ax) / CELL, uz: (bz - az) / CELL, nx, nz, run: piece.run, top: cell.y, bottom: piece.low };
     } else if (piece.edge) {
-      const { ax, az, bx, bz, nx, nz } = piece.edge, y = piece.low;
+      const { ax, az, bx, bz } = piece.edge, y = piece.low;
       const ux = (bx - ax) / CELL, uz = (bz - az) / CELL;
-      if (piece.type === 'ladder') {
-        const ex = (ax + bx) / 2, ez = (az + bz) / 2;
-        piece.ladder = { ex, ez, ux, uz, nx, nz, top: y, bottom: terrain.heightAt(ex + nx * 0.12, ez + nz * 0.12) - 0.1 };
-      } else if (piece.type === 'railing') {
+      if (piece.type === 'railing') {
         piece.segments = [{ ax, az, bx, bz, y0: y, y1: y + RAIL }];
       } else if (piece.type === 'doorway') {
         // Either side of the opening, and the lintel over it.
@@ -1054,8 +1069,9 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
         piece.warnedLow = true;
         warn(`Your ${piece.name} is down to ${Math.round(piece.health * 100)}%. Bring ${piece.material}s to repair it before it gives way.`);
       }
-      // The sea creeping up on it (pilings are meant to stand in it).
-      if (piece.type !== 'pilings' && piece.type !== 'ladder') {
+      // The sea creeping up on it (pilings are meant to stand in it, and
+      // stairs may reach down into it).
+      if (piece.type !== 'pilings' && piece.type !== 'stairs') {
         const margin = piece.low - water;
         if (margin < 0.4 && !piece.warnedSea) {
           piece.warnedSea = true;
@@ -1076,7 +1092,7 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     if (piece.wet > 0.5) bits.push('soaked');
     const water = piece.water ?? uniforms.uWaterLevel.value;
     if (piece.type === 'pilings') bits.push(`top ${(piece.top - water).toFixed(1)} m above the water`);
-    else if (piece.type !== 'ladder') bits.push(piece.low < water ? 'under water' : `${(piece.low - water).toFixed(1)} m above the water`);
+    else if (piece.type !== 'stairs') bits.push(piece.low < water ? 'under water' : `${(piece.low - water).toFixed(1)} m above the water`);
     return bits.join(' · ');
   }
 
@@ -1102,7 +1118,7 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     // and pilings, and out of floors higher than it can step onto.
     collide(p, r, height, step) {
       for (const piece of pieces) {
-        if (!piece.done || piece.type === 'roof' || piece.type === 'ladder' || piece.type === 'stairs') continue;
+        if (!piece.done || piece.type === 'roof' || piece.type === 'stairs') continue;
         if ((piece.center.x - p.x) ** 2 + (piece.center.z - p.z) ** 2 > 16) continue;
         if (piece.deck) {
           const d = piece.deck;
@@ -1115,19 +1131,6 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
       }
     },
 
-    // The finished ladder you're on (just off the edge of its floor, between
-    // its foot and the deck), if any: { top, bottom, ... }.
-    ladderAt(x, y, z) {
-      for (const piece of pieces) {
-        const l = piece.done && piece.ladder;
-        if (!l) continue;
-        const dx = x - l.ex, dz = z - l.ez;
-        const along = dx * l.ux + dz * l.uz, out = dx * l.nx + dz * l.nz;
-        if (Math.abs(along) < 0.5 && out > -0.05 && out < 0.8 && y > l.bottom - 0.3 && y < l.top + 0.15) return l;
-      }
-      return null;
-    },
-
     // 1 under a finished roof, else 0.
     shelterAt(x, y, z) {
       const c = cells.get(cellKey(Math.floor(x / CELL), Math.floor(z / CELL)));
@@ -1135,14 +1138,14 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     },
 
     // Where a piece would go: { ok, reason, parts, ... }, or null when
-    // there's nothing to build on under the crosshair. turn (R) turns a
-    // roof or raises pilings.
-    plan(type, ray, turn = 0) {
-      if (type === 'floor') return planFloor(ray);
-      if (type === 'pilings') return planPilings(ray, turn);
+    // there's nothing to build on under the crosshair. turn (R) turns it,
+    // raise (Z) sets how high pilings stand.
+    plan(type, ray, turn = 0, raise = 0) {
+      if (type === 'floor') return planFloor(ray, turn % 2);
+      if (type === 'pilings') return planPilings(ray, turn % 2, raise);
       if (type === 'roof') return planRoof(ray, turn % 2);
-      if (type === 'stairs') return planStairs(ray);
-      return planEdge(type, ray);
+      if (type === 'stairs') return planStairs(ray, turn % 4);
+      return planEdge(type, ray, turn % 4);
     },
 
     // Where a bahay kubo would go, aiming at the ground (turn: R, which side

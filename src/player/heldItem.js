@@ -11,6 +11,7 @@ const GRIP = {
   knife: { scale: 1, y: -0.36, z: -0.5 },
   axe: { scale: 0.7, y: -0.48, z: -0.6 },
   pickaxe: { scale: 0.58, y: -0.47, z: -0.6 },
+  spear: { scale: 1, y: -0.3, z: -0.28 },
 };
 
 // How each tool swings. duration in seconds; hit: when in the swing the
@@ -40,13 +41,16 @@ const CHOP = {
     ));
   })(),
 };
-const SWINGS = { knife: STRIKE, axe: CHOP, pickaxe: STRIKE };
+// A thrust (the spear, striking in a match) jabs straight ahead and back.
+const THRUST = { duration: 0.32, hit: 0.42 };
+const SWINGS = { knife: STRIKE, axe: CHOP, pickaxe: STRIKE, spear: THRUST };
 const UP = new THREE.Vector3(0, 1, 0);
 const ease = (t) => t * t * (3 - 2 * t);
 
 // What's in your hands, at the lower right of the view: the selected tool,
 // which bobs as you walk and swings when you use it, or the wood you're
-// carrying instead (logs on your shoulder, planks under your arm).
+// carrying instead (logs on your shoulder, planks under your arm). The
+// spear is held pointing ahead, and drawn back over your shoulder to throw.
 // wood: the wood materials (world/wood.js), shared with the logs and
 // planks lying in the world.
 export function createHeldItem(scene, camera, wood) {
@@ -57,6 +61,8 @@ export function createHeldItem(scene, camera, wood) {
   const models = {};
   let shown = null;
   let swing = null, bob = 0;   // swing: { style, t (0..1), onHit, landed }
+  let drawn = 0;               // how far the spear is drawn back to throw (0..1)
+  const spearTurn = new THREE.Euler(0, 0, 0, 'YXZ');
 
   // Poses of the hand: where the grip is and how the tool is turned.
   const rest = { pos: new THREE.Vector3(), quat: new THREE.Quaternion() };
@@ -97,6 +103,11 @@ export function createHeldItem(scene, camera, wood) {
     const s = Math.sin(u * Math.PI);   // out and back
     hand.position.set(rest.pos.x + s * 0.04, rest.pos.y, rest.pos.z - s * 0.08);
     hand.quaternion.setFromEuler(euler.set(-0.45 - s * 1.1, 0.35, 0.45));
+  }
+  function thrust(u) {
+    const s = Math.sin(u * Math.PI);   // out and back
+    hand.position.set(rest.pos.x - s * 0.08, rest.pos.y + s * 0.04, rest.pos.z - s * 0.4);
+    hand.quaternion.copy(rest.quat);
   }
 
   // Carried wood: instanced like the wood in the world, so it shares its shaders.
@@ -153,6 +164,9 @@ export function createHeldItem(scene, camera, wood) {
     // Mid-swing: too soon to swing again.
     get busy() { return !!swing && swing.t < 0.85; },
 
+    // The spear drawn back to throw, 0 (at rest) to 1 (as far as it goes).
+    draw(level) { drawn = level; },
+
     // stack: the selected hotbar stack; speed: how fast you're moving (m/s);
     // carried: the logs or planks in your arms ([{ kind, bark }]), which
     // take the place of the tool.
@@ -184,9 +198,18 @@ export function createHeldItem(scene, camera, wood) {
       // At rest: low on the right, bobbing as you walk.
       const grip = GRIP[id];
       hand.scale.setScalar(grip.scale);
-      rest.pos.set(0.34, grip.y + Math.sin(bob * 2) * 0.012 * moving, grip.z);
-      rest.quat.setFromEuler(euler.set(-0.45, 0.35, 0.45 + Math.sin(bob) * 0.02 * moving));
+      const sway = Math.sin(bob * 2) * 0.012 * moving;
+      if (id === 'spear') {
+        // Pointing ahead, a little in towards the crosshair; drawn back, it
+        // rises over your shoulder, its point lifting.
+        rest.pos.set(0.3 + drawn * 0.06, grip.y + drawn * 0.22 + sway, grip.z + drawn * 0.3);
+        rest.quat.setFromEuler(spearTurn.set(-Math.PI / 2 + 0.1 + drawn * 0.14, 0.12 - drawn * 0.06, 0));
+      } else {
+        rest.pos.set(0.34, grip.y + sway, grip.z);
+        rest.quat.setFromEuler(euler.set(-0.45, 0.35, 0.45 + Math.sin(bob) * 0.02 * moving));
+      }
       if (style === CHOP && u < 1) chop(u);
+      else if (style === THRUST && u < 1) thrust(u);
       else if (style && u < 1) strike(u);
       else set(rest);
     },

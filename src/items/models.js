@@ -8,9 +8,9 @@ import { ITEMS } from './items.js';
 // (player/heldItem.js). The tools are Kay Lousberg's KayKit models (CC0),
 // packed by scripts/import-tools.mjs into public/models/tools.glb: each
 // stands on its grip at the origin, handle up +Y and head towards +X. The
-// rest are simple shapes made here.
+// spear and the rest are simple shapes made here.
 
-const TOOLS = ['knife', 'axe', 'pickaxe'];
+const TOOLS = ['knife', 'axe', 'pickaxe', 'spear'];
 let tools = null;
 
 // Loads the tool models; wait for it before using any of them.
@@ -23,7 +23,19 @@ export const isTool = (id) => TOOLS.includes(id);
 
 // A tool standing up in your hand.
 export function toolGeometry(id) {
-  return tools[id].clone();
+  return id === 'spear' ? spearGeometry() : tools[id].clone();
+}
+
+// The spear: a 1.6 m shaft gripped at the origin a little behind its middle,
+// running up +Y to a flaked stone point lashed on with fibre. SPEAR_TIP: how
+// far up +Y its point reaches.
+export const SPEAR_TIP = 1.18;
+export function spearGeometry() {
+  return mergeGeometries([
+    paint(new THREE.CylinderGeometry(0.019, 0.023, 1.6, 6).translate(0, 0.16, 0), '#8a6440'),
+    paint(new THREE.CylinderGeometry(0.03, 0.028, 0.09, 6).translate(0, 0.92, 0), '#9bb04a'),
+    paint(new THREE.OctahedronGeometry(0.05, 0).scale(1, 2.6, 0.45).translate(0, 1.05, 0), '#8a8780'),
+  ]);
 }
 
 function paint(geometry, hex) {
@@ -57,4 +69,4 @@ export function lyingGeometry(id) {
 }
 
 // How far above the ground each item's centre rests (m).
-export const REST = { stick: 0.03, stone: 0.06, fibre: 0.05, berries: 0.04, knife: 0.02, axe: 0.03, pickaxe: 0.03 };
+export const REST = { stick: 0.03, stone: 0.06, fibre: 0.05, berries: 0.04, knife: 0.02, axe: 0.03, pickaxe: 0.03, spear: 0.03 };

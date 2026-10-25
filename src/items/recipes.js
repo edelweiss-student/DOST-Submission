@@ -1,10 +1,12 @@
 import { newStack } from './inventory.js';
 
-// What can be made, and from what. For now: stone tools from sticks and stones.
+// What can be made, and from what: stone tools from sticks and stones, and
+// a spear with its point lashed on with plant fibre.
 export const RECIPES = [
   { makes: 'knife', needs: { stick: 1, stone: 1 } },
   { makes: 'axe', needs: { stick: 2, stone: 2 } },
   { makes: 'pickaxe', needs: { stick: 2, stone: 3 } },
+  { makes: 'spear', needs: { stick: 2, stone: 1, fibre: 2 } },
 ];
 
 export const canCraft = (inventory, recipe) =>

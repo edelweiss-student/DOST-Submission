@@ -205,6 +205,19 @@ io.on('connection', (socket) => {
     const hit = match.hit(socket.id, target, tool, Date.now());
     if (hit) io.to(target).emit('hurt', hit);
   });
+  // A spear thrown: the others see it fly. Whatever it hits, its thrower's
+  // game says (spearHit); it can be thrown in the build phase, but not hurt.
+  socket.on('throw', (data) => {
+    const { from, vel, charge } = data ?? {};
+    if (!match || !Array.isArray(vel) || vel.length !== 3 || !vel.every(Number.isFinite) || Math.hypot(...vel) > 40) return;
+    if (match.throwSpear(socket.id, from, charge, Date.now())) socket.broadcast.emit('throw', { id: socket.id, from, vel });
+  });
+  socket.on('spearHit', (data) => {
+    const { target } = data ?? {};
+    if (!match || lobby.buildLeft > 0) return;
+    const hit = match.spearHit(socket.id, target, Date.now());
+    if (hit) io.to(target).emit('hurt', hit);
+  });
   socket.on('hitBed', (data) => {
     const { team, tool } = data ?? {};
     if (!match || lobby.buildLeft > 0) return;

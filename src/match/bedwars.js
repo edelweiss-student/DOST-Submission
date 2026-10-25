@@ -19,7 +19,7 @@ const FLOODED = 0.25;   // metres of water over a bed's foot that wash it away (
 // your id; peace: true while the build phase lasts (nothing can be hurt
 // until the barriers come down).
 export class BedWars {
-  constructor({ net, players, me, bases, terrain, scene, player, camera, hud, building, inventory, sea, peace }) {
+  constructor({ net, players, me, bases, terrain, scene, player, camera, hud, building, inventory, sea, spears, peace }) {
     Object.assign(this, { net, player, camera, hud, building, inventory, sea, bases, peace });
     this.floodClock = 0;
     this.surf = {};
@@ -92,6 +92,12 @@ export class BedWars {
     });
     net.on('build', (msg) => building.apply(msg));
     net.on('pieceHit', ({ key, amount }) => building.apply({ op: 'hit', key, amount }));
+    // Someone else's spear, flying where they threw it (only to be seen).
+    const vec = (a) => (Array.isArray(a) && a.length === 3 && a.every(Number.isFinite) ? new THREE.Vector3(...a) : null);
+    net.on('throw', ({ from, vel } = {}) => {
+      const f = vec(from), v = vec(vel);
+      if (f && v) spears?.ghost(f, v);
+    });
   }
 
   // Up and about (not down, not out, the match not over).
@@ -274,6 +280,28 @@ export class BedWars {
     crosshair.classList.add('hit');
     setTimeout(() => crosshair.classList.remove('hit'), 140);
     return true;
+  }
+
+  // Your spear thrown (from, vel: Vector3s; charge 0..1): the others see it
+  // fly, and the server keeps it for the hit it may make.
+  throwSpear(from, vel, charge) {
+    const r = (x) => Math.round(x * 100) / 100;
+    this.net.send('throw', { from: from.toArray().map(r), vel: vel.toArray().map(r), charge: r(charge) });
+  }
+
+  // A stretch of your spear's flight (ray, `length` metres along it): if it
+  // passes through another team's player, the server hears (it decides
+  // whether it counts) and the spear stops there. Nothing is hurt until the
+  // barriers come down. Returns how far along, or null.
+  spearStrike(ray, length) {
+    if (this.over || this.peace) return null;
+    const foe = this.remotes.aimed(ray, length);
+    if (!foe || foe.team === this.team) return null;
+    this.net.send('spearHit', { target: foe.id });
+    const crosshair = $('crosshair');
+    crosshair.classList.add('hit');
+    setTimeout(() => crosshair.classList.remove('hit'), 140);
+    return foe.distance;
   }
 
   // Hit by another player: hurt, knocked back, and a red flash.

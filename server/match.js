@@ -1,7 +1,7 @@
-import { BED_HP, REACH, SWING_GAP, PLACE_REACH, KUBO_REACH, damageOf } from '../src/match/rules.js';
+import { BED_HP, REACH, SWING_GAP, PLACE_REACH, KUBO_REACH, SPEAR, damageOf, spearDamage } from '../src/match/rules.js';
 import { TEAMS, BASE_RADIUS, KEEP_OUT } from '../src/match/teams.js';
 
-const TOOLS = new Set(['knife', 'axe', 'pickaxe']);
+const TOOLS = new Set(['knife', 'axe', 'pickaxe', 'spear']);
 const tool = (t) => (TOOLS.has(t) ? t : 'none');
 const SLACK = 1.5;   // metres of reach allowed for lag
 const CELL = 2;      // the building grid (world/building.js): a bahay kubo is 2 × 2 cells
@@ -23,6 +23,7 @@ export class Match {
     this.players = new Map(players.map((p) => [p.id, {
       id: p.id, name: p.name, team: p.team,
       alive: true, out: false, pos: null, lastSwing: 0, hurtBy: null, hurtAt: 0,
+      thrown: null,   // their last spear: { at, from: [x, y, z], charge, hit }
     }]));
     this.teams = [...new Set(players.map((p) => p.team))];
     this.beds = new Map(this.teams.map((team) => [team, BED_HP]));   // health of each standing bed
@@ -148,6 +149,30 @@ export class Match {
     b.hurtBy = a.id;
     b.hurtAt = now;
     return { amount: damageOf('player', tool(held)), by: a.name, from: [a.pos[0], a.pos[2]] };
+  }
+
+  // A spear thrown from `from` ([x, y, z], near where the thrower is),
+  // drawn back `charge` (0..1): kept for the one hit it may make. True if it
+  // counts (alive, not too soon after the last).
+  throwSpear(id, from, charge, now) {
+    const a = this.players.get(id);
+    if (!a?.alive || !a.pos || !Array.isArray(from) || from.length !== 3 || !from.every(Number.isFinite)) return false;
+    if (Math.hypot(from[0] - a.pos[0], from[2] - a.pos[2]) > 4 || (a.thrown && now - a.thrown.at < SPEAR.gap)) return false;
+    a.thrown = { at: now, from, charge: Math.min(1, Math.max(0, Number(charge) || 0)), hit: false };
+    return true;
+  }
+
+  // That spear hit another player (as its thrower's game saw it): how hard,
+  // or null if it doesn't count: one hit a throw, within a few seconds of
+  // it, another team's, within the spear's range.
+  spearHit(id, targetId, now) {
+    const a = this.players.get(id), b = this.players.get(targetId), t = a?.thrown;
+    if (!t || t.hit || now - t.at > 5000 || !b || b === a || a.team === b.team || !b.alive || !b.pos) return null;
+    if (Math.hypot(t.from[0] - b.pos[0], t.from[2] - b.pos[2]) > SPEAR.range) return null;
+    t.hit = true;
+    b.hurtBy = a.id;
+    b.hurtAt = now;
+    return { amount: spearDamage(t.charge), by: a.name, from: [t.from[0], t.from[2]] };
   }
 
   // A swing at something another team built (the games check whose it is

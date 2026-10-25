@@ -65,6 +65,16 @@ html, body {
 /* A swing that hit someone (or a bed) in a match */
 #crosshair.hit { transform: scale(2.4); background: var(--health); }
 
+/* The spear drawn back: how hard it will be thrown */
+#throw-meter {
+  position: fixed; left: 50%; top: calc(50% + 12px); transform: translateX(-50%);
+  width: 96px; height: 7px; border-radius: 4px; overflow: hidden;
+  background: rgba(0, 0, 0, 0.5); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25); pointer-events: none;
+}
+#throw-meter i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--stamina), var(--accent)); }
+#throw-meter.full i { background: var(--health); animation: pulse 0.35s infinite alternate; }
+#throw-meter:not([hidden]) ~ #prompt { top: calc(50% + 32px); }
+
 #bars {
   position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%);
   display: flex; flex-direction: column; gap: 6px; width: min(320px, 80vw);

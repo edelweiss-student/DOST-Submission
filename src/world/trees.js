@@ -91,7 +91,7 @@ export function placeTrees(terrain, rng, colliders, spacingOk) {
     if (!spacingOk(x, z, sp.spacing * s)) continue;
     trees.push({ species, x, y: h - 0.2, z, rot: rng() * Math.PI * 2, s, sy: range(rng, 0.94, 1.08), tone: rng(), variant: Math.floor(rng() * 3) });
     // The trunk's collider stays behind as the stump's when the tree is felled.
-    colliders.add(x, z, sp.trunk * s);
+    colliders.add(x, z, sp.trunk * s, { tree: trees.at(-1) });
   }
   return trees;
 }

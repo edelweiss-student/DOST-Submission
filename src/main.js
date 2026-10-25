@@ -35,6 +35,8 @@ import { createTimber, woodName } from './world/timber.js';
 import { createBuilding, PIECES, DECK_LEVELS } from './world/building.js';
 import { createKuboMaterials } from './world/kubo.js';
 import { createHeldItem } from './player/heldItem.js';
+import { createSpears } from './world/spears.js';
+import { SPEAR, spearSpeed } from './match/rules.js';
 import { loadToolModels } from './items/models.js';
 import { joinServer, createMatch } from './match/multiplayer.js';
 import { MapUI } from './ui/mapUI.js';
@@ -199,14 +201,27 @@ function craftItem(recipe) {
 }
 const inventoryUI = new InventoryUI(inventory, { onDrop: throwStack, onCraft: craftItem });
 const held = createHeldItem(scene, camera, wood);
-// The selected tool's kind ('knife', 'axe', 'pickaxe'), if a tool is selected.
+// The selected tool's kind ('knife', 'axe', 'pickaxe', 'spear'), if a tool is selected.
 const selectedTool = () => ITEMS[inventory.current?.id]?.tool;
+// The selected item is thrown, not swung (the spear).
+const throwing = () => !!ITEMS[inventory.current?.id]?.throws;
+
+// Thrown spears: in flight, stuck where they struck, and picked up again.
+// In a match a throw can hit another team's player (match/bedwars.js).
+const spears = createSpears(scene, {
+  terrain, water, colliders: vegetation.colliders, building, inventory,
+  dropItem: (stack, from, velocity) => gathering.drop(stack, from, velocity),
+  strike: (ray, length) => match?.spearStrike(ray, length) ?? null,
+  onSound: (name, strength) => (name === 'splash' ? audio.splash(strength * 6) : audio.wood(name, strength)),
+  onBroken: () => hud.message('Your spear broke where it struck.', 3),
+});
 
 // Build mode (B): the chosen piece follows the crosshair as a see-through
 // preview, and E places it as a blueprint to fill with planks (or logs).
-// R turns a roof or raises pilings.
+// R turns any piece (each starts unturned); Z raises pilings, a step at a
+// time back round to the lowest.
 const buildUI = new BuildUI(PIECES);
-const build = { on: false, piece: 0, turn: 0, plan: null };
+const build = { on: false, piece: 0, turn: 0, raise: 0, plan: null };
 function setBuilding(on) {
   build.on = on;
   build.plan = null;
@@ -214,8 +229,12 @@ function setBuilding(on) {
   building.preview(null);
 }
 function choosePiece(index) {
-  build.piece = (index + PIECES.length) % PIECES.length;
+  const piece = (index + PIECES.length) % PIECES.length;
+  if (piece !== build.piece) build.turn = 0;
+  build.piece = piece;
 }
+// What R does to each piece.
+const TURNS = { floor: 'Turn the boards', roof: 'Turn the ridge', pilings: 'Turn the braces' };
 function placeBlueprint() {
   const { plan } = build;
   if (!plan) return;
@@ -232,8 +251,8 @@ function placeBlueprint() {
 function buildDetail() {
   const piece = PIECES[build.piece];
   if (piece.id !== 'pilings') return piece.hint;
-  const deck = DECK_LEVELS[build.turn % DECK_LEVELS.length];
-  return `Deck ${deck} m above the water (R to change). The sea may rise ${Math.max(0, MAX_RISE - sea.rise).toFixed(1)} m more, and storms surge 1.4 m above that.`;
+  const deck = DECK_LEVELS[build.raise % DECK_LEVELS.length];
+  return `Deck ${deck} m above the water (Z to change). The sea may rise ${Math.max(0, MAX_RISE - sea.rise).toFixed(1)} m more, and storms surge 1.4 m above that.`;
 }
 // How everything built is holding up.
 function buildStatus() {
@@ -306,7 +325,7 @@ if (autoTier(gpu) !== 'high' && /Intel|AMD Radeon\(TM\) Graphics|AMD Radeon Grap
 const isPlaying = () => player.controls.isLocked || player.dragLook || inventoryUI.open;
 player.enableDragLook(renderer.domElement);
 // Multiplayer: the menu holds the lobby until the match starts.
-const match = server && createMatch(server, { terrain, player, hud, menu: menu.root, scene, sea, camera, weather, building, inventory });
+const match = server && createMatch(server, { terrain, player, hud, menu: menu.root, scene, sea, camera, weather, building, inventory, spears });
 if (match) menu.button('quit').textContent = 'Leave the match';
 const map = new MapUI({ terrain, trees: vegetation.sources.trees, building, sea, climate, match });
 // Tips for a first game (H hides them).
@@ -495,12 +514,14 @@ let bedAim = null;   // where your team's bed would go, while it's selected in a
 let kuboAim = null;  // where your team's bahay kubo would go, likewise
 function updateFocus() {
   const carrying = timber.carrying;
-  const tool = carrying ? null : selectedTool();   // your hands are full
+  // Your hands are full; and a spear is thrown, not swung at things.
+  const tool = carrying || throwing() ? null : selectedTool();
   focus = null;
   for (const option of [
     gathering.focus(player, camera, tool, weather.elapsed),
     timber.focus(aimRay, tool),
     building.focus(aimRay, carrying, tool),
+    spears.focus(aimRay),
   ]) {
     if (option && (!focus || option.score > focus.score)) focus = option;
   }
@@ -536,20 +557,21 @@ function interact() {
   else if (focus?.act) report(focus.act());
 }
 
-// A swing of what's in your hand: right-click with a tool, and in a match
-// left-click or F with anything (a fist, if no tool). It lands partway
-// through: in a match on another team's player or bed, or on anything
-// built in the way (match/bedwars.js); otherwise on what the tool works
-// on, as it was under the crosshair when you swung: a tree to fell, a log
-// to split, grass or a bush to cut, something built to break.
+// A swing of what's in your hand: right-click with a tool, left-click or F
+// with the spear (a jab), and in a match left-click or F with anything (a
+// fist, if no tool). It lands partway through: in a match on another
+// team's player or bed, or on anything built in the way
+// (match/bedwars.js); otherwise on what the tool works on, as it was under
+// the crosshair when you swung: a tree to fell, a log to split, grass or a
+// bush to cut, something built to break (the spear only breaks things).
 function swing() {
-  if (held.busy || build.on) return;
+  if (held.busy || build.on || drawing) return;
   if (timber.carrying) {
     hud.message(`Your arms are full: put the ${woodName(timber.carrying.kind, 2)} down first (Q).`, 3);
     return;
   }
   const tool = inventory.current, kind = selectedTool();
-  const work = kind ? focus?.use : null;
+  const work = !kind ? null : throwing() ? building.focus(aimRay, null, kind)?.use : focus?.use;
   if (!kind && !match?.fighting) return;   // a fist only strikes, in a match
   held.swing(() => {
     if (match?.fighting && match.strike(aimRay, kind ?? 'none')) {
@@ -560,6 +582,48 @@ function swing() {
     }
   });
 }
+
+// The spear: holding right-click draws it back, the meter under the
+// crosshair filling over SPEAR.draw seconds, and letting go throws it as
+// hard as it was drawn (world/spears.js), wearing it a little. Anything
+// that takes your hands or the spear away lets it down without a throw.
+const meter = document.getElementById('throw-meter'), meterFill = meter.querySelector('i');
+let drawing = null;   // { t: seconds held }, while drawing the spear back
+const drawnBack = () => Math.min(1, drawing.t / SPEAR.draw);
+function drawBack() {
+  if (drawing || held.busy || build.on) return;
+  if (timber.carrying) {
+    hud.message(`Your arms are full: put the ${woodName(timber.carrying.kind, 2)} down first (Q).`, 3);
+    return;
+  }
+  drawing = { t: 0 };
+}
+function letGo(throwIt) {
+  if (!drawing) return;
+  const charge = drawnBack();
+  drawing = null;
+  held.draw(0);
+  meter.hidden = true;
+  if (throwIt && throwing()) throwSpear(charge);
+}
+const throwFrom = new THREE.Vector3(), throwSide = new THREE.Vector3();
+function throwSpear(charge) {
+  const stack = inventory.take(inventory.selected, 1);
+  if (!stack) return;
+  stack.durability = (stack.durability ?? ITEMS[stack.id].durability) - 1;
+  // From your right hand, just ahead of your eye, the way you're looking.
+  camera.getWorldDirection(throwDir);
+  throwSide.crossVectors(throwDir, camera.up).normalize();
+  throwFrom.copy(camera.position).addScaledVector(throwDir, 0.9).addScaledVector(throwSide, 0.18);
+  throwFrom.y -= 0.08;
+  const velocity = throwDir.clone().multiplyScalar(spearSpeed(charge)).add(player.vel);
+  spears.throw(camera.position, throwFrom, velocity, stack);
+  match?.throwSpear(throwFrom, velocity, charge);
+  tutorial.event('threw');
+}
+addEventListener('mouseup', (e) => {
+  if (e.button === 2) letGo(true);
+});
 
 // Holding X takes apart what you built (or clears a blueprint).
 const HOLD_TIME = 0.8;
@@ -587,20 +651,21 @@ function promptFor(playing) {
   if (!playing) return [null];
   if (build.on) {
     const { plan } = build, piece = PIECES[build.piece];
-    if (!plan) return [[['E', piece.id === 'floor' ? 'Aim at the ground or the water' : 'Aim at a floor']], true];
-    if (!plan.ok) return [[['E', plan.reason]], true];
-    const turn = piece.id === 'roof' ? [['R', 'Turn']] : piece.id === 'pilings' ? [['R', 'Raise or lower the deck']] : [];
+    if (!plan) return [[['E', piece.id === 'floor' || piece.id === 'pilings' ? 'Aim at the ground or the water' : 'Aim at a floor']], true];
+    const turn = [['R', TURNS[piece.id] ?? 'Turn it round the floor'], ...(piece.id === 'pilings' ? [['Z', 'Raise or lower the deck']] : [])];
+    if (!plan.ok) return [[['E', plan.reason], ...turn], true];
     return [[['E', `Place ${piece.name.toLowerCase()} blueprint`], ...turn]];
   }
   if (bedAim) return bedAim.ok ? [[['Right-click', 'Place your team’s bed'], ['R', 'Turn']]] : [[['Right-click', bedAim.reason], ['R', 'Turn']], true];
   if (kuboAim) return kuboAim.ok ? [[['Right-click', 'Put up your team’s bahay kubo'], ['R', 'Turn the door']]] : [[['Right-click', kuboAim.reason], ['R', 'Turn the door']], true];
-  if (!focus) return [null];
+  if (drawing) return [[['Right-click', 'Let go to throw']]];
+  if (!focus) return throwing() && !timber.carrying ? [[['Right-click', 'Hold to draw the spear back, let go to throw'], ['Click', 'Jab']], true] : [null];
   if (hold.time > 0) return [[['X', `Taking apart… ${Math.round((hold.time / HOLD_TIME) * 100)}%`]]];
   return [focus.prompt, focus.dim];
 }
 
-// Right-click: use the selected item. Swing a tool, eat food, or in a
-// match put up your team's bahay kubo or bed.
+// Right-click: use the selected item. Swing a tool, draw back the spear
+// (held), eat food, or in a match put up your team's bahay kubo or bed.
 function useSelected() {
   const stack = inventory.current;
   if (stack?.id === 'bed') {
@@ -609,6 +674,10 @@ function useSelected() {
   }
   if (stack?.id === 'kubo') {
     match?.placeKubo(aimRay);
+    return;
+  }
+  if (throwing()) {
+    drawBack();
     return;
   }
   if (selectedTool()) {
@@ -625,8 +694,8 @@ function useSelected() {
 
 // Keys: 1-9 or the mouse wheel pick a hotbar slot, I or Tab open the
 // inventory, E gathers, picks up, builds and repairs (by hand), Q drops one
-// of the selected item (or puts down wood you're carrying), B builds (1-9
-// or the wheel pick the piece, R turns a roof or raises pilings), holding X
+// of the selected item (or puts down wood you're carrying), B builds (1-8
+// or the wheel pick the piece, R turns it, Z raises pilings), holding X
 // takes apart, F strikes (in a match), K opens the map, P toggles the
 // performance readout, M mutes. In the joinery mini-game, E or Space works
 // and X skips. Knocked out in a match, you can't do anything until you're
@@ -717,13 +786,15 @@ addEventListener('keydown', (e) => {
   } else if (e.code === 'KeyE') {
     interact();
   } else if (e.code === 'KeyF') {
-    if (!e.repeat && match) swing();
+    if (!e.repeat && (match || throwing())) swing();
   } else if (e.code === 'KeyB') {
     setBuilding(!build.on);
   } else if (e.code === 'KeyR') {
     if (build.on) build.turn++;
     else if (inventory.current?.id === 'bed') match?.turnBed();
     else if (inventory.current?.id === 'kubo') match?.turnKubo();
+  } else if (e.code === 'KeyZ') {
+    if (build.on) build.raise++;
   } else if (e.code === 'KeyX') {
     if (!e.repeat) hold.down = true;
   } else if (e.code === 'KeyQ') {
@@ -758,8 +829,8 @@ addEventListener('wheel', (e) => {
 renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 // Right-click uses the selected item: swings a tool, eats, or puts up the
 // bed or bahay kubo (in build mode it leaves build mode). With the mouse
-// captured, left-click places in build mode, and strikes in a match. In
-// the joinery mini-game a click works.
+// captured, left-click places in build mode, jabs with the spear, and
+// strikes in a match. In the joinery mini-game a click works.
 renderer.domElement.addEventListener('mousedown', (e) => {
   if (!isPlaying() || inventoryUI.open || player.dead) return;
   if (joinery.open) {
@@ -769,7 +840,7 @@ renderer.domElement.addEventListener('mousedown', (e) => {
     else useSelected();
   } else if (e.button === 0 && player.controls.isLocked) {
     if (build.on) interact();
-    else if (match) swing();
+    else if (match || throwing()) swing();
   }
 });
 
@@ -838,6 +909,7 @@ function step() {
   uniforms.uPlayerPos.value.copy(player.pos);
   gathering.update(sdt, t);
   timber.update(sdt, t, player);
+  spears.update(sdt, t);
   building.update(sdt, sea, weather);
   joinery.update(sdt);
 
@@ -849,7 +921,7 @@ function step() {
   aimRay.set(camera.position, aimDir);
   focus = null;
   if (playing && build.on) {
-    build.plan = building.plan(PIECES[build.piece].id, aimRay, build.turn);
+    build.plan = building.plan(PIECES[build.piece].id, aimRay, build.turn, build.raise);
     if (match) build.plan = match.checkPlan(build.plan);
     building.preview(build.plan);
     buildUI.select(build.piece, buildDetail());
@@ -858,6 +930,19 @@ function step() {
     updateFocus();
   }
   updateHold(sdt);
+  // The spear being drawn back: the meter fills while you hold.
+  if (drawing) {
+    if (!playing || !throwing() || timber.carrying || build.on) {
+      letGo(false);
+    } else {
+      drawing.t += dt;
+      const level = drawnBack();
+      held.draw(level);
+      meter.hidden = false;
+      meterFill.style.width = `${level * 100}%`;
+      meter.classList.toggle('full', level >= 1);
+    }
+  }
   // Your team's bed, selected in a match: where it would go.
   bedAim = match?.aimBed(playing && !build.on && !timber.carrying && inventory.current?.id === 'bed' ? aimRay : null) ?? null;
   kuboAim = match?.aimKubo(playing && !build.on && !timber.carrying && inventory.current?.id === 'kubo' ? aimRay : null) ?? null;
@@ -931,7 +1016,7 @@ renderer.compileAsync(scene, camera).catch(() => {}).finally(async () => {
 if (import.meta.env.DEV) {
   window.game = {
     scene, camera, renderer, terrain, weather, sea, player, sky, water, uniforms, vegetation, step, inventory, gathering, audio, tutorial,
-    timber, building, build, joinery, held, climate, match, map, menu, menuView, menuCamera, get devMode() { return devMode; },
+    timber, building, build, joinery, held, climate, match, map, menu, menuView, menuCamera, spears, get devMode() { return devMode; },
     counts: vegetation.counts, quality: { tier, gpu, adaptive, gpuTimer, graphics },
   };
 }

@@ -9,7 +9,6 @@ const GRAVITY = 24, JUMP = 7.5;
 const FLOAT_DEPTH = 1.45;       // feet below the surface while treading water
 const STEP = 0.5;               // highest ledge you step up onto (a built floor)
 const CLIMB = 2.2;              // ...or climb onto out of the water
-const LADDER_SPEED = 2.4;       // m/s up or down a ladder
 export const MAX_OXYGEN = 30;   // seconds of breath
 
 // Stamina per second in mild weather: about 12 s of sprinting or 10 s of
@@ -58,8 +57,7 @@ export class Player {
     this.dragLook = false;
     this.inputEnabled = true;   // off while a menu (the inventory) has the keys
     this.burden = 0;            // 0 empty-handed .. 1 carrying all you can (logs)
-    this.climbing = false;      // on a ladder
-    // What you've built (world/building.js): floorAt, collide, ladderAt and shelterAt.
+    // What you've built (world/building.js): floorAt, collide and shelterAt.
     this.structures = null;
     // keepOut(pos, vel): pushes you back out of anywhere you can't go (in a
     // multiplayer match, the other teams' bases while their barriers are up).
@@ -155,17 +153,8 @@ export class Player {
     const submerged = (surf.height - p.y) / BODY;
     // Hysteresis so bobbing on a wave doesn't flip between walking and swimming.
     this.swimming = surf.height - ground > FLOAT_DEPTH && submerged > (this.swimming ? 0.4 : 0.6);
-    // A ladder: climb on at its foot with W or Space, or catch hold of it
-    // stepping off its floor. Swimming, you climb on only if you mean to;
-    // standing at its foot (or on the deck at its top), you let go.
-    const ladder = this.structures?.ladderAt(p.x, p.y, p.z);
-    const up = k.has('KeyW') || k.has('Space');
-    const atTop = !!ladder && this.grounded && p.y > ladder.top - 0.3;
-    this.climbing = !!ladder && ((up && !atTop) || (!this.grounded && (this.climbing || !this.swimming)));
-    if (this.climbing) this.swimming = false;
 
-    if (this.climbing) this.climb(dt, ix, ladder);
-    else if (this.swimming) this.swim(dt, sprint, ix, iz, surf);
+    if (this.swimming) this.swim(dt, sprint, ix, iz, surf);
     else this.walk(dt, sprint, ix, iz, surf, submerged);
 
     const inWater = p.y < surf.height - 0.1;
@@ -237,21 +226,6 @@ export class Player {
       p.y = floatY + 0.4;
       v.y = Math.min(v.y, surf.vy);
     }
-    this.grounded = false;
-  }
-
-  // On a ladder: W or Space climbs, S goes down, A and D shuffle sideways.
-  // Near the top, climbing on while facing the deck takes you onto it.
-  climb(dt, ix, ladder) {
-    const k = this.keys, p = this.pos, v = this.vel;
-    const up = k.has('KeyW') || k.has('Space'), down = k.has('KeyS');
-    v.y = (up ? LADDER_SPEED : 0) - (down ? LADDER_SPEED : 0);
-    const facing = -(fwd.x * ladder.nx + fwd.z * ladder.nz) / (Math.hypot(fwd.x, fwd.z) || 1);
-    const onto = up && facing > 0.3 && p.y > ladder.top - 0.5 ? 1.6 : 0;
-    v.x = -ladder.nx * onto + right.x * ix * 1.2;
-    v.z = -ladder.nz * onto + right.z * ix * 1.2;
-    p.addScaledVector(v, dt);
-    p.y = Math.min(p.y, ladder.top + 0.1);
     this.grounded = false;
   }
 

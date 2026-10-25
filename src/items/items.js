@@ -3,6 +3,7 @@
 // eat: what eating one gives back (right-click with it selected).
 // tool: what it does when selected while gathering (see world/gathering.js);
 // durability: uses before it breaks. keep: can't be dropped or thrown out.
+// throws: right-click draws it back to throw instead (see world/spears.js).
 // Wood isn't an item: logs and planks are carried in your arms (world/timber.js).
 export const ITEMS = {
   stick: {
@@ -32,6 +33,10 @@ export const ITEMS = {
   pickaxe: {
     name: 'Stone pickaxe', description: 'A heavy stone head on a stick: in a multiplayer match, the fastest way through an enemy bed.',
     stack: 1, color: '#8a8780', floats: false, tool: 'pickaxe', durability: 50,
+  },
+  spear: {
+    name: 'Spear', description: 'A long stick with a stone point lashed on with fibre. Hold right-click to draw it back (the meter shows how hard), let go to throw it, then go and pick it up (E). In a multiplayer match it hurts another team’s players from afar.',
+    stack: 1, color: '#8a6440', floats: true, tool: 'spear', throws: true, durability: 30,
   },
   bed: {
     name: 'Team bed', description: 'Your team’s one bed, in a multiplayer match. Select it, aim at the ground and right-click to place it, anywhere outside the other teams’ bases (R turns it). While it stands, your team comes back at it after going down. If the flood reaches it, it’s washed away.',
@@ -124,6 +129,12 @@ const DRAW = {
     stroke(ctx, head, 10, '#34322f');
     stroke(ctx, head, 6, '#a9a59e');
     stroke(ctx, () => { ctx.moveTo(18, 17); ctx.quadraticCurveTo(34, 9, 48, 15); }, 2, '#d2cfc8');
+  },
+  // A long shaft from corner to corner, a stone point lashed on with fibre.
+  spear(ctx) {
+    handle(ctx, 6, 58, 44, 20);
+    stroke(ctx, () => { ctx.moveTo(40, 25); ctx.lineTo(46, 19); }, 7, '#9bb04a');
+    stoneShape(ctx, [[43, 17], [52, 6], [58, 6], [58, 12], [47, 21]]);
   },
   // A bed seen from the foot end, a little from above: wooden frame and
   // legs, a headboard, a pillow and a blanket.

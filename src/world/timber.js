@@ -29,7 +29,7 @@ const aimRadius = (p) => (p.kind === 'log' ? LOG_RADIUS[p.bark] : PLANK.width / 
 
 // Closest approach between a ray (origin o, unit direction u) and a segment
 // (centre c, unit axis a, half-length h): out.dist between them, out.t along the ray.
-function raySegment(o, u, c, a, h, out) {
+export function raySegment(o, u, c, a, h, out) {
   const wx = o.x - c.x, wy = o.y - c.y, wz = o.z - c.z;
   const b = u.x * a.x + u.y * a.y + u.z * a.z;
   const d = u.x * wx + u.y * wy + u.z * wz;
