@@ -6,7 +6,6 @@ import { TextureBaker, bakeGround, bakeCloudNoise } from './world/textures.js';
 import { installShadowFilter } from './world/materials.js';
 import { createTerrain } from './world/terrain.js';
 import { createVegetation } from './world/vegetation.js';
-import { createCoast } from './world/coast.js';
 import { loadTreeModels } from './world/trees.js';
 import { createGrass } from './world/grass.js';
 import { createOcean } from './world/ocean.js';
@@ -20,7 +19,6 @@ import { createPrecipitation } from './weather/precipitation.js';
 import { Player } from './player/player.js';
 import { HUD } from './ui/hud.js';
 import { Ambience } from './audio/ambience.js';
-import { Music } from './audio/music.js';
 import { Tutorial, SOLO, MATCH } from './ui/tutorial.js';
 import { ITEMS } from './items/items.js';
 import { Inventory } from './items/inventory.js';
@@ -32,6 +30,7 @@ import { createGathering } from './world/gathering.js';
 import { createWoodMaterials } from './world/wood.js';
 import { createTimber, woodName } from './world/timber.js';
 import { createBuilding, PIECES, DECK_LEVELS } from './world/building.js';
+import { createKuboMaterials } from './world/kubo.js';
 import { createHeldItem } from './player/heldItem.js';
 import { loadToolModels } from './items/models.js';
 import { joinServer, createMatch } from './match/multiplayer.js';
@@ -85,8 +84,6 @@ scene.add(terrain.mesh);
 const treeModels = await treeModelsLoading;
 await toolModelsLoading;
 const vegetation = createVegetation(scene, terrain, rng, { quality, ground, cloudShadows, treeModels });
-// Coconut palms on the beaches and mangroves in the shallows, with their own random numbers.
-const coast = createCoast(scene, terrain, mulberry32(seed + 5), { quality, colliders: vegetation.colliders, cloudShadows });
 const grass = createGrass(scene, terrain, { ...quality.grass, anisotropy: quality.anisotropy, msaa: quality.antialias, cloudShadows });
 const ocean = createOcean(scene, terrain, rng, { ground, anisotropy: quality.anisotropy, cloudShadows });
 // Water quality is its own setting (on the pause screen), remembered between visits.
@@ -107,7 +104,6 @@ const precip = createPrecipitation(scene, terrain, rng);
 const player = new Player(camera, renderer.domElement, terrain, vegetation.colliders, water);
 const hud = new HUD();
 const audio = new Ambience();
-const music = new Music(audio);
 const adaptive = new AdaptiveResolution(renderer, basePixelRatio, quality.minScale);
 const gpuTimer = new GpuTimer(renderer);
 const perf = createPerfOverlay(document.getElementById('perf'), { renderer, adaptive, gpuTimer, tier, gpu, water });
@@ -120,6 +116,7 @@ const wood = createWoodMaterials(treeModels, { anisotropy: quality.anisotropy, c
 const shadows = quality.shadowMap > 0;
 const building = createBuilding(scene, {
   terrain, colliders: vegetation.colliders, wood, rng: mulberry32(seed + 2), shadows,
+  kubo: createKuboMaterials({ anisotropy: quality.anisotropy, cloudShadows }),
   takeWood: (kind) => timber.take(kind),
   release: (list) => timber.release(list),
   onMessage: (text) => hud.message(text, 6),
@@ -149,7 +146,7 @@ player.onBlackout = () => timber.dropAll(player.pos);
 // Gathering has its own random numbers, so it doesn't change the weather's.
 const inventory = new Inventory();
 const gathering = createGathering(scene, {
-  terrain, water, vegetation, palms: coast.palms, inventory, timber, groundAt, rng: mulberry32(seed + 1),
+  terrain, water, vegetation, inventory, timber, groundAt, rng: mulberry32(seed + 1),
   onImpact: (e) => climate.record(e),
 });
 const throwDir = new THREE.Vector3();
@@ -313,7 +310,6 @@ function startDragLook() {
 overlay.addEventListener('click', () => {
   if (!ready || match?.inLobby) return;
   audio.start();
-  music.start();
   try {
     const request = renderer.domElement.requestPointerLock();
     request?.catch?.(startDragLook);
@@ -385,6 +381,7 @@ overlay.querySelector('.mode').addEventListener('click', (e) => {
 const aimRay = new THREE.Ray(), aimDir = new THREE.Vector3();
 let focus = null;
 let bedAim = null;   // where your team's bed would go, while it's selected in a match
+let kuboAim = null;  // where your team's bahay kubo would go, likewise
 function updateFocus() {
   const carrying = timber.carrying;
   const tool = carrying ? null : selectedTool();   // your hands are full
@@ -478,6 +475,7 @@ function promptFor(playing) {
     return [[['E', `Place ${piece.name.toLowerCase()} blueprint`], ...turn]];
   }
   if (bedAim) return bedAim.ok ? [[['Right-click', 'Place your team’s bed'], ['R', 'Turn']]] : [[['Right-click', bedAim.reason], ['R', 'Turn']], true];
+  if (kuboAim) return kuboAim.ok ? [[['Right-click', 'Put up your team’s bahay kubo'], ['R', 'Turn the door']]] : [[['Right-click', kuboAim.reason], ['R', 'Turn the door']], true];
   if (!focus) return [null];
   if (hold.time > 0) return [[['X', `Taking apart… ${Math.round((hold.time / HOLD_TIME) * 100)}%`]]];
   return [focus.prompt, focus.dim];
@@ -489,6 +487,10 @@ function useSelected() {
   const stack = inventory.current;
   if (stack?.id === 'bed') {
     match?.placeBed(aimRay);
+    return;
+  }
+  if (stack?.id === 'kubo') {
+    match?.placeKubo(aimRay);
     return;
   }
   const food = stack && ITEMS[stack.id].eat;
@@ -594,6 +596,7 @@ addEventListener('keydown', (e) => {
   } else if (e.code === 'KeyR') {
     if (build.on) build.turn++;
     else if (inventory.current?.id === 'bed') match?.turnBed();
+    else if (inventory.current?.id === 'kubo') match?.turnKubo();
   } else if (e.code === 'KeyX') {
     if (!e.repeat) hold.down = true;
   } else if (e.code === 'KeyQ') {
@@ -610,8 +613,6 @@ addEventListener('keydown', (e) => {
     map.toggle();
   } else if (e.code === 'KeyM') {
     hud.message(audio.toggleMute() ? 'Sound off' : 'Sound on', 2);
-  } else if (e.code === 'KeyN') {
-    hud.message(music.toggle() ? 'Music on' : 'Music off', 2);
   } else if (e.code === 'KeyH') {
     tutorial.hide();
   } else if (devMode && e.code === 'KeyT') {
@@ -654,7 +655,6 @@ const underwaterColor = new THREE.Color('#1f6878');
 const clock = new THREE.Clock();
 let t = 0;
 let shadowFrame = 0;
-let mangrovesSeen = false;
 
 function frame() {
   step();
@@ -702,6 +702,7 @@ function step() {
   updateHold(sdt);
   // Your team's bed, selected in a match: where it would go.
   bedAim = match?.aimBed(playing && !build.on && !timber.carrying && inventory.current?.id === 'bed' ? aimRay : null) ?? null;
+  kuboAim = match?.aimKubo(playing && !build.on && !timber.carrying && inventory.current?.id === 'kubo' ? aimRay : null) ?? null;
   inventoryUI.setPrompt(...promptFor(playing));
   const carrying = timber.carrying;
   inventoryUI.setCarrying(carrying && `Carrying ${carrying.count} ${woodName(carrying.kind, carrying.count)} · Q to put down`);
@@ -709,8 +710,6 @@ function step() {
   map.update(dt, player, camera);
   match?.update(dt);
   if (playing) tutorial.update(sdt, { player, inventory, open: !!match?.opened });
-  // The music builds with the climate and the wind (in a match, its storm).
-  music.intensity = Math.min(1, climate.pressure * 0.75 + weather.current.wind * 0.4);
   held.update(sdt, inventory.current, Math.hypot(player.vel.x, player.vel.z), timber.carried);
   precip.update(sdt, t, camera, weather);
   const env = sky.update(sdt, camera, weather.current, precip.flash);
@@ -718,12 +717,6 @@ function step() {
   water.update(camera, weather, env, precip.flash, sdt);
   ocean.update(t, camera, sea.level);
   vegetation.update(camera);
-  coast.update(camera);
-  // The first time you come near the mangroves: what they're for.
-  if (!mangrovesSeen && coast.mangroveNear(player.pos.x, player.pos.z, 8)) {
-    mangrovesSeen = true;
-    hud.message('Mangroves: their tangled roots break the waves and storm surges before they reach the shore.', 7);
-  }
   grass.update(camera);
   splashes.update(dt, env.dayF);
 
@@ -767,7 +760,7 @@ renderer.compileAsync(scene, camera).catch(() => {}).finally(() => {
 
 if (import.meta.env.DEV) {
   window.game = {
-    scene, camera, renderer, terrain, weather, sea, player, sky, water, uniforms, vegetation, coast, step, inventory, gathering, audio, music, tutorial,
+    scene, camera, renderer, terrain, weather, sea, player, sky, water, uniforms, vegetation, step, inventory, gathering, audio, tutorial,
     timber, building, build, joinery, held, climate, match, map, get devMode() { return devMode; },
     counts: vegetation.counts, quality: { tier, gpu, adaptive, gpuTimer },
   };

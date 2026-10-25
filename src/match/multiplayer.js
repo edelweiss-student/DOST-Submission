@@ -33,12 +33,13 @@ export async function joinServer() {
 }
 
 // The start screen becomes the lobby until the host starts the match; then
-// everyone spawns at their team's base, next to its bed. The match opens
-// with the server's build phase: a countdown, and barriers that keep each
-// team out of the others' bases until it ends, in fair weather. Then it's
-// bed wars (bedwars.js) while a bagyo builds on the match's clock
-// (rules.js): the weather and the climate follow it, and its storm surge
-// washes every bed away. overlay: the start screen. Returns { inLobby,
+// everyone spawns at their team's base, with its bed and bahay kubo in
+// their inventory. The match opens with the server's build phase: a
+// countdown, and barriers that keep each team out of the others' bases
+// until it ends, in fair weather. Then it's bed wars (bedwars.js) while a
+// bagyo builds on the match's clock (rules.js): the weather and the climate
+// follow it, the sea rises, and any bed the water reaches is washed away.
+// overlay: the start screen. Returns { inLobby,
 // intro, team, bases, barriersUp, fighting, strike, pressure, forecast,
 // update(dt) }: while inLobby, clicking the start screen doesn't start the
 // game; pressure is the climate's (0..1), and forecast the weather panel's
@@ -71,7 +72,7 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
     stormStart = performance.now();
     surgeAt = surge;
     finalAt = surge + final;
-    hud.message(`The barriers are down: every base is open. A bagyo is coming, and in ${span(surge * 1000)} its storm surge will wash every bed away.`, 9);
+    hud.message(`The barriers are down: every base is open. A bagyo is coming: the sea will rise, and any bed the water reaches is washed away. Its storm surge peaks in ${span(surge * 1000)}.`, 9);
     timer.textContent = 'Barriers down · every base is open';
     timer.className = 'open';
     bannerUntil = performance.now() + 4000;
@@ -92,7 +93,7 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
     };
     const out = wars.out && 'You’re out';
     if (surged) {
-      timer.textContent = line(out, 'sudden death', `${clock((finalAt - t) * 1000)} left`);
+      timer.textContent = line(out, 'storm surge', `${clock((finalAt - t) * 1000)} left`);
       timer.className = 'final';
     } else {
       timer.textContent = line(out, weather.signal && `Signal No. ${weather.signal}`, `storm surge in ${clock((surgeAt - t) * 1000)}`);
@@ -127,7 +128,7 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
       const where = `You’re on Team ${team.name}, on the ${team.shore} shore.`;
       const left = buildEnds - performance.now();
       return buildEnds && left > 1000
-        ? `${where} Barriers keep the other teams out of every base for ${span(left)}. Place your team’s bed from your inventory (right-click), wherever you like outside the other bases, and build while you can. Then a bagyo builds, and its storm surge will wash every bed away.`
+        ? `${where} Barriers keep the other teams out of every base for ${span(left)}. Put up your team’s bahay kubo and place your bed from your inventory (right-click), wherever you like outside the other bases, and build while you can. Then a bagyo builds and the sea rises: any bed the water reaches is washed away.`
         : where;
     },
     get team() { return team; },
@@ -143,6 +144,10 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
     aimBed: (ray) => wars?.aimBed(ray) ?? null,
     placeBed: (ray) => wars?.placeBed(ray),
     turnBed: () => wars?.turnBed(),
+    // And its bahay kubo, likewise (R turns its door).
+    aimKubo: (ray) => wars?.aimKubo(ray) ?? null,
+    placeKubo: (ray) => wars?.placeKubo(ray),
+    turnKubo: () => wars?.turnKubo(),
     get pressure() { return stormStart ? pressureAt(stormTime(), surgeAt) : 0; },
     get opened() { return !!stormStart; },
     // A building plan, refused within BASE_RADIUS of another team's base
@@ -202,7 +207,7 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
     player.respawn();
     overlay.classList.remove('lobby');
     ui.showMatch(team, players);
-    wars = new BedWars({ net, players, me: net.id, bases, terrain, scene, player, camera, hud, building, inventory, peace: buildLeft > 0 });
+    wars = new BedWars({ net, players, me: net.id, bases, terrain, scene, player, camera, hud, building, inventory, sea, peace: buildLeft > 0 });
     if (buildLeft > 0) {
       buildEnds = performance.now() + buildLeft;
       warned = buildLeft <= 60000;   // no warning for a phase shorter than that
@@ -213,10 +218,10 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
     }
   });
   net.on('basesOpen', open);
-  // The storm surge: every bed still standing is gone.
-  net.on('surge', ({ teams = [] } = {}) => {
+  // The storm surge, at the storm's peak.
+  net.on('surge', () => {
     surged = true;
-    wars?.surge(teams);
+    wars?.surge();
   });
   // After a reconnect the server says hello again.
   net.on('welcome', (hello) => {

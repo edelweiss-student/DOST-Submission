@@ -6,14 +6,17 @@
 // other teams' bases, within PLACE_REACH of them. A bed nobody has placed
 // when the barriers come down goes down at its team's base. While it
 // stands (or hasn't been placed yet), a player who goes down (knocked out,
-// or drowned) comes back at it after RESPAWN_TIME; once it's destroyed,
-// going down is for good: they're out. The last team with anyone left wins.
-// Nothing can be hurt during the build phase.
+// or drowned) comes back at it after RESPAWN_TIME; once it's destroyed
+// (broken, or washed away when the flood reaches it), going down is for
+// good: they're out. The last team with anyone left wins. Nothing can be
+// hurt during the build phase.
 
 export const BED_HP = 200;      // a bed's health
 export const RESPAWN_TIME = 5;   // seconds from going down to coming back at your bed
 export const REACH = 3.2;        // metres a swing reaches
 export const PLACE_REACH = 5;    // metres from your eye to where you can put the bed down
+export const KUBO_REACH = 12;    // metres from you to the middle of where your bahay kubo goes up
+export const MAX_STAIRS = 3;     // stairs each player can build (on your own too: see world/building.js)
 export const SWING_GAP = 200;    // ms: the server counts at most one hit per player this often
 
 // What a swing does, by what's in your hand ('none' for a fist): to another
@@ -30,12 +33,13 @@ export const damageOf = (target, tool) => DAMAGE[target][tool] ?? DAMAGE[target]
 // Climate change in a match: not what anyone does to the island, but the
 // same for every team, on the server's clock. Once the barriers are down a
 // bagyo (typhoon) builds in STAGES, and the climate's pressure climbs with
-// it, so the sea rises (up to 2.4 m: see weather/sealevel.js). At SURGE its
-// storm surge washes away every bed still standing, so from then on going
-// down is for good. FINAL seconds later time is up: the team with the most
-// players still in wins, and a tie is a draw. Times are seconds after the
-// barriers come down; the server can shorten the storm for testing
-// (--surge), and its stages and FINAL keep their places in it.
+// it, so the sea rises (up to 2.4 m: see weather/sealevel.js) and the
+// storms push it further in. Any bed the water reaches is washed away; a
+// bed raised high (in a bahay kubo on its stilts) stays dry. SURGE is the
+// storm surge at the storm's peak; FINAL seconds later time is up: the
+// team with the most players still in wins, and a tie is a draw. Times are
+// seconds after the barriers come down; the server can shorten the storm
+// for testing (--surge), and its stages and FINAL keep their places in it.
 export const SURGE = 480;
 export const FINAL = 180;
 // Each stage starts at a fraction of the way to the surge. The storms'

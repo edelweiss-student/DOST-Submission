@@ -1,5 +1,7 @@
 import * as THREE from 'three';
-import { TEAMS } from './teams.js';
+import { uniforms } from '../shared.js';
+import { TEAMS, BASE_RADIUS } from './teams.js';
+import { CELL } from '../world/building.js';
 import { BED_HP, RESPAWN_TIME, REACH } from './rules.js';
 import { RemotePlayers } from './remotePlayers.js';
 import { Beds } from './beds.js';
@@ -7,6 +9,7 @@ import { Beds } from './beds.js';
 const $ = (id) => document.getElementById(id);
 const SEND = 0.05;   // seconds between telling the server where you are
 const FEED = 5000;   // ms a line stays in the match feed
+const FLOODED = 0.25;   // metres of water over a bed's foot that wash it away (up to its mattress)
 
 // The bed-wars side of a match (see rules.js), from the start on: the other
 // players, your team's bed (in your inventory until someone places it), the
@@ -16,8 +19,10 @@ const FEED = 5000;   // ms a line stays in the match feed
 // your id; peace: true while the build phase lasts (nothing can be hurt
 // until the barriers come down).
 export class BedWars {
-  constructor({ net, players, me, bases, terrain, scene, player, camera, hud, building, inventory, peace }) {
-    Object.assign(this, { net, player, camera, hud, building, inventory, peace });
+  constructor({ net, players, me, bases, terrain, scene, player, camera, hud, building, inventory, sea, peace }) {
+    Object.assign(this, { net, player, camera, hud, building, inventory, sea, bases, peace });
+    this.floodClock = 0;
+    this.surf = {};
     this.me = me;
     ({ team: this.team, name: this.name } = players.find((p) => p.id === me));
     this.out = false;
@@ -44,9 +49,17 @@ export class BedWars {
     this.beds = new Beds(scene, terrain, building, bases, [...this.teams.keys()]);
     this.bedTurn = 0;       // quarter turns (R) for placing it
     this.placing = false;   // asked the server to place it, waiting to hear
+    // The team's bahay kubo works the same way: in everyone's inventory,
+    // and the first to put it up decides where.
+    this.kubos = new Map();     // every team's that's up: { i0, j0, turn, deck }
+    this.kuboTurn = 0;          // which side its door faces (R)
+    this.placingKubo = false;
+    this.showingKubo = false;   // its see-through preview is up
+    inventory.add('kubo', 1);
     inventory.add('bed', 1);
     net.send('beds', this.beds.defaults);
     net.send('bases', bases.map(({ x, z }) => ({ x, z })));
+    net.send('kubos', this.kuboDefaults());
 
     this.panel = $('teams-panel');
     this.feedList = $('match-feed');
@@ -58,13 +71,18 @@ export class BedWars {
     net.on('moves', (update) => this.remotes.receive(update));
     net.on('hurt', (hit) => this.hurt(hit));
     net.on('bed', ({ team, hp }) => this.bedHit(team, hp));
-    net.on('bedDestroyed', ({ team, by }) => this.bedDestroyed(team, by));
+    net.on('bedDestroyed', ({ team, by, flood }) => this.bedDestroyed(team, by, flood));
     net.on('death', (down) => this.death(down));
     net.on('respawned', ({ id }) => this.respawned(id));
     net.on('matchOver', ({ winner, time }) => this.end(winner, time));
     net.on('bedPlaced', (bed) => this.bedPlaced(bed));
     net.on('bedRefused', ({ reason }) => {
       this.placing = false;
+      hud.message(reason, 3);
+    });
+    net.on('kuboPlaced', (kubo) => this.kuboPlaced(kubo));
+    net.on('kuboRefused', ({ reason }) => {
+      this.placingKubo = false;
       hud.message(reason, 3);
     });
     // What's built is shared, and another team's tools can break it.
@@ -79,9 +97,11 @@ export class BedWars {
   bedStands(team) { return (this.teams.get(team)?.hp ?? 0) > 0; }
   who(name) { return name === this.name ? 'you' : name; }
 
-  // Every frame: the others move, and the server hears where you are.
+  // Every frame: the others move, the flood is watched, and the server
+  // hears where you are.
   update(dt) {
     this.remotes.update(dt);
+    this.watchFlood(dt);
     if (this.downAt && this.comingBack) {
       const left = Math.max(1, Math.ceil(RESPAWN_TIME - (performance.now() - this.downAt) / 1000));
       this.deathScreen.querySelector('span').textContent = `Back ${this.bedStands(this.team) ? 'at your bed ' : ''}in ${left}…`;
@@ -92,6 +112,22 @@ export class BedWars {
     this.camera.getWorldDirection(this.dir);
     const r = (x) => Math.round(x * 100) / 100;
     this.net.send('move', [r(p.x), r(p.y), r(p.z), r(Math.atan2(-this.dir.x, -this.dir.z)), r(Math.hypot(v.x, v.z))], true);
+  }
+
+  // The flood: a bed the water stays over for a moment (waves and all) is
+  // washed away. Any game that sees it tells the server, once a bed.
+  watchFlood(dt) {
+    if (this.peace || (this.floodClock += dt) < 0.25) return;
+    const step = this.floodClock;
+    this.floodClock = 0;
+    for (const [team, bed] of this.beds.beds) {
+      if (bed.flooded || !this.bedStands(team)) continue;
+      const water = this.sea.water.surface(bed.x, bed.z, uniforms.uTime.value, this.surf).height;
+      bed.wet = water > bed.y + FLOODED ? (bed.wet ?? 0) + step : 0;
+      if (bed.wet < 1.5) continue;
+      bed.flooded = true;
+      this.net.send('bedFlooded', { team });
+    }
   }
 
   // With your team's bed selected: where it would go, aiming along ray (a
@@ -119,6 +155,75 @@ export class BedWars {
     const r = (v) => Math.round(v * 100) / 100;
     this.placing = true;
     this.net.send('placeBed', { x: r(plan.x), y: r(plan.y), z: r(plan.z), yaw: r(plan.yaw) });
+  }
+
+  // --- The bahay kubo.
+  // Where each team's goes up if nobody puts it up before the barriers come
+  // down ({ i0, j0, turn, deck } in TEAMS order, null for teams not in the
+  // match): a little behind where the team spawns, its door facing back
+  // towards the middle of the island, on the first spot nearby it fits.
+  kuboDefaults() {
+    return TEAMS.map((_, team) => {
+      if (!this.teams.has(team)) return null;
+      const b = this.bases[team], r = Math.hypot(b.x, b.z) || 1, ux = b.x / r, uz = b.z / r;
+      const turn = Math.abs(ux) > Math.abs(uz) ? (ux > 0 ? 3 : 1) : (uz > 0 ? 0 : 2);
+      const spot = (back, side) => {
+        const i0 = Math.round((b.x + ux * back - uz * side) / CELL) - 1, j0 = Math.round((b.z + uz * back + ux * side) / CELL) - 1;
+        const fit = this.building.kuboFits(i0, j0, turn);
+        return { i0, j0, turn, deck: Math.round(fit.deck * 100) / 100, ok: fit.ok };
+      };
+      const tries = [[8, 0], [8, 5], [8, -5], [13, 0], [4, 6], [4, -6], [16, 5], [16, -5]].map(([back, side]) => spot(back, side));
+      const { ok, ...at } = tries.find((t) => t.ok) ?? tries[0];
+      return at;
+    });
+  }
+
+  // With your team's kubo selected: where it would go, aiming along ray
+  // (see-through, green or red), as { ok, reason, ... }, or null. A null ray
+  // takes the preview down.
+  aimKubo(ray) {
+    if (!ray || this.placingKubo || !this.fighting) {
+      if (this.showingKubo) this.building.preview(null);
+      this.showingKubo = false;
+      return null;
+    }
+    let plan = this.building.kuboPlan(ray, this.kuboTurn);
+    if (plan?.ok) {
+      const other = [...this.teams.keys()].find((t) => t !== this.team && Math.hypot(this.bases[t].x - plan.x, this.bases[t].z - plan.z) < BASE_RADIUS + 3);
+      if (other !== undefined) plan = { ...plan, ok: false, reason: `Not in Team ${TEAMS[other].name}’s base` };
+    }
+    this.building.preview(plan);
+    this.showingKubo = true;
+    return plan;
+  }
+
+  turnKubo() { this.kuboTurn = (this.kuboTurn + 1) % 4; }
+
+  // Right-click with the kubo selected: ask the server to put it up there.
+  placeKubo(ray) {
+    if (this.placingKubo || !this.fighting || this.kubos.has(this.team)) return;
+    const plan = this.aimKubo(ray);
+    if (!plan?.ok) {
+      this.hud.message(plan ? `${plan.reason}.` : 'Aim at the ground to put up the bahay kubo.', 2);
+      return;
+    }
+    this.placingKubo = true;
+    this.net.send('placeKubo', { i0: plan.i0, j0: plan.j0, turn: plan.turn, deck: Math.round(plan.deck * 100) / 100 });
+  }
+
+  // A team's bahay kubo went up (by a player, or at its base when nobody put
+  // it up before the barriers came down): the same in every game.
+  kuboPlaced({ team, i0, j0, turn, deck, by, auto }) {
+    if (this.kubos.has(team)) return;
+    this.kubos.set(team, { i0, j0, turn, deck });
+    this.building.buildKubo({ i0, j0, turn, deck }, { team });
+    if (team !== this.team) return;
+    this.placingKubo = false;
+    this.aimKubo(null);
+    this.inventory.remove('kubo', this.inventory.count('kubo'));
+    this.hud.message(auto
+      ? 'Nobody put up your team’s bahay kubo, so it went up at your base.'
+      : `${by === this.name ? 'Your team’s bahay kubo is up' : `${by} put up your team’s bahay kubo`}: a house on stilts, above the floods. Your bed is safest inside.`, 6);
   }
 
   // A team's bed was put down: by a player ({ by }), or at its base when
@@ -234,27 +339,22 @@ export class BedWars {
     this.render();
   }
 
-  bedDestroyed(team, by) {
+  // A bed broken (by), or washed away when the flood reached it.
+  bedDestroyed(team, by, flood = false) {
     const t = this.teams.get(team);
     if (t) t.hp = 0;
     this.beds.destroy(team);
-    if (team === this.team) this.hud.message(`${by} destroyed your bed! Go down now and you’re out.`, 6);
-    else if (by === this.name) this.hud.message(`You destroyed Team ${TEAMS[team].name}’s bed!`, 4);
-    this.feed(`Team ${TEAMS[team].name}’s bed was destroyed by ${this.who(by)}`);
+    const name = `Team ${TEAMS[team].name}’s bed`;
+    if (team === this.team) this.hud.message(`${flood ? 'The flood reached your bed and washed it away' : `${by} destroyed your bed`}! Go down now and you’re out.`, 6);
+    else if (!flood && by === this.name) this.hud.message(`You destroyed ${name}!`, 4);
+    this.feed(flood ? `${name} was washed away by the flood` : `${name} was destroyed by ${this.who(by)}`);
     this.render();
   }
 
-  // The storm surge washed away every bed still standing (teams): from now
-  // on, going down is for good.
-  surge(teams) {
-    for (const team of teams) {
-      const t = this.teams.get(team);
-      if (t) t.hp = 0;
-      this.beds.destroy(team);
-    }
-    this.hud.message('The storm surge washed away every bed! Going down is for good now: the last team standing wins, or the one with the most players left when time runs out.', 9);
-    this.feed('The storm surge washed away every bed');
-    this.render();
+  // The storm surge, at the storm's peak: the sea is as high as it gets.
+  surge() {
+    this.hud.message('The storm surge is here! Any bed the water reaches is washed away; a bed raised above it stays dry.', 8);
+    this.feed('The storm surge is here');
   }
 
   // Someone went down (out, if their bed was gone).

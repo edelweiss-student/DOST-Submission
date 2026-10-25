@@ -1,10 +1,16 @@
-import { BED_HP, REACH, SWING_GAP, PLACE_REACH, damageOf } from '../src/match/rules.js';
+import { BED_HP, REACH, SWING_GAP, PLACE_REACH, KUBO_REACH, damageOf } from '../src/match/rules.js';
 import { TEAMS, BASE_RADIUS, KEEP_OUT } from '../src/match/teams.js';
 
 const TOOLS = new Set(['knife', 'axe', 'pickaxe']);
 const tool = (t) => (TOOLS.has(t) ? t : 'none');
 const SLACK = 1.5;   // metres of reach allowed for lag
+const CELL = 2;      // the building grid (world/building.js): a bahay kubo is 2 × 2 cells
 const spot = (b) => (b && Number.isFinite(b.x) && Number.isFinite(b.z) ? { x: b.x, z: b.z, yaw: Number.isFinite(b.yaw) ? b.yaw : null } : null);
+// A bahay kubo's place: its cells' corner (i0, j0), which side its door faces, its deck's height.
+const kuboSpot = (k) => (k && [k.i0, k.j0, k.turn].every(Number.isInteger) && k.turn >= 0 && k.turn < 4 && Number.isFinite(k.deck)
+  ? { i0: k.i0, j0: k.j0, turn: k.turn, deck: k.deck } : null);
+// A bed in a bahay kubo lies in the middle, its head away from the door.
+const KUBO_BED_YAW = [0, -Math.PI / 2, Math.PI, Math.PI / 2];
 
 // A bed-wars match on the server: where everyone is, who's down or out,
 // and the beds (see src/match/rules.js). It checks every hit against what
@@ -23,6 +29,8 @@ export class Match {
     this.placed = new Map();   // where each team's bed was put down: { team, x, y, z, yaw, by }
     this.bedAt = null;   // where each team's bed goes if nobody places it ({ x, z, yaw } by team), from the first game to say
     this.bases = null;   // every team's base ({ x, z }), from the first game to say
+    this.kubos = new Map();   // where each team's bahay kubo went up: { team, i0, j0, turn, deck, by }
+    this.kuboAt = null;  // where each goes up if nobody puts it up, from the first game to say
   }
 
   // Whose base (any team's but `team`) (x, z) is within `radius` of, or -1.
@@ -75,19 +83,59 @@ export class Match {
     return { bed };
   }
 
-  // The barriers came down: every bed nobody placed goes down at its team's
-  // base, where it would have stood. Returns those beds ({ team, x, y: null,
-  // z, yaw, auto: true }: each game finds the ground under it).
+  // The barriers came down: every bed nobody placed goes down in its team's
+  // bahay kubo, or else at its base, where it would have stood. Returns
+  // those beds ({ team, x, y, z, yaw, auto: true }; y null: each game finds
+  // the ground under it).
   autoPlace() {
     const beds = [];
     for (const [team, hp] of this.beds) {
-      const at = this.bedAt?.[team];
-      if (!(hp > 0) || this.placed.has(team) || !at) continue;
-      const bed = { team, x: at.x, y: null, z: at.z, yaw: at.yaw, auto: true };
+      const at = this.bedAt?.[team], kubo = this.kubos.get(team);
+      if (!(hp > 0) || this.placed.has(team) || !(at || kubo)) continue;
+      const bed = kubo
+        ? { team, x: (kubo.i0 + 1) * CELL, y: kubo.deck, z: (kubo.j0 + 1) * CELL, yaw: KUBO_BED_YAW[kubo.turn], auto: true }
+        : { team, x: at.x, y: null, z: at.z, yaw: at.yaw, auto: true };
       this.placed.set(team, bed);
       beds.push(bed);
     }
     return beds;
+  }
+
+  setKubos(list) {
+    if (this.kuboAt || !Array.isArray(list)) return;
+    this.kuboAt = list.map(kuboSpot);
+  }
+
+  // A player puts up their team's bahay kubo ({ i0, j0, turn, deck }):
+  // { kubo } for everyone, or { error }. Once per team, within reach,
+  // outside the other teams' bases.
+  placeKubo(id, where) {
+    const p = this.players.get(id);
+    if (!p?.alive || p.out) return { error: 'You can’t put up the bahay kubo right now.' };
+    if (this.kubos.has(p.team)) return { error: 'Your team’s bahay kubo is already up.' };
+    const at = kuboSpot(where);
+    if (!at) return { error: 'The bahay kubo can’t go there.' };
+    const x = (at.i0 + 1) * CELL, z = (at.j0 + 1) * CELL;
+    if (p.pos && Math.hypot(p.pos[0] - x, p.pos[2] - z) > KUBO_REACH + SLACK) return { error: 'That’s too far away to put up the bahay kubo.' };
+    const other = this.inBase(x, z, p.team, BASE_RADIUS + 3);
+    if (other >= 0) return { error: `The bahay kubo can’t go in Team ${TEAMS[other].name}’s base.` };
+    const kubo = { team: p.team, ...at, by: p.name };
+    this.kubos.set(p.team, kubo);
+    return { kubo };
+  }
+
+  // The barriers came down: every bahay kubo nobody put up goes up near its
+  // team's base. Returns them ({ team, i0, j0, turn, deck, auto: true }).
+  autoPlaceKubos() {
+    const kubos = [];
+    for (const team of this.teams) {
+      const at = this.kuboAt?.[team];
+      if (this.kubos.has(team) || !at) continue;
+      const kubo = { team, ...at, auto: true };
+      this.kubos.set(team, kubo);
+      kubos.push(kubo);
+    }
+    return kubos;
   }
 
   // A swing at another player: how hard it hit, or null if it doesn't count.
@@ -147,11 +195,12 @@ export class Match {
 
   leave(id) { this.players.delete(id); }
 
-  // The storm surge washes away every bed still standing. Returns their teams.
-  surge() {
-    const washed = [...this.beds].filter(([, hp]) => hp > 0).map(([team]) => team);
-    for (const team of washed) this.beds.set(team, 0);
-    return washed;
+  // The flood reached a team's bed (a game saw the water over it): it's
+  // washed away. True if that took a standing bed.
+  flood(team) {
+    if (!(this.beds.get(team) > 0) || !this.placed.has(team)) return false;
+    this.beds.set(team, 0);
+    return true;
   }
 
   // Time's up: the team with the most players still in wins, and a tie is

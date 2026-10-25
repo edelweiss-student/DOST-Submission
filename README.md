@@ -1,12 +1,12 @@
 # Washed Away
 
 Every tree you fell brings the sea closer. A survival and exploration game
-built with three.js, on a Philippine island: coconut palms leaning over the
-beaches, mangroves in the shallows, a smooth wave-driven ocean with a reef
-and kelp forest to dive into, and a climate that keeps shifting and answers
-what you do to the island. Strip it bare and the rising sea washes it away.
-With friends, it's a fast bed-wars match for up to four teams, fought as a
-typhoon builds (see Multiplayer).
+built with three.js, on a Philippine island: a smooth wave-driven ocean
+with a reef and kelp forest to dive into, and a climate that keeps shifting
+and answers what you do to the island. Strip it bare and the rising sea
+washes it away. With friends, it's a fast bed-wars match for up to four
+teams, each with its own bahay kubo, fought as a typhoon builds (see
+Multiplayer).
 
 **Play it online:** https://washed-away.onrender.com, and
 https://washed-away.onrender.com/?mp for multiplayer. If nobody has played
@@ -48,12 +48,13 @@ new multiplayer island.
 ## Multiplayer
 
 Bed wars for up to four teams, on a game server. Players join a lobby, are
-put on teams, and spawn at their team's base, with its bed in their
-inventory to place wherever they choose, when the host starts the match. It
-opens with a 10-minute build phase behind barriers that keep each team out
-of the others' bases; then it's a fast fight to be the last team standing. Climate change comes as a typhoon on a fixed clock, the
-same for every team: the weather worsens, the sea rises, and at the storm's
-peak its surge washes every bed away.
+put on teams, and spawn at their team's base, with its bahay kubo and bed
+in their inventory to put up wherever they choose, when the host starts
+the match. It opens with a 10-minute build phase behind barriers that keep
+each team out of the others' bases; then it's a fast fight to be the last
+team standing. Climate change comes as a typhoon on a fixed clock, the same
+for every team: the weather worsens, the sea rises, and any bed the water
+reaches is washed away.
 
 **On a LAN.** On the computer that hosts, run:
 
@@ -137,12 +138,41 @@ every team, on the server's clock, not what anyone does. When the barriers
 come down a bagyo (typhoon) builds in stages two minutes apart: rain bands
 first, then storms of about 58, 76 and 98 km/h, which raise PAGASA wind
 Signals No. 1, 2 and 3. The climate's pressure climbs with it to Crisis, so
-the sea rises (up to 2.4 m, and the storm's surge on top) and floods the
-beaches. Eight minutes in, the storm surge washes away every bed still
-standing: from then on, going down is for good. Three minutes later time is
+the sea rises (up to 2.4 m, and the storm's surge on top, peaking eight
+minutes in) and floods the beaches. **Any bed the water reaches is washed
+away**, as if it had been broken: once the water has stood over its foot for
+a moment, its team can't come back after going down. A bed raised above
+the flood, as in a bahay kubo on its stilts, stays dry. (The bases are at
+least 5 m above the sea, so the flood mostly threatens beds put down low,
+on the beaches and near the shore.) Three minutes after the surge time is
 up, and the team with the most players still standing wins; a tie is a
 draw. The top of the screen counts down to the surge, then to the end, and
 the weather panel says what's coming next.
+
+**The bahay kubo.** Each team has one, the house on stilts of the
+Philippines (`world/building.js`, with its look in `world/kubo.js`): 4 m
+square (2 × 2 building cells), its floor 1.8 m above the highest ground
+under it, on bamboo stilts, with woven bamboo (sawali) walls, a doorway and
+windows, a split-bamboo floor, a steep nipa-thatch roof that overhangs well
+to shed typhoon rain, and bamboo steps up to the door.
+
+- It starts in every player's hotbar (it can't be dropped). Select it and
+  it shows see-through where it would go (green, or red with the reason);
+  right-click puts it up at once, like a Rust shelter, and `R` turns which
+  way its door faces. It snaps to the building grid.
+- It goes on dry ground clear of trees, rocks and builds, with room in
+  front of the door for the steps, anywhere but another team's base (the
+  game server checks that, and that you're within 12 m). Whoever puts it up
+  first decides where; it leaves everyone else's hotbar then.
+- One nobody put up when the barriers come down goes up a little behind
+  its team's spawn, door facing the middle of the island, and a bed nobody
+  placed goes down inside it.
+- It's built from the same pieces as anything else, so you walk up its
+  steps, stand on its floor, shelter under its roof and are stopped by its
+  walls. Its pieces are well joined and can be repaired with planks (and
+  logs, for the stilts), but not taken apart for their wood. Another team
+  can break them like any build: break a stilt and the floor on it falls,
+  with what stands on that.
 
 **Bed wars** (`match/bedwars.js`, with the rules in `match/rules.js`):
 
@@ -180,22 +210,23 @@ the weather panel says what's coming next.
   go (green, or red with the reason); right-click puts it down and `R`
   turns it. It goes anywhere dry: in your base or out in the woods, on the
   ground (it tips to follow a slope; only cliffs are too steep) or on a
-  finished floor you've built. Only another team's base is out of bounds,
-  and the game server checks that too, and that you're within 5 m. A bed
-  nobody has placed when the barriers come down goes down at its team's
-  base. While it stands (or is still in your inventory), a player who goes
-  down (knocked out, or drowned) lies where they fell and comes back beside
-  it 5 seconds later. Once it's destroyed, going down is for good: you're
-  out. A few seconds later you can walk about and watch, unseen and unable
-  to fight.
+  finished floor you've built (your bahay kubo's is the safest). Only
+  another team's base is out of bounds, and the game server checks that
+  too, and that you're within 5 m. A bed nobody has placed when the
+  barriers come down goes down in its team's bahay kubo. While it stands
+  (or is still in your inventory), a player who goes down (knocked out, or
+  drowned) lies where they fell and comes back beside it 5 seconds later.
+  Once it's destroyed or washed away, going down is for good: you're out. A
+  few seconds later you can walk about and watch, unseen and unable to
+  fight.
 - **The end.** The last team with anyone left wins (players who leave are
   out), or, when time runs out after the surge, the team with the most
   players still standing. Everyone sees who won, and "Back to the lobby"
   goes back for the next match.
 - **On screen,** under the weather: every team's bed (its health, "bed not
   placed" or "no bed") and how many of its players are left, and below it
-  a feed of who went down and which beds broke. You're warned when your
-  bed is under attack.
+  a feed of who went down and which beds broke or washed away. You're
+  warned when your bed is under attack.
 
 **The server** (`server/`) decides the island (its seed), so every player
 generates the same one, and a player whose server restarts with another
@@ -230,22 +261,22 @@ they agree.
 | I / Tab | Open or close the inventory and crafting |
 | K | Open or close the map |
 | Q | Drop one of the selected item, or put down the wood you're carrying |
-| B | Build mode: `1`–`8` or the wheel choose a piece, `R` turns a roof or raises pilings, `E` (or left-click) places it, `B` or right-click leaves |
+| B | Build mode: `1`–`9` or the wheel choose a piece, `R` turns a roof or raises pilings, `E` (or left-click) places it, `B` or right-click leaves |
 | E on a build | Add the wood you carry, repair it with a plank (or log), or with empty arms rework its joints |
 | W / S on a ladder | Climb up or down |
 | Hold X | Take apart something you built, or clear a blueprint |
-| Right-click | Eat the selected item, or in a match place your team's bed (`R` turns it) |
+| Right-click | Eat the selected item, or in a match put up your team's bahay kubo or place its bed (`R` turns it) |
 | M | Mute |
-| N | Music on or off |
 | H | Hide the tips |
 | P | Performance readout (fps, quality, render scale, GPU) |
 | Esc | Pause (or close the inventory) |
 
 **Tips.** A first game shows one tip at a time at the bottom left
 (`ui/tutorial.js`), each done when you do what it says. On your own: walk,
-pick up sticks and stones, eat a coconut, craft an axe, fell a tree, build,
-and what the climate panel means. In a match: gather, craft a pickaxe, wall
-in your bed, and strike. `H` hides them for good.
+pick up sticks and stones, eat some berries, craft an axe, fell a tree,
+build, and what the climate panel means. In a match: put up your bahay
+kubo, place your bed, gather, craft a pickaxe, wall in your bed, and
+strike. `H` hides them for good.
 
 **Dev mode**, for testing, is hidden: press `` ` `` five times in quick
 succession (within about 2½ seconds) to turn it on, and five times again to
@@ -298,7 +329,6 @@ you get more, or something else:
 | Grass | — | Knife: 1–2 fibre, never runs out | — | — |
 | Tree | — | Axe: fells it (see Timber and building) | — | — |
 | Fallen trunk | — | Axe: cuts a log off it | 3 | 10 min |
-| Coconut palm | 1 coconut | Knife: 2 at a time | 4 | 5 min |
 
 Sources regrow in game time, so not while paused. Bushes the sea has killed
 give only fibre. Without the right tool, a tree or a fallen trunk only says
@@ -311,10 +341,9 @@ more), and stones in little piles of 1 to 3 on the beaches. Look at one and
 press `E` to pick it up. It's gone for good, so they get scarcer as the
 island is picked over. Boulders give nothing.
 
-Items stack (sticks and stones 32, fibre 48, berries 24, coconuts 8). Wood
-isn't an item: it never goes in the bag (see below). Berries and coconuts
-are food: right-click with one selected to get back 25 stamina and 6
-health (berries) or 40 and 12 (a coconut, its water and its flesh).
+Items stack (sticks and stones 32, fibre 48, berries 24). Wood isn't an
+item: it never goes in the bag (see below). Berries are food: right-click
+with some selected to get back 25 stamina and 6 health.
 
 `Q` throws one of the selected item in front of you. Items in the world can
 be picked up again with `E`. Stones sink; everything else floats, riding the
@@ -400,6 +429,7 @@ or the mouse wheel choose a piece:
 | 6 | Window | 5 planks | A wall with a window in it |
 | 7 | Ladder | 3 planks | Down the side of a floor, to the ground or the seabed |
 | 8 | Railing | 3 planks | Along a floor edge, so you don't fall off |
+| 9 | Stairs | 5 planks | Steps you walk up, at about 40° from a floor edge (an open one, or a doorway) down to the ground, for floors 0.6 to 4.4 m up. Everyone can build 3 at most (a bahay kubo's own steps don't count); take one apart to build another |
 
 A see-through preview follows the crosshair: green where the piece fits,
 red (with the reason) where it doesn't. A floor levels itself above the
@@ -620,28 +650,10 @@ Heat makes all of this worse:
   midday sun and 6–7 at night, against 12 on a mild day. Swimming in the
   sea, you tire no faster than on a mild day.
 
-## Music
-
-The music is in the spirit of the kulintang, the gong music of Mindanao,
-and it's made up as it plays (`audio/music.js`; the game ships no audio
-files). A row of eight small gongs plays a pentatonic melody over the deep
-agung gongs, the babendil keeps time on a gong's rim and, as things get
-tense, the dabakan drum joins in. It quickens and fills in as the climate's
-pressure and the wind rise, so in a match it builds with the storm. `N`
-turns the music on or off (remembered), and `M` mutes everything.
-
 ## Graphics
 
-Everything except the trees is generated when the game starts. The trees
-are the only model files (see Tree models below).
-
-- **The coast** (`world/coast.js`). About 200 coconut palms lean out over
-  the beaches: curved, ringed trunks, drooping fronds with a leaflet
-  texture drawn at startup, and coconuts under the crown. Groves of
-  mangroves stand in the shallows on arching prop roots, and the first
-  time you come near them a message says how their roots break the waves
-  and storm surges. Both sway with the wind and are placed from the
-  island's seed, so every player sees the same coast.
+Everything except the trees and tools is generated when the game starts.
+The trees and tools are the only model files (see Tree models below).
 
 - **Sky.** A physically based atmosphere (Rayleigh and Mie scattering plus
   ozone) gives the blue day sky, sunsets and twilight. The GPU renders it
@@ -864,13 +876,13 @@ src/
   world/trees.js        tree models: loading, where each species grows, near models and billboards,
                         lifting one tree out to shake and fall
   world/vegetation.js   tree, fallen trunk, bush and boulder placement, colliders, culled instancing
-  world/coast.js        coconut palms on the beaches and mangrove groves in the shallows
   world/wood.js         wood materials and shapes: bark, plank grain, cut ends, logs, boards
   world/timber.js       felling, stumps, logs and planks in the world, splitting, carrying
-  world/building.js     floors, pilings, walls, windows, doorways, ladders, railings and roofs:
-                        placing, blueprints, building up, joints, weather and sea wear,
+  world/building.js     floors, pilings, walls, windows, doorways, ladders, railings, stairs and
+                        roofs: placing, blueprints, building up, joints, weather and sea wear,
                         high-water marks, repairs, taking apart, standing, climbing, colliding,
-                        roof shade; shared between the players of a match
+                        roof shade; the bahay kubo; shared between the players of a match
+  world/kubo.js         the bahay kubo's materials: bamboo, sawali, split-bamboo slats, nipa thatch
   world/grass.js        GPU grass around the player
   world/waves.js        Gerstner wave spectrum, CPU surface sampling for physics
   world/water.js        water surface mesh, depth and ripple textures, uniforms
@@ -892,7 +904,7 @@ src/
   items/recipes.js      crafting recipes
   items/models.js       item models: the imported tools, simple shapes for the rest (in the world
                         and in your hand)
-  world/gathering.js    gathering from bushes, coconut palms and grass, felling, cutting fallen
+  world/gathering.js    gathering from bushes and grass, felling, cutting fallen
                         trunks, tool bonuses; loose sticks and stones; items in the world
   player/heldItem.js    the selected tool in your hand (bobbing and swinging), or the wood you carry
   player/playerModel.js the low-poly player model in team colours, with a salakot: skeleton, walk
@@ -912,17 +924,16 @@ src/
   match/multiplayer.js  multiplayer: connecting, the lobby, starting the match, the build phase,
                         the storm on the match's clock, no-build zones
   match/rules.js        the bed-wars rules: health, damage, reach, respawning, the storm and its
-                        surge (shared with the game server)
-  match/bedwars.js      bed wars in your game: your team's bed from your inventory, striking,
-                        being hit, going down, coming back or being out, the teams panel and
-                        feed, the end of the match
+                        surge, the stairs limit (shared with the game server)
+  match/bedwars.js      bed wars in your game: your team's bahay kubo and bed from your
+                        inventory, the flood washing beds away, striking, being hit, going down,
+                        coming back or being out, the teams panel and feed, the end of the match
   match/remotePlayers.js  the other players: drawn smoothly from the server's updates, name tags,
                         what a swing hits
   match/beds.js         each team's bed: the model, where it can go (and the see-through preview),
                         where it stands, coming back beside it, what a swing hits
   net/net.js            the connection to the game server (Socket.IO, loaded only for multiplayer)
   audio/ambience.js     synthesized wind, rain, surf, underwater, thunder, splashes, wood sounds
-  audio/music.js        kulintang-style gong music, made up as it plays
 server/
   index.js              the game server: serves the built game (with caching), runs the lobby
                         and the match over Socket.IO

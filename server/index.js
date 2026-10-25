@@ -10,7 +10,7 @@ import { Server } from 'socket.io';
 import { TEAMS, BUILD_TIME } from '../src/match/teams.js';
 import { Lobby } from './lobby.js';
 import { Match } from './match.js';
-import { RESPAWN_TIME, SURGE, FINAL, PIECE_HP, damageOf } from '../src/match/rules.js';
+import { RESPAWN_TIME, SURGE, FINAL, PIECE_HP, MAX_STAIRS, damageOf } from '../src/match/rules.js';
 
 // The multiplayer game server: a lobby of up to four teams, and the match it
 // starts. It decides the island (its seed), so every player generates the
@@ -148,7 +148,12 @@ io.on('connection', (socket) => {
     opening = setTimeout(() => {
       console.log('The build phase is over: every base is open, and the storm is building');
       io.emit('basesOpen', { surge: STORM, final: STORM_FINAL });
-      // Beds nobody placed go down at their team's base.
+      // Bahay kubos nobody put up go up near their team's base, then beds
+      // nobody placed go down in their kubo (or at the base).
+      for (const kubo of match?.autoPlaceKubos() ?? []) {
+        console.log(`Team ${TEAMS[kubo.team].name}'s bahay kubo went up at its base`);
+        io.emit('kuboPlaced', kubo);
+      }
       for (const bed of match?.autoPlace() ?? []) {
         console.log(`Team ${TEAMS[bed.team].name}'s bed went down at its base`);
         io.emit('bedPlaced', bed);
@@ -156,9 +161,8 @@ io.on('connection', (socket) => {
       broadcast();
       storm = [
         setTimeout(() => {
-          const washed = match?.surge() ?? [];
-          console.log(`The storm surge washed away ${washed.length} bed${washed.length === 1 ? '' : 's'}`);
-          io.emit('surge', { teams: washed });
+          console.log('The storm surge is at its peak');
+          io.emit('surge');
         }, STORM * 1000),
         setTimeout(() => finish(match?.timeUp()), (STORM + STORM_FINAL) * 1000),
       ];
@@ -171,6 +175,22 @@ io.on('connection', (socket) => {
   socket.on('move', (state) => match?.move(socket.id, state, lobby.buildLeft > 0));
   socket.on('beds', (beds) => match?.setBeds(beds));
   socket.on('bases', (bases) => match?.setBases(bases));
+  socket.on('kubos', (kubos) => match?.setKubos(kubos));
+  // Putting up your team's bahay kubo: everyone builds it, or you hear why not.
+  socket.on('placeKubo', (where) => {
+    if (!match) return;
+    const { kubo, error } = match.placeKubo(socket.id, where);
+    if (error) return socket.emit('kuboRefused', { reason: error });
+    console.log(`${kubo.by} put up Team ${TEAMS[kubo.team].name}'s bahay kubo`);
+    io.emit('kuboPlaced', kubo);
+  });
+  // The flood reached a bed (once the storm is on): it's washed away.
+  socket.on('bedFlooded', (data) => {
+    const team = data?.team;
+    if (!match || lobby.buildLeft > 0 || !match.flood(team)) return;
+    console.log(`The flood washed away Team ${TEAMS[team].name}'s bed`);
+    io.emit('bedDestroyed', { team, flood: true });
+  });
   // Putting your team's bed down: everyone sees where, or you hear why not.
   socket.on('placeBed', (where) => {
     if (!match) return;
@@ -202,6 +222,14 @@ io.on('connection', (socket) => {
   socket.on('build', (msg) => {
     const p = match?.players.get(socket.id);
     if (!p || !msg || !BUILD_OPS.has(msg.op) || typeof msg.key !== 'string' || msg.key.length > 40) return;
+    // Everyone can build MAX_STAIRS stairs at most.
+    p.stairs ??= new Set();
+    if (msg.op === 'place' && msg.plan?.type === 'stairs') {
+      if (p.stairs.size >= MAX_STAIRS) return;
+      p.stairs.add(msg.key);
+    } else if (msg.op === 'remove') {
+      p.stairs.delete(msg.key);
+    }
     socket.broadcast.emit('build', msg.op === 'place' ? { ...msg, team: p.team } : msg);
   });
   // A swing at a piece another team built. Nothing can be hurt during the build phase.

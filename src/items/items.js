@@ -21,10 +21,6 @@ export const ITEMS = {
     name: 'Berries', description: 'Right-click to eat: a little stamina and health back.',
     stack: 24, color: '#8e1f3a', floats: true, eat: { stamina: 25, health: 6 },
   },
-  coconut: {
-    name: 'Coconut', description: 'A young coconut (buko) from a palm on the beach. Right-click to drink its water and eat it: stamina and health back.',
-    stack: 8, color: '#5c7a2c', floats: true, eat: { stamina: 40, health: 12 },
-  },
   knife: {
     name: 'Makeshift knife', description: 'A sharp stone flake wedged into a split stick. Cuts twice the fibre from bushes, and fibre from grass anywhere it grows.',
     stack: 1, color: '#8a8780', floats: false, tool: 'knife', durability: 40,
@@ -38,8 +34,12 @@ export const ITEMS = {
     stack: 1, color: '#8a8780', floats: false, tool: 'pickaxe', durability: 50,
   },
   bed: {
-    name: 'Team bed', description: 'Your team’s one bed, in a multiplayer match. Select it, aim at the ground and right-click to place it, anywhere outside the other teams’ bases (R turns it). While it stands, your team comes back at it after going down.',
+    name: 'Team bed', description: 'Your team’s one bed, in a multiplayer match. Select it, aim at the ground and right-click to place it, anywhere outside the other teams’ bases (R turns it). While it stands, your team comes back at it after going down. If the flood reaches it, it’s washed away.',
     stack: 1, color: '#6e4a2c', floats: false, keep: true,
+  },
+  kubo: {
+    name: 'Bahay kubo', description: 'Your team’s house on stilts, in a multiplayer match: bamboo, woven sawali walls and a steep nipa roof, 4 m square, with steps up to the door. Select it, aim at the ground and right-click: it goes up at once (R turns the door). Raised above the floods, it’s the safest place for your bed.',
+    stack: 1, color: '#b89a62', floats: false, keep: true,
   },
 };
 
@@ -125,21 +125,6 @@ const DRAW = {
     stroke(ctx, head, 6, '#a9a59e');
     stroke(ctx, () => { ctx.moveTo(18, 17); ctx.quadraticCurveTo(34, 9, 48, 15); }, 2, '#d2cfc8');
   },
-  coconut(ctx) {
-    const g = ctx.createRadialGradient(26, 26, 4, 32, 36, 24);
-    g.addColorStop(0, '#a9c45a');
-    g.addColorStop(0.6, '#5c7a2c');
-    g.addColorStop(1, '#2f4415');
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.ellipse(32, 36, 20, 22, 0.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#6b4a2a';
-    ctx.beginPath();
-    ctx.ellipse(36, 14, 7, 4, 0.2, 0, Math.PI * 2);
-    ctx.fill();
-    stroke(ctx, () => { ctx.moveTo(22, 24); ctx.quadraticCurveTo(18, 36, 24, 48); }, 2, 'rgba(255, 255, 255, 0.3)');
-  },
   // A bed seen from the foot end, a little from above: wooden frame and
   // legs, a headboard, a pillow and a blanket.
   bed(ctx) {
@@ -163,6 +148,33 @@ const DRAW = {
     ctx.closePath();
     ctx.fill();
     stroke(ctx, () => { ctx.moveTo(8, 42); ctx.lineTo(56, 42); }, 3, '#3b2616');
+  },
+  // A bahay kubo: a steep thatched roof over woven walls, on bamboo stilts,
+  // with steps up to the door.
+  kubo(ctx) {
+    ctx.fillStyle = '#c9b16a';
+    for (const x of [16, 30, 44]) ctx.fillRect(x, 40, 4, 18);       // stilts
+    ctx.fillStyle = '#b8955c';
+    ctx.fillRect(12, 26, 40, 15);                                   // walls
+    ctx.strokeStyle = 'rgba(80, 56, 24, 0.6)';
+    ctx.lineWidth = 1;
+    for (let x = 14; x < 52; x += 4) {
+      ctx.beginPath();
+      ctx.moveTo(x, 26);
+      ctx.lineTo(x + 2, 41);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#3b2616';
+    ctx.fillRect(36, 28, 9, 13);                                    // door
+    ctx.fillStyle = '#7a6236';
+    ctx.beginPath();                                                // roof
+    ctx.moveTo(4, 30);
+    ctx.lineTo(32, 6);
+    ctx.lineTo(60, 30);
+    ctx.closePath();
+    ctx.fill();
+    stroke(ctx, () => { ctx.moveTo(10, 26); ctx.lineTo(32, 8); ctx.lineTo(54, 26); }, 2, '#a68a52');
+    stroke(ctx, () => { ctx.moveTo(40, 42); ctx.lineTo(50, 58); }, 3, '#c9b16a');   // steps
   },
   berries(ctx) {
     ctx.fillStyle = '#4f8a32';

@@ -11,7 +11,7 @@ const KEY = 'washed-away.tips';
 export const SOLO = [
   { text: 'Walk with WASD and look around with the mouse.', done: (s) => s.walked > 8 },
   { text: 'Pick up 2 sticks and 2 stones with E. Sticks lie near the trees, stones on the beaches.', done: (s) => s.has('stick', 2) && s.has('stone', 2) },
-  { text: 'Pick a coconut from a palm on the beach with E, then eat it: select it and right-click.', done: (s) => s.ate },
+  { text: 'Gather berries from a bush with E, then eat them: select them and right-click.', done: (s) => s.ate },
   { text: 'Open the inventory with I and craft a stone axe.', done: (s) => s.has('axe') },
   { text: 'Select the axe (1–9) and press E at a tree to fell it. The prompt counts the blows.', done: (s) => s.felled },
   { text: 'Press B to build. Place a floor with E, then split logs into planks with the axe and carry them to it.', done: (s) => s.built },
@@ -19,11 +19,12 @@ export const SOLO = [
 ];
 
 export const MATCH = [
-  { text: 'Your team’s bed is in your hotbar. Select it, aim at the ground and right-click to place it, anywhere outside the other bases (R turns it). You come back beside it after going down.', done: (s) => !s.has('bed') || s.open },
+  { text: 'Your team’s bahay kubo is in your hotbar. Select it, aim at the ground and right-click: the house on stilts goes up at once (R turns the door).', done: (s) => !s.has('kubo') || s.open },
+  { text: 'Now your bed: select it and right-click to place it, inside your bahay kubo or anywhere outside the other bases. You come back beside it after going down, and if the flood reaches it, it’s gone.', done: (s) => !s.has('bed') || s.open },
   { text: 'Pick up sticks and stones with E. Sticks lie near the trees, stones on the beaches.', done: (s) => s.has('stick', 2) && s.has('stone', 3) },
   { text: 'Open the inventory with I and craft a stone pickaxe: it breaks beds fastest.', done: (s) => s.has('pickaxe') },
   { text: 'Wall your bed in with B before the barriers come down.', done: (s) => s.built || s.open },
-  { text: 'Once the barriers are down, left-click or F strikes. Break the other beds before the storm surge washes every bed away.', done: (s) => s.struck || s.shown > 16 },
+  { text: 'Once the barriers are down, left-click or F strikes. Break the other beds, and keep yours above the flood: any bed the water reaches is washed away.', done: (s) => s.struck || s.shown > 16 },
 ];
 
 export class Tutorial {

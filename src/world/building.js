@@ -1,15 +1,22 @@
 import * as THREE from 'three';
 import { uniforms, clamp } from '../shared.js';
+import { MAX_STAIRS } from '../match/rules.js';
 import { boardGeometry, logGeometry } from './wood.js';
 
 // Building with wood. Pieces snap to a 2 m grid: floors on posts or on log
 // pilings (on land or out over the water), walls, windows, doorways,
-// ladders and railings along a floor's edges, and pitched roofs over
+// ladders, railings and stairs along a floor's edges, and pitched roofs over
 // floors. A piece is placed as a blueprint, then built up a plank (or log)
 // at a time, carried in your arms (see timber.js). Finished, its joints are
 // made in the joinery mini-game (ui/joinery.js): the better they fit, the
-// longer it lasts. Then it's solid: you stand on floors, climb ladders,
-// walls and railings stop you and roofs give shade.
+// longer it lasts. Then it's solid: you stand on floors, climb ladders and
+// stairs, walls and railings stop you and roofs give shade. Everyone can
+// build MAX_STAIRS stairs at most.
+//
+// In a multiplayer match each team also puts up a bahay kubo (buildKubo):
+// the house on stilts of the Philippines, 2 × 2 cells, built all at once
+// out of the same pieces in bamboo, woven bamboo (sawali) and nipa thatch
+// (materials in kubo.js), with its own steps up to the door.
 //
 // Everything built wears down. Wood ages in any weather; rain soaks it and
 // wet wood rots; storm winds batter roofs and anything high up; snow loads
@@ -37,7 +44,15 @@ const MAX_PILING = 10;             // longest piling, from the seabed (m)
 // Pilings: how high the deck stands above the water (or the ground), R to change.
 export const DECK_LEVELS = [2, 3, 4, 5];
 const REACH = 4;                   // from your eyes (m)
-const MAX_SOLID = 6000, MAX_GHOST = 3000, MAX_LOGS = 400;
+const MAX_SOLID = 6000, MAX_GHOST = 3000, MAX_LOGS = 400, MAX_SKIN = 2000;
+// Stairs: about 40° from a floor's edge down to the ground, a step every
+// 22 cm or so, 1 m wide. Lower than `min`, step up; higher than `max`, use
+// a ladder.
+const STAIRS = { width: 1, angle: 0.7, rise: 0.22, min: 0.6, max: 4.4 };
+// A bahay kubo: its deck `raise` above the highest ground under it, a roof
+// `rise` high over its walls, overhanging them by `eave` (and `overhang`
+// past the gable ends).
+const KUBO = { raise: 1.8, rise: 2.3, eave: 0.6, overhang: 0.35, steep: 2.5 };
 const HALF_PI = Math.PI / 2;
 const CORNERS = [[0.12, 0.12], [1.88, 0.12], [0.12, 1.88], [1.88, 1.88]];
 const SIDES = [[0, -1], [1, 0], [0, 1], [-1, 0]];   // neighbouring cell across each side
@@ -52,6 +67,7 @@ export const PIECES = [
   { id: 'window', name: 'Window', cost: 5, hint: 'A wall with a window in it' },
   { id: 'ladder', name: 'Ladder', cost: 3, hint: 'Up the side of a raised floor' },
   { id: 'railing', name: 'Railing', cost: 3, hint: 'Along a floor edge, so you don’t fall off' },
+  { id: 'stairs', name: 'Stairs', cost: 5, hint: `Steps up to a raised floor, from one of its edges (${MAX_STAIRS} each)` },
 ];
 const PIECE = Object.fromEntries(PIECES.map((p) => [p.id, p]));
 
@@ -65,13 +81,13 @@ const WEAR = {
   surf: 0.0011,      // waves on pilings, by how rough the sea is
 };
 // How much wind gets at each piece.
-const EXPOSURE = { floor: 0.5, wall: 1, doorway: 1, window: 1.1, roof: 1.4, pilings: 0.3, ladder: 0.6, railing: 0.8 };
+const EXPOSURE = { floor: 0.5, wall: 1, doorway: 1, window: 1.1, roof: 1.4, pilings: 0.3, ladder: 0.6, railing: 0.8, stairs: 0.6 };
 // Thick logs outlast planks.
 const RESIST = { pilings: 5 };
 // Condition back per plank (or log) used in a repair.
 const REPAIR = { plank: 0.4, log: 0.5 };
 // Ground each piece covers (m²), which stresses the land under it (see climate/entity.js).
-const FOOTPRINT = { floor: CELL * CELL, pilings: 0.5, wall: 0.3, doorway: 0.3, window: 0.3, ladder: 0.2, railing: 0.2, roof: 0 };
+const FOOTPRINT = { floor: CELL * CELL, pilings: 0.5, wall: 0.3, doorway: 0.3, window: 0.3, ladder: 0.2, railing: 0.2, roof: 0, stairs: 0.8 };
 
 // Joinery decides how well a piece holds together (q 0..1): from rough
 // joints, which wear about as fast as unjoined ones, to masterful ones that
@@ -228,6 +244,90 @@ function roofParts(x0, z0, y, dir) {
   return parts;
 }
 
+// Stairs from a floor's edge (its top at `top`) out and down to the
+// ground: two stringers and a tread every STAIRS.rise or so.
+// Returns { parts, bottom (the ground at their foot), run (how far out) }.
+function stairsParts(terrain, { ax, az, bx, bz, nx, nz }, top) {
+  const ux = (bx - ax) / CELL, uz = (bz - az) / CELL, mx = (ax + bx) / 2, mz = (az + bz) / 2;
+  const pitch = Math.tan(STAIRS.angle);
+  let bottom = terrain.heightAt(mx + nx, mz + nz), run = 1;
+  for (let k = 0; k < 4; k++) {
+    run = Math.max(0.6, (top - bottom) / pitch);
+    bottom = Math.min(top - 0.3, terrain.heightAt(mx + nx * run, mz + nz * run));
+  }
+  run = Math.max(0.6, (top - bottom) / pitch);
+  const rise = top - bottom, len = Math.hypot(rise, run), tilt = Math.atan2(rise, run);
+  const parts = [];
+  for (const sgn of [-1, 1]) {
+    const k = sgn * (STAIRS.width / 2 - 0.04);
+    board(parts, 1, mx + ux * k + (nx * run) / 2, (top + bottom) / 2 - 0.1, mz + uz * k + (nz * run) / 2, len + 0.1, 0.2, 0.06, Math.atan2(-nz, nx), 0, -tilt, true);
+  }
+  const steps = Math.max(2, Math.round(rise / STAIRS.rise)), depth = run / steps;
+  for (let s = 1; s < steps; s++) {
+    // Tread s, counted up from the ground: its top, and how far out it is.
+    const h = bottom + (rise * s) / steps, out = run * (1 - s / steps) + depth / 2;
+    board(parts, 1 + Math.floor((s / steps) * 4), mx + nx * out, h - 0.03, mz + nz * out, STAIRS.width, 0.06, depth + 0.06, Math.atan2(-uz, ux));
+  }
+  return { parts, bottom, run };
+}
+
+// A bahay kubo's roof over its 2 × 2 cells (x0, z0: the corner; y: the
+// wall tops): a steep gable of nipa thatch in rows lapping down each side,
+// the gable ends woven, a bamboo ridge pole and a thatch ridge cap,
+// overhanging well to shed typhoon rain. dir 0 runs the ridge along X, 1
+// along Z.
+function kuboRoofParts(x0, z0, y, dir) {
+  const parts = [];
+  const cx = x0 + CELL, cz = z0 + CELL, length = 2 * CELL + 2 * KUBO.overhang;
+  const slope = Math.atan2(KUBO.rise, CELL), run = (CELL + KUBO.eave) / Math.cos(slope);
+  const yaw = dir ? HALF_PI : 0;
+  // In the roof's own frame: lx along the ridge, lz across it.
+  const add = (step, skin, lx, ly, lz, sx, sy, sz, tilt = 0, roll = 0) => {
+    board(parts, step, dir ? cx + lz : cx + lx, ly, dir ? cz - lx : cz + lz, sx, sy, sz, yaw, tilt, roll, !skin);
+    if (skin) parts.at(-1).skin = skin;
+  };
+  add(1, null, 0, y + KUBO.rise - 0.12, 0, length, 0.13, 0.13);
+  for (const end of [-CELL, CELL]) {
+    for (let k = 0; k < 10; k++) {
+      const lz = -CELL + (k + 0.5) * (CELL / 5);
+      const h = KUBO.rise * (1 - Math.abs(lz) / CELL);
+      add(2, 'sawali', end, y + h / 2, lz, h, 0.06, CELL / 5 - 0.01, 0, HALF_PI);
+    }
+  }
+  const rows = 7, width = run / rows;
+  for (const side of [1, -1]) {
+    for (let b = 0; b < rows; b++) {
+      const s = (b + 0.5) * width;   // down the slope from the ridge
+      add(3, 'thatch', 0, y + KUBO.rise - s * Math.sin(slope) + 0.1, side * s * Math.cos(slope), length, 0.16, width * 1.3, side * slope);
+    }
+  }
+  add(4, 'thatch', 0, y + KUBO.rise + 0.12, 0, length + 0.1, 0.2, 0.55);
+  return parts;
+}
+
+// The kubo's look on parts made for wood: posts, poles and frames become
+// slender bamboo; boards become `skin` (woven bamboo walls, split-bamboo
+// floors and steps).
+const THIN = new THREE.Vector3(1, 0.6, 0.6);
+function bamboo(parts, skin) {
+  for (const part of parts) {
+    if (part.skin) continue;
+    if (!(part.up || part.frame || part.log)) {
+      part.skin = skin;
+      continue;
+    }
+    part.log = true;
+    if (part.up) {
+      part.up.w *= 0.6;
+      part.up.d *= 0.6;
+      uprightMatrix(part.up, part.up.bottom, part.up.top, part.matrix);
+    } else {
+      part.matrix.scale(THIN);
+    }
+  }
+  return parts;
+}
+
 // Half-extent of a transformed unit box: half the absolute columns, summed.
 const halfY = (el) => (Math.abs(el[1]) + Math.abs(el[5]) + Math.abs(el[9])) / 2;
 
@@ -294,10 +394,12 @@ function pushFromRect(p, r, x0, z0, x1, z1) {
 // built or taken down (things lying on it may need to fall).
 // onImpact({ kind: 'build', x, z, area }): ground built over, in m²
 // (negative when a piece comes down), for the climate (climate/entity.js).
-export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, takeWood, release, onMessage, onSound, onChange, onImpact }) {
+// kubo: the bahay kubo's materials (kubo.js).
+export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, shadows, takeWood, release, onMessage, onSound, onChange, onImpact }) {
   // Grid cells with a floor and/or pilings: { i, j, x0, z0, y (deck top), floor, roof, pilings, top (of the pilings) }.
   const cells = new Map();
   const edges = new Map();   // walls, windows, doorways, ladders and railings by edge key
+  const stairs = new Map();  // stairs by edge key (they can share an edge with a doorway)
   const pieces = [];
   let dirty = true;
 
@@ -308,8 +410,8 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
   const ghost = new THREE.InstancedMesh(boardGeo, wood.ghost, MAX_GHOST);
   const ghostLogs = new THREE.InstancedMesh(logGeo, wood.ghost, MAX_LOGS);
   const previewMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.4, depthWrite: false, fog: false });
-  const preview = new THREE.InstancedMesh(boardGeo, previewMat, 64);
-  const previewLogs = new THREE.InstancedMesh(logGeo, previewMat, 8);
+  const preview = new THREE.InstancedMesh(boardGeo, previewMat, 256);
+  const previewLogs = new THREE.InstancedMesh(logGeo, previewMat, 96);
   for (const mesh of [solid, ghost, ghostLogs, preview, previewLogs]) {
     mesh.count = 0;
     mesh.frustumCulled = false;
@@ -318,20 +420,26 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
   solid.castShadow = shadows;
   solid.receiveShadow = true;
   ghost.renderOrder = ghostLogs.renderOrder = preview.renderOrder = previewLogs.renderOrder = 2;
-  // Built logs, one mesh per kind of bark, made when first needed.
-  const logs = {};
+  // Built logs, one mesh per kind of bark (or bamboo), and the kubo's boards,
+  // one mesh per skin, made when first needed.
+  const logs = {}, skins = {};
+  function instanced(geometry, material, max) {
+    const mesh = new THREE.InstancedMesh(geometry, material, max);
+    mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(max * 3), 3);
+    mesh.count = 0;
+    mesh.frustumCulled = false;
+    mesh.castShadow = shadows;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    return { mesh, n: 0 };
+  }
   function logMesh(bark) {
-    if (!logs[bark]) {
-      const mesh = new THREE.InstancedMesh(logGeo, [wood.bark[bark], wood.endGrain, wood.endGrain], MAX_LOGS);
-      mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAX_LOGS * 3), 3);
-      mesh.count = 0;
-      mesh.frustumCulled = false;
-      mesh.castShadow = shadows;
-      mesh.receiveShadow = true;
-      scene.add(mesh);
-      logs[bark] = { mesh, n: 0 };
-    }
+    logs[bark] ??= instanced(logGeo, [bark === 'bamboo' ? kubo.bamboo : wood.bark[bark], wood.endGrain, wood.endGrain], MAX_LOGS);
     return logs[bark];
+  }
+  function skinMesh(skin) {
+    skins[skin] ??= instanced(boardGeo, kubo[skin], MAX_SKIN);
+    return skins[skin];
   }
 
   // Wood greys and darkens as it wears and darkens when wet. Below the
@@ -355,6 +463,11 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
       if (l.n >= MAX_LOGS) return;
       l.mesh.setMatrixAt(l.n, matrix);
       l.mesh.setColorAt(l.n++, color);
+    } else if (part.skin) {
+      const k = skinMesh(part.skin);
+      if (k.n >= MAX_SKIN) return;
+      k.mesh.setMatrixAt(k.n, matrix);
+      k.mesh.setColorAt(k.n++, color);
     } else if (s < MAX_SOLID) {
       solid.setMatrixAt(s, matrix);
       solid.setColorAt(s++, color);
@@ -363,7 +476,7 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
   function render() {
     s = 0;
     let g = 0, gl = 0;
-    for (const l of Object.values(logs)) l.n = 0;
+    for (const l of [...Object.values(logs), ...Object.values(skins)]) l.n = 0;
     for (const piece of pieces) {
       piece.shown = { health: piece.health, wet: piece.wet, flood: piece.floodMark };
       const mark = piece.floodMark;
@@ -392,7 +505,7 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
     solid.instanceColor.needsUpdate = true;
     ghost.instanceMatrix.needsUpdate = true;
     ghostLogs.instanceMatrix.needsUpdate = true;
-    for (const { mesh, n } of Object.values(logs)) {
+    for (const { mesh, n } of [...Object.values(logs), ...Object.values(skins)]) {
       mesh.count = n;
       mesh.instanceMatrix.needsUpdate = true;
       mesh.instanceColor.needsUpdate = true;
@@ -532,6 +645,87 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
     return { ...plan, ok: true };
   }
 
+  // Stairs you've built yourself (not a kubo's own steps): MAX_STAIRS at most.
+  const ownStairs = () => pieces.filter((p) => p.type === 'stairs' && !p.remote && !p.builtIn).length;
+
+  // Stairs: down from the floor edge nearest the crosshair to the ground.
+  function planStairs(ray) {
+    const h = floorHit(ray, false);
+    if (!h) return null;
+    const c = h.cell;
+    const fx = h.x - c.x0, fz = h.z - c.z0;
+    const near = [fz, CELL - fx, CELL - fz, fx];
+    const side = near.indexOf(Math.min(...near));
+    const edge = edgeOf(c.i, c.j, side);
+    const { parts, bottom, run } = stairsParts(terrain, edge, c.y);
+    const plan = { type: 'stairs', cell: c, edge, side, y: c.y, bottom, run, parts };
+    const on = edges.get(edge.key);
+    if (stairs.has(edge.key)) return { ...plan, reason: 'There are stairs here already' };
+    if (on && on.type !== 'doorway') return { ...plan, reason: `There’s a ${on.name} in the way` };
+    const other = cells.get(cellKey(c.i + SIDES[side][0], c.j + SIDES[side][1]));
+    if (other?.floor && Math.abs(other.y - c.y) < 1.5) return { ...plan, reason: 'There’s a floor on the other side' };
+    if (c.y - bottom < STAIRS.min) return { ...plan, reason: 'Too low for stairs: just step up' };
+    if (c.y - bottom > STAIRS.max) return { ...plan, reason: 'Too high for stairs here: build a ladder' };
+    if (ownStairs() >= MAX_STAIRS) return { ...plan, reason: `You can build ${MAX_STAIRS} stairs at most` };
+    return { ...plan, ok: true };
+  }
+
+  // --- The bahay kubo: cells (i0..i0+1, j0..j0+1), its door on side `turn`
+  // (0 north, 1 east, 2 south, 3 west) with steps down from it.
+  const BLOCK = [[0, 0], [1, 0], [0, 1], [1, 1]];
+  const SIDE_CELLS = [[[0, 0], [1, 0]], [[1, 0], [1, 1]], [[0, 1], [1, 1]], [[0, 0], [0, 1]]];
+  // Whether one fits there, and where its deck goes: { ok, reason, deck }.
+  function kuboFit(i0, j0, turn) {
+    let high = -Infinity, low = Infinity, reason = null;
+    for (const [a, b] of BLOCK) {
+      const x0 = (i0 + a) * CELL, z0 = (j0 + b) * CELL;
+      const g = groundUnder(x0, z0);
+      high = Math.max(high, g.high);
+      low = Math.min(low, g.low);
+      if (cells.has(cellKey(i0 + a, j0 + b))) reason ??= 'Something’s built here already';
+      else if (blocked(x0, z0)) reason ??= 'Something’s in the way';
+    }
+    const sea = uniforms.uWaterLevel.value;
+    const deck = Math.max(high, sea + 0.5) + KUBO.raise;
+    if (low < sea + 0.1) reason ??= 'Not in the water';
+    if (high - low > KUBO.steep) reason ??= 'Too steep for a bahay kubo';
+    // Clear ground in front of the door for the steps.
+    const [a, b] = SIDE_CELLS[turn][0], [di, dj] = SIDES[turn];
+    const i = i0 + a + di, j = j0 + b + dj;
+    if (cells.get(cellKey(i, j))?.floor) reason ??= 'Keep the doorway clear';
+    else if (blocked(i * CELL, j * CELL)) reason ??= 'Something’s in the way of the steps';
+    return { ok: !reason, reason, deck };
+  }
+  // The plans for each of its pieces, in building order (cellIJ: the cell a
+  // piece stands on, found once that cell's floor is down).
+  function kuboPlans(i0, j0, turn, deck) {
+    const plans = [];
+    for (const [a, b] of BLOCK) {
+      const i = i0 + a, j = j0 + b, x0 = i * CELL, z0 = j * CELL;
+      plans.push({ type: 'pilings', i, j, x0, z0, top: deck - DECK, low: groundUnder(x0, z0).low, parts: bamboo(pilingParts(terrain, x0, z0, deck - DECK)) });
+    }
+    for (const [a, b] of BLOCK) {
+      const i = i0 + a, j = j0 + b, x0 = i * CELL, z0 = j * CELL;
+      plans.push({ type: 'floor', i, j, x0, z0, y: deck, onPilings: true, parts: bamboo(floorParts(terrain, x0, z0, deck, true), 'slat') });
+    }
+    // Two edges a side: the doorway and a window at the front, a wall and a
+    // window at the back, a window and a wall at each end.
+    for (let side = 0; side < 4; side++) {
+      const kinds = side === turn ? ['doorway', 'window'] : side === (turn + 2) % 4 ? ['wall', 'window'] : ['window', 'wall'];
+      SIDE_CELLS[side].forEach(([a, b], k) => {
+        const cellIJ = [i0 + a, j0 + b], edge = edgeOf(i0 + a, j0 + b, side);
+        plans.push({ type: kinds[k], cellIJ, edge, side, y: deck, parts: bamboo(wallParts(edge, deck, kinds[k]), 'sawali') });
+        if (kinds[k] !== 'doorway') return;
+        const steps = stairsParts(terrain, edge, deck);
+        plans.push({ type: 'stairs', cellIJ, edge, side, y: deck, bottom: steps.bottom, run: steps.run, parts: bamboo(steps.parts, 'slat') });
+      });
+    }
+    const dir = turn % 2 ? 1 : 0;   // the ridge along the door side
+    plans.push({ type: 'roof', cellIJ: [i0, j0], dir, y: deck + WALL_HEIGHT, parts: kuboRoofParts(i0 * CELL, j0 * CELL, deck + WALL_HEIGHT, dir) });
+    bamboo(plans.at(-1).parts);
+    return plans;
+  }
+
   // --- Sharing (a multiplayer match): { team, teamName(team), send(msg) }.
   let sharing = null;
   const byKey = (key) => pieces.find((p) => p.key === key);
@@ -554,6 +748,11 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
     if (!cell?.floor) return null;
     if (type === 'roof') return cell.roof ? null : { type, cell, dir: spec.dir, y: spec.y, parts: roofParts(cell.x0, cell.z0, spec.y, spec.dir), ok: true };
     const edge = edgeOf(i, j, spec.side);
+    if (type === 'stairs') {
+      if (stairs.has(edge.key)) return null;
+      const { parts, bottom, run } = stairsParts(terrain, edge, cell.y);
+      return { type, cell, edge, side: spec.side, y: cell.y, bottom, run, parts, ok: true };
+    }
     if (edges.has(edge.key)) return null;
     const parts = type === 'ladder' ? ladderParts(terrain, edge, cell.y) : type === 'railing' ? railingParts(edge, cell.y) : wallParts(edge, cell.y, type);
     return { type, cell, edge, side: spec.side, y: cell.y, parts, ok: true };
@@ -596,6 +795,12 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
       plan.cell.roof = piece;
       piece.cell = plan.cell;
       piece.low = plan.y;
+    } else if (plan.type === 'stairs') {
+      stairs.set(plan.edge.key, piece);
+      piece.cell = plan.cell;
+      piece.edge = plan.edge;
+      piece.low = plan.bottom;
+      piece.run = plan.run;
     } else {
       edges.set(plan.edge.key, piece);
       piece.cell = plan.cell;
@@ -603,7 +808,7 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
       piece.low = plan.y;
     }
     piece.center = piece.box.getCenter(new THREE.Vector3());
-    piece.key = piece.edge ? `edge:${piece.edge.key}` : `${piece.type}:${piece.cell.i},${piece.cell.j}`;
+    piece.key = plan.type === 'stairs' ? `stairs:${piece.edge.key}` : piece.edge ? `edge:${piece.edge.key}` : `${piece.type}:${piece.cell.i},${piece.cell.j}`;
     piece.team = owner.team ?? sharing?.team;
     piece.remote = !!owner.remote;
     pieces.push(piece);
@@ -619,6 +824,10 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
       piece.deck = { x0: cell.x0, z0: cell.z0, x1: cell.x0 + CELL, z1: cell.z0 + CELL, top: cell.y, bottom: cell.y - DECK };
     } else if (piece.type === 'pilings') {
       piece.posts = piece.parts.map(({ up }) => ({ x: up.x, z: up.z, r: up.w, y0: up.bottom, y1: up.top }));
+    } else if (piece.type === 'stairs') {
+      // What you walk on: a slope from the floor's edge out to its foot.
+      const { ax, az, bx, bz, nx, nz } = piece.edge;
+      piece.steps = { mx: (ax + bx) / 2, mz: (az + bz) / 2, ux: (bx - ax) / CELL, uz: (bz - az) / CELL, nx, nz, run: piece.run, top: cell.y, bottom: piece.low };
     } else if (piece.edge) {
       const { ax, az, bx, bz, nx, nz } = piece.edge, y = piece.low;
       const ux = (bx - ax) / CELL, uz = (bz - az) / CELL;
@@ -695,8 +904,10 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
     const { i, j } = piece.cell;
     const on = [];
     SIDES.forEach(([di, dj], side) => {
-      const other = edges.get(edgeOf(i, j, side).key);
+      const key = edgeOf(i, j, side).key;
+      const other = edges.get(key), steps = stairs.get(key);
       if (other && !cells.get(cellKey(i + di, j + dj))?.floor) on.push(other);
+      if (steps?.cell === piece.cell) on.push(steps);
     });
     if (piece.cell.roof) on.push(piece.cell.roof);
     return on;
@@ -710,7 +921,9 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
       else cell.pilings = null;
       if (!cell.floor && !cell.pilings) cells.delete(cellKey(cell.i, cell.j));
     } else if (piece.type === 'roof') {
-      cell.roof = null;
+      for (const c of piece.cells ?? [cell]) if (c.roof === piece) c.roof = null;
+    } else if (piece.type === 'stairs') {
+      stairs.delete(piece.edge.key);
     } else {
       edges.delete(piece.edge.key);
     }
@@ -837,17 +1050,27 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
 
   const v = new THREE.Vector3();
   return {
-    // The highest finished floor under (x, z) whose top is below maxY.
+    // The highest finished floor (or stairs) under (x, z) whose top is below maxY.
     floorAt(x, z, maxY) {
       const c = cells.get(cellKey(Math.floor(x / CELL), Math.floor(z / CELL)));
-      return c?.floor?.done && c.y <= maxY ? c.y : -Infinity;
+      let y = c?.floor?.done && c.y <= maxY ? c.y : -Infinity;
+      for (const piece of stairs.values()) {
+        const s = piece.done && piece.steps;
+        if (!s) continue;
+        const dx = x - s.mx, dz = z - s.mz;
+        const along = dx * s.ux + dz * s.uz, out = dx * s.nx + dz * s.nz;
+        if (Math.abs(along) > STAIRS.width / 2 + 0.05 || out < -0.05 || out > s.run) continue;
+        const h = s.top - (Math.max(0, out) / s.run) * (s.top - s.bottom);
+        if (h <= maxY && h > y) y = h;
+      }
+      return y;
     },
 
     // Keeps a body (feet at p, radius r, this tall) out of walls, railings
     // and pilings, and out of floors higher than it can step onto.
     collide(p, r, height, step) {
       for (const piece of pieces) {
-        if (!piece.done || piece.type === 'roof' || piece.type === 'ladder') continue;
+        if (!piece.done || piece.type === 'roof' || piece.type === 'ladder' || piece.type === 'stairs') continue;
         if ((piece.center.x - p.x) ** 2 + (piece.center.z - p.z) ** 2 > 16) continue;
         if (piece.deck) {
           const d = piece.deck;
@@ -886,7 +1109,43 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
       if (type === 'floor') return planFloor(ray);
       if (type === 'pilings') return planPilings(ray, turn);
       if (type === 'roof') return planRoof(ray, turn % 2);
+      if (type === 'stairs') return planStairs(ray);
       return planEdge(type, ray);
+    },
+
+    // Where a bahay kubo would go, aiming at the ground (turn: R, which side
+    // its door faces): { ok, reason, i0, j0, turn, deck, x, z, parts }, or
+    // null with no ground in reach. It goes up on 2 × 2 cells centred on
+    // the grid corner nearest the crosshair.
+    kuboPlan(ray, turn = 0) {
+      if (!groundHit(ray, 12)) return null;
+      const i0 = Math.round(hit.x / CELL) - 1, j0 = Math.round(hit.z / CELL) - 1, t = turn % 4;
+      const fit = kuboFit(i0, j0, t);
+      return { ...fit, i0, j0, turn: t, x: (i0 + 1) * CELL, z: (j0 + 1) * CELL, parts: kuboPlans(i0, j0, t, fit.deck).flatMap((p) => p.parts) };
+    },
+
+    // Whether a bahay kubo fits on those cells: { ok, reason, deck }.
+    kuboFits: (i0, j0, turn) => kuboFit(i0, j0, turn),
+
+    // Puts up a bahay kubo all at once ({ i0, j0, turn, deck }, the same in
+    // every game), for a team (owner: { team }). Its pieces are as sturdy as
+    // well-joined ones; they can be repaired, and broken by another team's
+    // tools, but not taken apart.
+    buildKubo({ i0, j0, turn, deck }, owner = {}) {
+      for (const plan of kuboPlans(i0, j0, turn, deck)) {
+        if (plan.cellIJ) {
+          plan.cell = cells.get(cellKey(...plan.cellIJ));
+          if (!plan.cell?.floor) continue;
+        }
+        const piece = place(plan, { ...owner, remote: true });
+        Object.assign(piece, { builtIn: 'kubo', name: `bahay kubo ${piece.name}`, barks: Array(16).fill('bamboo'), added: piece.cost, joints: 0.8 });
+        if (plan.type === 'roof') {
+          piece.cells = BLOCK.map(([a, b]) => cells.get(cellKey(i0 + a, j0 + b))).filter(Boolean);
+          for (const c of piece.cells) c.roof = piece;
+        }
+        complete(piece);
+      }
+      dirty = true;
     },
 
     // Shows a plan as a see-through preview: green if it fits, red if not.
@@ -981,8 +1240,16 @@ export function createBuilding(scene, { terrain, colliders, wood, rng, shadows, 
         const state = piece.done ? `${Math.ceil(piece.health * 100)}%` : 'blueprint';
         return { score, key: piece, dim: true, prompt: [[null, `${sharing.teamName(piece.team)}’s ${piece.name} · ${state}`]] };
       }
-      const hold = () => takeDown(piece);
       const has = carrying?.kind === wood;
+      // A bahay kubo: repairs, but no taking it apart for its wood.
+      if (piece.builtIn) {
+        const fix = has && piece.health < 0.97;
+        return {
+          score, key: piece, dim: !fix, act: fix ? () => repair(piece) : null,
+          prompt: [...(fix ? [['E', `Repair with a ${wood} (+${Math.round(REPAIR[wood] * 100)}%)`]] : []), [null, describe(piece)]],
+        };
+      }
+      const hold = () => takeDown(piece);
       if (!piece.done) {
         const need = piece.cost - piece.added;
         return {

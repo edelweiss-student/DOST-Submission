@@ -102,6 +102,12 @@ const DRAW = {
     ctx.fillStyle = '#5d4a33';
     ctx.fillRect(4, 54, 56, 5);
   },
+  stairs(ctx) {
+    // Steps from the ground up to a deck, seen from the side.
+    lines(ctx, [[8, 58, 46, 14]], 5);
+    for (let k = 0; k < 5; k++) boards(ctx, [[12 + k * 8, 50 - k * 9], [24 + k * 8, 50 - k * 9], [24 + k * 8, 54 - k * 9], [12 + k * 8, 54 - k * 9]]);
+    boards(ctx, [[44, 10], [60, 10], [60, 15], [44, 15]]);
+  },
 };
 
 function pieceIcon(id) {
