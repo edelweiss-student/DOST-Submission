@@ -20,7 +20,7 @@ const SOURCES = {
   tree: { tool: 'axe', needs: 'Fell it with an axe' },
   bush: {
     stock: 3, regrow: 120, tool: 'knife',
-    label: (knife) => (knife ? 'Cut fibre and berries' : 'Gather fibre and berries'),
+    label: (knife) => (knife ? 'Cut fibre and berries (twice the fibre)' : 'Gather fibre and berries'),
     // Bushes the sea has killed have no berries left, only dry stems.
     give: (r, { tool, dead }) => [
       ['fibre', (r() < 0.4 ? 2 : 1) * (tool ? 2 : 1)],
@@ -271,9 +271,10 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
     return { got: [{ id: it.id, count: 1 }] };
   }
 
-  // E: gather from a source (or chop at it). Returns what went into the
-  // bag, whether the bag was full or the source empty, and whether the
-  // selected tool was used (so it swings and wears).
+  // Gather from a source by hand (E, tool null), or work it with the tool
+  // in hand (a right-click swing). Returns what went into the bag, whether
+  // the bag was full or the source empty, and whether the tool was used
+  // (so it wears).
   function gather(target, simTime, tool, player) {
     const s = target.source, kind = SOURCES[s.kind];
     const used = tool === kind.tool;
@@ -313,9 +314,10 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
     // Every frame: items in the world fall, float and drift.
     update(dt, t) { updateDropped(dt, t); },
 
-    // What E would do on what you're looking at, as { score, prompt, dim,
-    // act }; hands: it needs your hands free; swing: it's done with the
-    // tool in hand (tool: the selected tool's kind).
+    // What you're looking at, as { score, prompt, dim, act, use }: act is
+    // what E does with your hands, use what a swing of the tool in hand
+    // does (tool: the selected tool's kind); hands: both need your hands
+    // free.
     focus(player, camera, tool, simTime) {
       const target = findTarget(player, camera, tool);
       if (!target) return null;
@@ -335,19 +337,25 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
         };
       }
       const s = target.source, kind = SOURCES[s.kind];
-      const act = () => gather(target, simTime, tool, player);
-      if (kind.needs && tool !== kind.tool) {
+      const fits = tool === kind.tool;
+      const use = fits ? () => gather(target, simTime, tool, player) : null;
+      if (kind.needs && !fits) {
         return { score: target.score, key: s, dim: true, prompt: [[null, kind.needs]] };
       }
       if (s.kind === 'tree') {
         const [done, needed] = timber.chopProgress(s.tree);
-        return { score: target.score, key: s, hands: true, swing: true, prompt: [['E', `Chop down (${done}/${needed})`]], act };
+        return { score: target.score, key: s, hands: true, prompt: [['Right-click', `Chop down (${done}/${needed})`]], use };
       }
       restock(s, simTime);
-      const empty = kind.stock && s.stock <= 0;
+      if (kind.stock && s.stock <= 0) {
+        return { score: target.score, key: s, hands: true, dim: true, prompt: [[null, 'Nothing left here for now']] };
+      }
+      // By hand where it can be done by hand (not grass, nor a fallen
+      // trunk), and better with the right tool.
+      const act = kind.needs || s.kind === 'grass' ? null : () => gather(target, simTime, null, player);
       return {
-        score: target.score, key: s, hands: true, dim: !!empty, swing: !empty && tool === kind.tool,
-        prompt: [['E', empty ? 'Nothing left here for now' : kind.label(tool === kind.tool)]], act,
+        score: target.score, key: s, hands: true, act, use,
+        prompt: [...(act ? [['E', kind.label(false)]] : []), ...(use ? [['Right-click', kind.label(true)]] : [])],
       };
     },
 

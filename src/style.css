@@ -329,50 +329,122 @@ html, body {
 #inv-tooltip b { display: block; color: var(--accent); }
 [hidden] { display: none !important; }
 
-#gpu-tip { margin-top: 12px; font-size: 12px; color: var(--accent); max-width: 440px; margin-inline: auto; }
-#gpu-tip:empty { display: none; }
-
 #underwater {
   position: fixed; inset: 0; pointer-events: none; opacity: 0;
   background: radial-gradient(ellipse at center, rgba(20, 90, 110, 0.15) 30%, rgba(5, 30, 45, 0.75) 100%);
   transition: opacity 0.25s;
 }
 
-/* The card sits in the middle when it fits; in a short window it starts at
-   the top and the screen scrolls, instead of losing its top and bottom. */
-#overlay {
-  position: fixed; inset: 0;
-  display: flex; overflow-y: auto;
-  background: radial-gradient(ellipse at center, rgba(40, 18, 8, 0.55), rgba(5, 8, 14, 0.85));
-  cursor: pointer; z-index: 10;
-}
-#overlay.hidden { display: none; }
-.card { margin: auto; max-width: 520px; padding: 32px 36px; text-align: center; }
-.card h1 { margin: 0; font-size: 44px; letter-spacing: 0.08em; color: var(--accent); }
-.card .tagline { margin: 8px 0 24px; color: var(--muted); font-style: italic; }
-.card .play { display: inline-block; padding: 10px 26px; border: 1px solid var(--accent); border-radius: 999px; font-weight: 600; }
-.card .controls { margin-top: 24px; display: grid; grid-template-columns: auto auto; gap: 4px 18px; justify-content: center; font-size: 13px; color: var(--muted); text-align: left; }
-.card .controls b { color: var(--text); font-weight: 600; text-align: right; }
-.card .dev { margin-top: 14px; font-size: 12px; color: #6f8291; }
-.card .credits { margin-top: 14px; font-size: 12px; color: var(--muted); }
-.settings { margin-top: 20px; display: flex; gap: 6px; justify-content: center; align-items: center; font-size: 13px; color: var(--muted); }
-.settings span { margin-right: 6px; }
-.settings button, .pill {
+.pill {
   font: inherit; color: var(--text); cursor: pointer;
   background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 999px; padding: 4px 12px;
 }
-.settings button:hover, .pill:hover { background: rgba(255, 255, 255, 0.12); }
-.settings button.active, .pill.active { border-color: var(--accent); color: var(--accent); }
+.pill:hover { background: rgba(255, 255, 255, 0.12); }
+.pill.active { border-color: var(--accent); color: var(--accent); }
 .pill:disabled { opacity: 0.45; cursor: default; background: rgba(255, 255, 255, 0.06); }
 
-/* Multiplayer: the button on the start screen, and the lobby that takes its place */
-.card .mode { display: block; margin: 14px auto 0; font-size: 13px; }
-#overlay.mp .mode { display: none; }
-#overlay:not(.mp) .mp-only { display: none; }
-#overlay.lobby { cursor: default; }
-#overlay.lobby .play, #overlay.lobby .controls, #overlay.lobby .dev { display: none; }
-#lobby { margin-bottom: 20px; font-size: 14px; }
+/* The menu: a black panel down the left whose right edge slants out
+   towards the bottom (--top and --bottom: where it meets the top and the
+   bottom of the screen), over the game's own sky and sea, or paused, the
+   game. Pages with more on them widen it. */
+#menu {
+  --top: 30vw; --bottom: 53vw;
+  --ink: #22b14c; --ink-hi: #4fe683;
+  position: fixed; inset: 0; z-index: 10;
+}
+#menu[hidden] { display: none; }
+/* Until the island is ready to draw: night blue, fading as the sea comes in. */
+#menu::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(#123049, #071420 55%, #04101a);
+  transition: opacity 1.4s;
+}
+#menu.live::before { opacity: 0; }
+#menu[data-page="water"], #menu[data-page="graphics"], #menu[data-page="credits"] { --top: 40vw; --bottom: 60vw; }
+#menu[data-page="lobby"] { --top: 54vw; --bottom: 70vw; }
+.menu-panel {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  padding: clamp(22px, 6vh, 64px) 24px clamp(18px, 4vh, 40px) clamp(22px, 4vw, 72px);
+  background: #000;
+  clip-path: polygon(0 0, var(--top) 0, var(--bottom) 100%, 0 100%);
+  transition: clip-path 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.25s;
+  overflow-y: auto;
+}
+#menu.keys .menu-panel { opacity: 0; visibility: hidden; }
+.menu-panel > * { max-width: calc(var(--top) - clamp(22px, 4vw, 72px) - 28px); }
+.menu-head h1 { margin: 0; font-size: clamp(22px, 2.8vw, 38px); font-weight: 800; letter-spacing: 0.1em; color: var(--text); }
+.menu-head .tagline { margin: 6px 0 0; font-size: 14px; font-style: italic; color: var(--muted); }
+.menu-pages { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 3vh 0; }
+.menu-page { display: flex; flex-direction: column; align-items: flex-start; gap: clamp(2px, 1.2vh, 12px); }
+.menu-page h2 { margin: 0 0 12px; font-size: clamp(28px, 5vh, 46px); font-weight: 800; color: var(--ink); }
+.menu-item {
+  padding: 0.05em 0; border: 0; background: none; cursor: pointer; text-align: left;
+  font: 800 clamp(28px, min(6.4vh, 4.4vw), 64px)/1.12 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--ink); transition: color 0.15s, transform 0.15s;
+}
+.menu-item:hover:not(:disabled), .menu-item:focus-visible { color: var(--ink-hi); transform: translateX(10px); outline: none; }
+.menu-item:disabled { color: #2c5a39; cursor: default; }
+.menu-item.quit.confirm { color: var(--health); font-size: clamp(20px, min(4vh, 3vw), 36px); }
+.menu-back {
+  margin-top: clamp(10px, 3vh, 26px); padding: 4px 0; border: 0; background: none; cursor: pointer;
+  font: 600 15px system-ui, sans-serif; color: var(--muted);
+}
+.menu-back::before { content: '‹ '; }
+.menu-back:hover, .menu-back:focus-visible { color: var(--ink-hi); outline: none; }
+.menu-note { max-width: 34em; margin: 8px 0 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.menu-note:empty { display: none; }
+.menu-status { margin: 0; font-size: 14px; color: var(--muted); }
+.menu-status:empty { display: none; }
+.menu-hint { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--accent); }
+.menu-hint:empty, #menu:not([data-page="main"], [data-page="pause"]) .menu-hint { display: none; }
+.menu-dev { margin: 8px 0 0; font-size: 12px; color: #6f8291; }
+/* The bottom lines sit where the panel is widest. */
+.menu-status, .menu-hint, .menu-dev { max-width: calc(var(--bottom) - clamp(22px, 4vw, 72px) - 60px); }
+/* Water and graphics settings: a row of choices each. */
+.menu-options { display: flex; flex-direction: column; gap: 16px; }
+.menu-option { display: flex; flex-direction: column; gap: 6px; }
+.menu-option > b { font-size: 15px; font-weight: 600; color: var(--text); }
+.menu-option > small { font-size: 12px; line-height: 1.45; color: var(--muted); }
+.menu-option .choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.menu-option .choices button {
+  padding: 5px 14px; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 999px; cursor: pointer;
+  font: 600 13px system-ui, sans-serif; color: var(--text); background: rgba(255, 255, 255, 0.06);
+}
+.menu-option .choices button:hover { background: rgba(255, 255, 255, 0.12); }
+.menu-option .choices button.active { border-color: var(--ink); color: var(--ink-hi); background: rgba(34, 177, 76, 0.16); }
+.credits { margin: 0; display: grid; gap: 12px; }
+.credits dt { font-size: 12px; color: var(--muted); }
+.credits dd { margin: 2px 0 0; font-size: 15px; }
+/* Multiplayer: the lobby fills the page; once the match is on, Play joins it. */
+#lobby { margin-bottom: 12px; font-size: 14px; }
+#lobby .lobby-join, #lobby .lobby-actions { justify-content: flex-start; }
+#menu.lobby .join-match, #menu:not(.mp) .join-match { display: none; }
+/* While the menu is up, the game's screen furniture keeps out of the way. */
+body.in-menu :is(#weather-panel, #climate-panel, #bars, #hotbar, #hotbar-name, #prompt, #crosshair,
+  #tutorial, #message, #match-timer, #match-hud, #feed, #build-bar, #dev-badge) { visibility: hidden; }
+
+/* Settings > Keybinds: every key, over a tinted screen. */
+#keybinds {
+  position: fixed; inset: 0; z-index: 12; display: flex; overflow-y: auto;
+  background: radial-gradient(ellipse at center, rgba(40, 18, 8, 0.6), rgba(5, 8, 14, 0.9));
+}
+.keybinds-panel { margin: auto; padding: 28px 32px 24px; max-width: 1120px; }
+.keybinds-panel h2 { margin: 0 0 20px; text-align: center; font-size: 36px; letter-spacing: 0.08em; color: var(--accent); }
+.keybinds-groups { columns: 3 300px; column-gap: 40px; }
+.keybinds-groups section { break-inside: avoid; }
+.keybinds-groups h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
+.keybinds-groups dl { margin: 0 0 20px; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; align-items: baseline; font-size: 13px; }
+.keybinds-groups dt { justify-self: end; white-space: nowrap; color: var(--text); }
+.keybinds-groups dd { margin: 0; color: var(--muted); }
+#keybinds kbd {
+  display: inline-block; min-width: 20px; margin-left: 4px; padding: 1px 6px; text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 5px; background: rgba(255, 255, 255, 0.06);
+  font: 600 12px/17px system-ui, sans-serif; color: var(--text);
+}
+#keybinds dt kbd:first-child { margin-left: 0; }
+#keybinds .menu-back { display: block; margin: 4px auto 0; }
 #lobby[hidden], #lobby [hidden] { display: none; }
 .lobby-join { display: flex; gap: 8px; justify-content: center; }
 .lobby-join input {
@@ -407,9 +479,15 @@ html, body {
   .inv-craft { width: auto; }
 }
 
+/* Narrow screens: the menu panel takes the width, slightly see-through. */
+@media (max-width: 700px) {
+  #menu, #menu[data-page] { --top: 100vw; --bottom: 100vw; }
+  .menu-panel { background: rgba(0, 0, 0, 0.82); padding-left: 16px; padding-right: 16px; }
+  .menu-panel > *, .menu-status, .menu-hint, .menu-dev { max-width: none; }
+}
+
 @media (max-width: 600px) {
   #climate-panel { top: auto; bottom: 16px; right: 16px; }
-  .card h1 { font-size: 32px; }
   .slot { width: 34px; height: 34px; }
   .inv-grid { grid-template-columns: repeat(9, 34px); gap: 3px; }
   #bars { bottom: 74px; }

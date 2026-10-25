@@ -232,7 +232,9 @@ io.on('connection', (socket) => {
     }
     socket.broadcast.emit('build', msg.op === 'place' ? { ...msg, team: p.team } : msg);
   });
-  // A swing at a piece another team built. Nothing can be hurt during the build phase.
+  // A swing at something built (any team's, though not the striker's own
+  // team's bahay kubo: the game checks that). Nothing can be hurt during
+  // the build phase.
   socket.on('hitPiece', (data) => {
     const { key, tool } = data ?? {};
     if (!match || lobby.buildLeft > 0 || typeof key !== 'string' || key.length > 40) return;

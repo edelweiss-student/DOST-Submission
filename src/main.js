@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import './style.css';
 import { mulberry32, uniforms } from './shared.js';
-import { TIERS, detectGPU, pickTier, shortGPU, AdaptiveResolution, GpuTimer, createPerfOverlay } from './core/quality.js';
+import {
+  TIERS, detectGPU, autoTier, pickTier, shortGPU, loadGraphics, saveGraphics, measureRefresh,
+  AdaptiveResolution, GpuTimer, createPerfOverlay,
+} from './core/quality.js';
 import { TextureBaker, bakeGround, bakeCloudNoise } from './world/textures.js';
 import { installShadowFilter } from './world/materials.js';
 import { createTerrain } from './world/terrain.js';
@@ -9,7 +12,7 @@ import { createVegetation } from './world/vegetation.js';
 import { loadTreeModels } from './world/trees.js';
 import { createGrass } from './world/grass.js';
 import { createOcean } from './world/ocean.js';
-import { createWater } from './world/water.js';
+import { createWater, WATER_QUALITY } from './world/water.js';
 import { createSplashes } from './world/splash.js';
 import { createSky } from './world/sky.js';
 import { Weather, WEATHER_KEYS, SIGNAL_ADVICE } from './weather/weather.js';
@@ -35,22 +38,36 @@ import { createHeldItem } from './player/heldItem.js';
 import { loadToolModels } from './items/models.js';
 import { joinServer, createMatch } from './match/multiplayer.js';
 import { MapUI } from './ui/mapUI.js';
+import { Menu } from './ui/menu.js';
+
+// The menu is up from the start, while the island is made: its own pages
+// work at once, and Singleplayer waits until the island is ready.
+const params = new URLSearchParams(location.search);
+let ready = false;     // the island is made and its shaders compiled
+let started = false;   // you've started playing (so it's the pause menu now)
+const menu = new Menu({ onAction: (name, button) => menuAction(name, button) });
+menu.open(...(params.has('mp') ? ['lobby'] : Menu.remembered() ?? ['main']));
+const singleButton = menu.button('single');
+singleButton.disabled = true;
 
 // Multiplayer (?mp in the address): the game server decides the island, so
 // ask it before generating anything (see match/multiplayer.js).
-const params = new URLSearchParams(location.search);
-if (params.has('mp')) document.querySelector('#overlay .play').textContent = 'Connecting…';
+if (params.has('mp')) menu.status('Connecting to the game server…');
 const server = params.has('mp') ? await joinServer() : null;
 const seed = server?.seed ?? (Number(params.get('seed')) || 1337);
 const rng = mulberry32(seed);
 
-// Graphics settings for the GPU the browser actually hands us.
+// Graphics settings for the GPU the browser actually hands us, or the ones
+// chosen in Settings > Graphics.
+const graphics = loadGraphics();
 const gpu = detectGPU();
-const tier = pickTier(gpu);
-const quality = TIERS[tier];
+const tier = pickTier(gpu, graphics.preset);
+// The tier's settings, with anti-aliasing (which leaves and grass follow) as chosen.
+const antialias = graphics.antialias === 'auto' ? TIERS[tier].antialias : graphics.antialias === 'on';
+const quality = { ...TIERS[tier], antialias };
 const basePixelRatio = Math.min(devicePixelRatio, quality.pixelRatio);
 
-const renderer = new THREE.WebGLRenderer({ antialias: quality.antialias, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ antialias, powerPreference: 'high-performance' });
 renderer.setPixelRatio(basePixelRatio);
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.AgXToneMapping;
@@ -68,7 +85,7 @@ const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 20
 
 // The tree and tool models are the game's only asset files. Start loading
 // them now, so they download and decode while the island is generated.
-document.querySelector('#overlay .play').textContent = 'Loading…';
+menu.status('Making the island…');
 const treeModelsLoading = loadTreeModels(quality.anisotropy);
 const toolModelsLoading = loadToolModels();
 
@@ -86,11 +103,13 @@ await toolModelsLoading;
 const vegetation = createVegetation(scene, terrain, rng, { quality, ground, cloudShadows, treeModels });
 const grass = createGrass(scene, terrain, { ...quality.grass, anisotropy: quality.anisotropy, msaa: quality.antialias, cloudShadows });
 const ocean = createOcean(scene, terrain, rng, { ground, anisotropy: quality.anisotropy, cloudShadows });
-// Water quality is its own setting (on the pause screen), remembered between visits.
+// Water quality is its own setting (Settings > Water), remembered between
+// visits. High only by default on a dedicated graphics card: it costs
+// integrated graphics several frames a second.
 const WATER_KEY = 'washed-away.water-quality';
 let savedWater = null;
 try { savedWater = localStorage.getItem(WATER_KEY); } catch { /* storage blocked */ }
-const water = createWater(scene, terrain, renderer, savedWater || (tier === 'low' ? 'medium' : 'high'));
+const water = createWater(scene, terrain, renderer, savedWater || (tier === 'high' ? 'high' : 'medium'));
 const splashes = createSplashes(scene);
 const sky = createSky(scene, renderer, {
   cloudTexture, shadowMap: quality.shadowMap, shadowRange: quality.shadowRange, cloudShadows,
@@ -105,8 +124,10 @@ const player = new Player(camera, renderer.domElement, terrain, vegetation.colli
 const hud = new HUD();
 const audio = new Ambience();
 const adaptive = new AdaptiveResolution(renderer, basePixelRatio, quality.minScale);
+adaptive.setTarget(graphics.target);
 const gpuTimer = new GpuTimer(renderer);
-const perf = createPerfOverlay(document.getElementById('perf'), { renderer, adaptive, gpuTimer, tier, gpu, water });
+const perf = createPerfOverlay(document.getElementById('perf'), { renderer, adaptive, gpuTimer, tier, gpu, water, antialias });
+perf.show(graphics.readout);
 
 // Wood and building: felled trees come down as logs, the axe splits logs
 // into planks where they lie, and you carry planks (and logs, for pilings)
@@ -272,42 +293,42 @@ player.onSplash = (x, y, z, speed) => {
 };
 
 // On integrated graphics, point out the dedicated GPU setting.
-if (tier !== 'high' && /Intel|AMD Radeon\(TM\) Graphics|AMD Radeon Graphics/i.test(gpu)) {
-  document.getElementById('gpu-tip').textContent =
+if (autoTier(gpu) !== 'high' && /Intel|AMD Radeon\(TM\) Graphics|AMD Radeon Graphics/i.test(gpu)) {
+  menu.hint(
     `Running on ${shortGPU(gpu)}. If this PC also has an NVIDIA or AMD graphics card, set your browser to ` +
-    '"High performance" in Windows Settings > System > Display > Graphics for smoother play.';
+    '"High performance" in Windows Settings > System > Display > Graphics for a much smoother game.',
+  );
 }
 
-// Start / pause overlay. Pointer lock is preferred; where the browser
+// Playing and pausing. Pointer lock is preferred; where the browser
 // refuses it (e.g. embedded previews) we fall back to drag-to-look.
-const overlay = document.getElementById('overlay');
-const playLabel = overlay.querySelector('.play');
-let ready = false;
-let started = false;
 // The inventory frees the mouse but doesn't pause: the world keeps going.
 const isPlaying = () => player.controls.isLocked || player.dragLook || inventoryUI.open;
 player.enableDragLook(renderer.domElement);
-// Multiplayer: the start screen is the lobby until the match starts.
-const match = server && createMatch(server, { terrain, player, hud, overlay, scene, sea, camera, weather, building, inventory });
+// Multiplayer: the menu holds the lobby until the match starts.
+const match = server && createMatch(server, { terrain, player, hud, menu: menu.root, scene, sea, camera, weather, building, inventory });
+if (match) menu.button('quit').textContent = 'Leave the match';
 const map = new MapUI({ terrain, trees: vegetation.sources.trees, building, sea, climate, match });
 // Tips for a first game (H hides them).
 const tutorial = new Tutorial(match ? MATCH : SOLO);
 
 function onPlay() {
-  overlay.classList.add('hidden');
+  menu.close();
   if (!started) {
     started = true;
     hud.message(match?.intro ?? 'Day 1. Explore the island and the reef. Strip the island bare and the sea will wash it away.', 6);
     tutorial.begin();
   }
 }
+const pause = () => menu.open('pause');
 function startDragLook() {
   if (player.dragLook) return;
   player.dragLook = true;
   onPlay();
   hud.message('Mouse capture is blocked here. Hold the left button and drag to look. Esc pauses.', 7);
 }
-overlay.addEventListener('click', () => {
+// Singleplayer, Resume, or Play once a match is on: take the mouse and go.
+function play() {
   if (!ready || match?.inLobby) return;
   audio.start();
   try {
@@ -316,7 +337,111 @@ overlay.addEventListener('click', () => {
   } catch {
     startDragLook();
   }
-});
+}
+
+// What the menu's buttons do (ui/menu.js). A click on the game beside the
+// panel resumes it, as Resume does.
+let quitClicked = -Infinity;
+function menuAction(name, button) {
+  if (name === 'single' || name === 'resume') {
+    play();
+  } else if (name === 'outside') {
+    if (ready && (menu.page === 'pause' || menu.page === 'lobby')) play();
+  } else if (name === 'bedwars') {
+    location.search = '?mp';   // multiplayer has its own address, answered by the game server
+  } else if (name === 'keybinds') {
+    menu.keybinds(true);
+  } else if (name === 'quit') {
+    // Twice, to be sure: nothing on your island is kept.
+    if (performance.now() - quitClicked > 3000) {
+      quitClicked = performance.now();
+      const label = button.textContent;
+      button.classList.add('confirm');
+      button.textContent = match ? 'Click again to leave' : 'Click again: your island isn’t kept';
+      setTimeout(() => {
+        button.classList.remove('confirm');
+        button.textContent = label;
+      }, 3000);
+      return;
+    }
+    location.href = location.pathname;   // the main menu, without ?mp
+  }
+}
+
+// Settings > Water.
+const WATER_NOTES = {
+  low: 'Fewer waves on a coarser surface, with simpler ripples: the quickest to draw.',
+  medium: 'More waves and finer ripples. The default on integrated graphics.',
+  high: 'The most waves, on the finest surface. The default on a graphics card.',
+};
+menu.options(document.getElementById('water-options'), [{
+  label: 'Water quality',
+  choices: Object.entries(WATER_QUALITY).map(([key, { label }]) => [key, label]),
+  get: () => water.quality,
+  set: (value) => {
+    water.setQuality(value);
+    try { localStorage.setItem(WATER_KEY, water.quality); } catch { /* storage blocked */ }
+  },
+  note: (value) => WATER_NOTES[value],
+}]);
+
+// Settings > Graphics. Quality and anti-aliasing are set as the game
+// loads: before you've started on your own, it loads again at once (and
+// comes back here); otherwise they wait for next time.
+function setOnLoad(key, value) {
+  graphics[key] = value;
+  saveGraphics(graphics);
+  if (!started && !server) {
+    menu.remember();
+    location.reload();
+    return;
+  }
+  const note = document.getElementById('graphics-restart');
+  note.hidden = false;
+  note.textContent = 'Quality and anti-aliasing change the next time the game loads.';
+}
+function showReadout(on) {
+  perf.show(on);
+  graphics.readout = on;
+  saveGraphics(graphics);
+}
+const autoLabel = TIERS[autoTier(gpu)].label;
+const renderGraphics = menu.options(document.getElementById('graphics-options'), [
+  {
+    label: 'Quality',
+    choices: [['auto', `Auto (${autoLabel})`], ...Object.entries(TIERS).map(([key, { label }]) => [key, label])],
+    get: () => graphics.preset,
+    set: (value) => setOnLoad('preset', value),
+    note: () => `Texture detail, shadows, grass and how far trees are drawn. Auto picks ${autoLabel} for ${shortGPU(gpu)}.`,
+  },
+  {
+    label: 'Anti-aliasing',
+    choices: [['auto', `Auto (${TIERS[tier].antialias ? 'on' : 'off'})`], ['on', 'On'], ['off', 'Off']],
+    get: () => graphics.antialias,
+    set: (value) => setOnLoad('antialias', value),
+    note: () => 'Smooths jagged edges. Off draws a good deal faster on integrated graphics.',
+  },
+  {
+    label: 'Dynamic resolution',
+    choices: () => [['screen', `Your screen (${adaptive.refresh} fps)`], [120, '120 fps'], [60, '60 fps'], ['off', 'Off']],
+    get: () => graphics.target,
+    set: (value) => {
+      graphics.target = value;
+      saveGraphics(graphics);
+      adaptive.setTarget(value);
+    },
+    note: (value) => (value === 'off'
+      ? 'Always draws at full resolution, however slow that is.'
+      : `Draws at a lower resolution (down to ${Math.round(quality.minScale * 100)}%) while the frame rate is below this, and goes back up when there’s room.`),
+  },
+  {
+    label: 'Performance readout',
+    choices: [['off', 'Off'], ['on', 'On']],
+    get: () => (perf.visible ? 'on' : 'off'),
+    set: (value) => showReadout(value === 'on'),
+    note: () => 'Frame rate, render scale and graphics card, at the bottom left (P).',
+  },
+]);
 // Opening the inventory gives the mouse back; closing it takes it again
 // (or, if the browser refuses, pauses instead).
 let leavingForInventory = false;
@@ -333,13 +458,13 @@ function openInventory() {
 function pauseInstead() {
   if (!relocking) return;
   relocking = false;
-  overlay.classList.remove('hidden');
+  pause();
 }
 function closeInventory({ resume = true } = {}) {
   inventoryUI.hide();
   player.setInput(true);
   if (!resume) {
-    overlay.classList.remove('hidden');
+    pause();
   } else if (!player.dragLook) {
     relocking = true;
     try {
@@ -356,28 +481,14 @@ player.controls.addEventListener('lock', () => {
 });
 player.controls.addEventListener('unlock', () => {
   if (leavingForInventory) leavingForInventory = false;
-  else overlay.classList.remove('hidden');
+  else pause();
 });
 
-const waterButtons = document.querySelectorAll('[data-water]');
-const markWater = () => waterButtons.forEach((b) => b.classList.toggle('active', b.dataset.water === water.quality));
-waterButtons.forEach((button) => button.addEventListener('click', (e) => {
-  e.stopPropagation(); // don't start the game
-  water.setQuality(button.dataset.water);
-  try { localStorage.setItem(WATER_KEY, water.quality); } catch { /* storage blocked */ }
-  markWater();
-}));
-markWater();
-// Multiplayer has its own address (?mp), answered by the game server.
-overlay.querySelector('.mode').addEventListener('click', (e) => {
-  e.stopPropagation(); // don't start the game
-  location.search = '?mp';
-});
-
-// What E and X act on: whichever is most squarely under the crosshair of
-// the plants and items you can gather, the logs and planks lying about,
-// and what you've built. Each offers { score, prompt, dim, act, hold }, and
-// swing when the act is done with the tool in hand.
+// What E, X and a swing act on: whichever is most squarely under the
+// crosshair of the plants and items you can gather, the logs and planks
+// lying about, and what you've built. Each offers { score, prompt, dim,
+// act, hold, use }: act for E (your hands), hold for holding X, use for a
+// swing of the tool in hand.
 const aimRay = new THREE.Ray(), aimDir = new THREE.Vector3();
 let focus = null;
 let bedAim = null;   // where your team's bed would go, while it's selected in a match
@@ -389,12 +500,12 @@ function updateFocus() {
   for (const option of [
     gathering.focus(player, camera, tool, weather.elapsed),
     timber.focus(aimRay, tool),
-    building.focus(aimRay, carrying),
+    building.focus(aimRay, carrying, tool),
   ]) {
     if (option && (!focus || option.score > focus.score)) focus = option;
   }
   if (focus?.hands && carrying) {
-    focus = { ...focus, dim: true, act: null, prompt: [['E', 'Your arms are full'], ['Q', `Put down a ${woodName(carrying.kind)}`]] };
+    focus = { ...focus, dim: true, act: null, use: null, prompt: [['E', 'Your arms are full'], ['Q', `Put down a ${woodName(carrying.kind)}`]] };
   }
 }
 
@@ -415,31 +526,38 @@ function report(result, tool) {
   if (result.joinery) startJoinery(result.joinery);
 }
 
-// E: act on what you're looking at, or in build mode place the blueprint.
-// Work done with a tool happens as the swing lands, not when it starts.
+// E is for your hands: gather, pick up and build (in build mode, place the
+// blueprint). Tools are for swinging (right-click, below).
 let lastUse = 0;
 function interact() {
   if (performance.now() - lastUse < 300 || held.busy) return;
   lastUse = performance.now();
-  if (build.on) {
-    placeBlueprint();
-  } else if (focus?.act) {
-    const { act } = focus, tool = inventory.current;
-    if (focus.swing) held.swing(() => report(act(), tool));
-    else report(act(), tool);
-  }
+  if (build.on) placeBlueprint();
+  else if (focus?.act) report(focus.act());
 }
 
-// In a multiplayer match, left-click or F swings at another team's player
-// or bed under the crosshair (match/bedwars.js), with whatever is in your
-// hand: the hit counts as the swing lands.
-function attack() {
-  if (!match?.fighting || held.busy || build.on || timber.carrying) return;
+// A swing of what's in your hand: right-click with a tool, and in a match
+// left-click or F with anything (a fist, if no tool). It lands partway
+// through: in a match on another team's player or bed, or on anything
+// built in the way (match/bedwars.js); otherwise on what the tool works
+// on, as it was under the crosshair when you swung: a tree to fell, a log
+// to split, grass or a bush to cut, something built to break.
+function swing() {
+  if (held.busy || build.on) return;
+  if (timber.carrying) {
+    hud.message(`Your arms are full: put the ${woodName(timber.carrying.kind, 2)} down first (Q).`, 3);
+    return;
+  }
   const tool = inventory.current, kind = selectedTool();
+  const work = kind ? focus?.use : null;
+  if (!kind && !match?.fighting) return;   // a fist only strikes, in a match
   held.swing(() => {
-    if (!match.strike(aimRay, kind ?? 'none')) return;
-    report({ used: !!kind }, tool);
-    tutorial.event('struck');
+    if (match?.fighting && match.strike(aimRay, kind ?? 'none')) {
+      report({ used: !!kind }, tool);
+      tutorial.event('struck');
+    } else if (work) {
+      report(work(), tool);
+    }
   });
 }
 
@@ -481,8 +599,8 @@ function promptFor(playing) {
   return [focus.prompt, focus.dim];
 }
 
-// Right-click: eat the selected item, if it's food, or put down your team's
-// bed in a match.
+// Right-click: use the selected item. Swing a tool, eat food, or in a
+// match put up your team's bahay kubo or bed.
 function useSelected() {
   const stack = inventory.current;
   if (stack?.id === 'bed') {
@@ -491,6 +609,10 @@ function useSelected() {
   }
   if (stack?.id === 'kubo') {
     match?.placeKubo(aimRay);
+    return;
+  }
+  if (selectedTool()) {
+    swing();
     return;
   }
   const food = stack && ITEMS[stack.id].eat;
@@ -502,13 +624,14 @@ function useSelected() {
 }
 
 // Keys: 1-9 or the mouse wheel pick a hotbar slot, I or Tab open the
-// inventory, E gathers, chops, picks up, builds and repairs, Q drops one of
-// the selected item (or puts down wood you're carrying), B builds (1-8 or
-// the wheel pick the piece, R turns a roof or raises pilings), holding X
+// inventory, E gathers, picks up, builds and repairs (by hand), Q drops one
+// of the selected item (or puts down wood you're carrying), B builds (1-9
+// or the wheel pick the piece, R turns a roof or raises pilings), holding X
 // takes apart, F strikes (in a match), K opens the map, P toggles the
 // performance readout, M mutes. In the joinery mini-game, E or Space works
 // and X skips. Knocked out in a match, you can't do anything until you're
-// back.
+// back. With the menu up, Esc goes back a page. Settings > Keybinds lists
+// them all (but not dev mode's).
 //
 // Dev mode, for testing, is off and out of sight until ` is pressed five
 // times in quick succession (five more turn it off). Then ` and 1-7 forces
@@ -520,7 +643,7 @@ const devBadge = document.getElementById('dev-badge');
 function setDevMode(on) {
   devMode = on;
   devArmed = -Infinity;
-  overlay.querySelector('.dev').hidden = !on;
+  menu.dev(on);
   devBadge.hidden = !on;
   hud.message(on ? 'Dev mode on: ` then 1–7 forces the weather, T skips an hour, G sends a rogue wave set.' : 'Dev mode off.', on ? 7 : 3);
 }
@@ -539,16 +662,20 @@ addEventListener('keydown', (e) => {
       return;
     }
   }
-  if (e.code === 'KeyP') perf.toggle();
+  if (e.code === 'KeyP') showReadout(!perf.visible);
   if (e.code === 'Tab') e.preventDefault();
   if (e.code === 'Escape') {
+    if (menu.visible) {
+      menu.escape();
+      return;
+    }
     if (inventoryUI.open) {
       closeInventory({ resume: false });
       return;
     }
     if (player.dragLook) {
       player.dragLook = false;
-      overlay.classList.remove('hidden');
+      pause();
     }
   }
   if (!isPlaying()) return;
@@ -590,7 +717,7 @@ addEventListener('keydown', (e) => {
   } else if (e.code === 'KeyE') {
     interact();
   } else if (e.code === 'KeyF') {
-    if (!e.repeat) attack();
+    if (!e.repeat && match) swing();
   } else if (e.code === 'KeyB') {
     setBuilding(!build.on);
   } else if (e.code === 'KeyR') {
@@ -629,9 +756,10 @@ addEventListener('wheel', (e) => {
   else inventory.select(inventory.selected + Math.sign(e.deltaY));
 }, { passive: true });
 renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
-// Right-click eats (or leaves build mode); with the mouse captured,
-// left-click places in build mode, and strikes in a match. In the joinery
-// mini-game a click works.
+// Right-click uses the selected item: swings a tool, eats, or puts up the
+// bed or bahay kubo (in build mode it leaves build mode). With the mouse
+// captured, left-click places in build mode, and strikes in a match. In
+// the joinery mini-game a click works.
 renderer.domElement.addEventListener('mousedown', (e) => {
   if (!isPlaying() || inventoryUI.open || player.dead) return;
   if (joinery.open) {
@@ -641,20 +769,50 @@ renderer.domElement.addEventListener('mousedown', (e) => {
     else useSelected();
   } else if (e.button === 0 && player.controls.isLocked) {
     if (build.on) interact();
-    else attack();
+    else if (match) swing();
   }
 });
 
 addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
+  for (const view of [camera, menuCamera]) {
+    view.aspect = innerWidth / innerHeight;
+    view.updateProjectionMatrix();
+  }
   renderer.setSize(innerWidth, innerHeight);
 });
+
+// Until you start, the menu looks out to sea through a camera of its own
+// (yours stays where you'll start): from just off the island's west
+// shore, low over the swell and riding it, with the morning sun behind,
+// so the sky and the sea are at their bluest.
+const menuCamera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 2000);
+const menuView = (() => {
+  // Out from the middle of the island, away from the sun (which rises
+  // towards +x, a little to +z: see world/sky.js), to where it has been
+  // deep water for a while.
+  const ux = -0.95 / Math.hypot(0.95, 0.3), uz = -0.3 / Math.hypot(0.95, 0.3);
+  let r = 80;
+  for (let deep = 0; r < 1100 && deep < 120; r += 5) deep = terrain.heightAt(ux * r, uz * r) < -12 ? deep + 5 : 0;
+  return { x: ux * r, z: uz * r, yaw: Math.atan2(-ux, -uz) + 0.35, pitch: 0.03, height: 1.8, y: null, along: 0, across: 0 };
+})();
+const menuSurface = {};
+function updateMenuView(dt) {
+  const v = menuView, s = water.surface(v.x, v.z, t, menuSurface);
+  const k = Math.min(1, dt * 2.5);
+  v.y = v.y === null ? s.height : v.y + (s.height - v.y) * k;
+  // Tipping with the slope of the swell under it, ahead and to the side.
+  const fx = -Math.sin(v.yaw), fz = -Math.cos(v.yaw);
+  v.along += (s.slopeX * fx + s.slopeZ * fz - v.along) * k;
+  v.across += (s.slopeX * -fz + s.slopeZ * fx - v.across) * k;
+  menuCamera.position.set(v.x, v.y + v.height, v.z);
+  menuCamera.rotation.set(v.pitch + v.along * 0.3, v.yaw, v.across * 0.3, 'YXZ');
+}
 
 const underwaterColor = new THREE.Color('#1f6878');
 const clock = new THREE.Clock();
 let t = 0;
 let shadowFrame = 0;
+let drawn = false;
 
 function frame() {
   step();
@@ -711,13 +869,16 @@ function step() {
   match?.update(dt);
   if (playing) tutorial.update(sdt, { player, inventory, open: !!match?.opened });
   held.update(sdt, inventory.current, Math.hypot(player.vel.x, player.vel.z), timber.carried);
-  precip.update(sdt, t, camera, weather);
-  const env = sky.update(sdt, camera, weather.current, precip.flash);
+  // What's drawn from: your eyes, or until you start, the menu's view.
+  const view = started ? camera : menuCamera;
+  if (!started) updateMenuView(dt);
+  precip.update(sdt, t, view, weather);
+  const env = sky.update(sdt, view, weather.current, precip.flash);
   weather.dayF = env.dayF;
-  water.update(camera, weather, env, precip.flash, sdt);
-  ocean.update(t, camera, sea.level);
-  vegetation.update(camera);
-  grass.update(camera);
+  water.update(view, weather, env, precip.flash, sdt);
+  ocean.update(t, view, sea.level);
+  vegetation.update(view);
+  grass.update(view);
   splashes.update(dt, env.dayF);
 
   sky.dome.visible = !player.underwater;
@@ -741,27 +902,36 @@ function step() {
   audio.update(weather, player.underwater, water.waves.hs);
   hud.update(dt, { weather, sea, climate, regions: !match, forecast: match?.forecast, clock: sky.clock(), player, waves: water.waves });
   gpuTimer.begin(perf.visible);
-  renderer.render(scene, camera);
+  renderer.render(scene, view);
   gpuTimer.end();
   adaptive.update(dt);
   perf.update(dt);
+  if (!drawn) {
+    drawn = true;
+    menu.live();
+  }
 }
 
 // Compile every shader before the first frame (in parallel where the
-// browser allows), so nothing stalls when new things come into view.
-playLabel.textContent = 'Loading…';
+// browser allows), so nothing stalls when new things come into view. Then,
+// before anything is drawn, time the screen's refresh rate, which the
+// dynamic resolution aims for.
 sea.update(0, weather, sky.state.time);
 sky.update(0, camera, weather.current, 0);
-renderer.compileAsync(scene, camera).catch(() => {}).finally(() => {
+renderer.compileAsync(scene, camera).catch(() => {}).finally(async () => {
+  const hz = await measureRefresh();
+  if (hz) adaptive.refresh = hz;
+  renderGraphics();
   ready = true;
-  playLabel.textContent = 'Click to play';
+  singleButton.disabled = false;
+  menu.status('');
   requestAnimationFrame(frame);
 });
 
 if (import.meta.env.DEV) {
   window.game = {
     scene, camera, renderer, terrain, weather, sea, player, sky, water, uniforms, vegetation, step, inventory, gathering, audio, tutorial,
-    timber, building, build, joinery, held, climate, match, map, get devMode() { return devMode; },
-    counts: vegetation.counts, quality: { tier, gpu, adaptive, gpuTimer },
+    timber, building, build, joinery, held, climate, match, map, menu, menuView, menuCamera, get devMode() { return devMode; },
+    counts: vegetation.counts, quality: { tier, gpu, adaptive, gpuTimer, graphics },
   };
 }

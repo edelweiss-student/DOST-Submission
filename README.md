@@ -19,7 +19,8 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173 in Chrome, Edge or Firefox and click to play.
+Open http://localhost:5173 in Chrome, Edge or Firefox and choose Play,
+then Singleplayer (see Menu).
 `npm run build` makes a static build in `dist/`. To play with others on the
 same network, see Multiplayer below; to play from a link, see Play online.
 
@@ -44,6 +45,41 @@ new multiplayer island.
    `washed-away` service.
 4. The first build takes a few minutes. The service's page then shows its
    address.
+
+## Menu
+
+The game opens on its menu (`ui/menu.js`): a black panel down the left,
+slanting wider towards the bottom, over the game's own sky and sea. It's
+the live game seen through a camera of its own, riding the swell off the
+island's west shore with the morning sun behind it (`menuView` in
+`main.js`); your own camera waits where you'll start. Its pages:
+
+- **Play**: **Singleplayer** starts on the island on your own, once it's
+  made; **Multiplayer** lists the multiplayer modes, for now
+  **Bedwars**, which opens the lobby (the same as `/?mp`).
+- **Settings**: **Keybinds** shows every key (not dev mode's) on a tinted
+  screen over the sea; **Water** and **Graphics** are the settings below.
+- **Credits**: the tree and tool packs, and what the game is built with.
+
+`Esc` or Back goes back a page. Pausing (`Esc` in the game) brings the
+panel up over the game with **Resume** (or click the game beside it),
+**Settings** and **Quit to menu** (**Leave the match** in a match), which
+asks for a second click, since nothing on your island is kept. While the
+menu is up, the game's panels, hotbar and tips keep out of the way.
+
+**Settings**, remembered between visits:
+
+| Setting | Choices | What it does |
+| --- | --- | --- |
+| Water quality | Low, Medium, High | Wave detail (see Performance). Medium by default on integrated graphics, High on a graphics card |
+| Quality | Auto, Low, Medium, High | The graphics tier (see Performance). Auto picks one for the GPU the browser uses |
+| Anti-aliasing | Auto, On, Off | Smooth edges (the tier's choice on Auto). Off draws about a third faster on integrated graphics |
+| Dynamic resolution | Your screen, 120 fps, 60 fps, Off | The frame rate the render resolution adapts to keep (see Performance) |
+| Performance readout | Off, On | The same as `P` |
+
+Quality and anti-aliasing are set as the game loads. Changed from the menu
+before you've started on your own, the game loads again at once and comes
+back to the Graphics page; otherwise they wait for the next time it loads.
 
 ## Multiplayer
 
@@ -79,8 +115,8 @@ opens its address with `/?mp`.
 http://localhost:5173/?mp: the dev server passes Socket.IO through to the
 game server. Two browser tabs make two players.
 
-**The lobby.** "Play multiplayer" on the start screen opens it. Pick a name
-and join. You're put on the team with the fewest players (up to 4 a team, 16
+**The lobby.** Play > Multiplayer > Bedwars in the menu opens it, in the
+menu's panel, widened. Pick a name and join. You're put on the team with the fewest players (up to 4 a team, 16
 in all), and you can switch to one with room, which takes back your Ready.
 The first to join hosts, then the next in line if they leave. Once everyone
 is ready, the host starts the match.
@@ -172,7 +208,7 @@ to shed typhoon rain, and bamboo steps up to the door.
   walls. Its pieces are well joined and can be repaired with planks (and
   logs, for the stilts), but not taken apart for their wood. Another team
   can break them like any build: break a stilt and the floor on it falls,
-  with what stands on that.
+  with what stands on that. Your own team's tools can't touch it.
 
 **Bed wars** (`match/bedwars.js`, with the rules in `match/rules.js`):
 
@@ -181,12 +217,14 @@ to shed typhoon rain, and bamboo steps up to the door.
   times a second, through the server, and draws the others a tenth of a
   second behind, so they move smoothly and walk in step.
 - **Fighting.** Left-click (with the mouse captured) or `F` swings what's in
-  your hand at whatever of another team's is nearest under the crosshair,
-  within 3.2 m: a player, a bed or something they built. Your own team's
-  builds stop a swing. The hit counts as the swing lands. A hit flashes the
-  crosshair red and wears the tool. Being hit flashes the edges of the
-  screen red and knocks you back. Health is 100 and slowly comes back. Each
-  hit does:
+  your hand, and so does right-click with a tool. The swing lands on
+  whatever is nearest under the crosshair within 3.2 m: another team's
+  player or bed, or anything built, any team's, your own included, except
+  your own team's bahay kubo, which stops it. With nothing of those in
+  reach, a tool does its usual work (a tree to fell, a log to split). The
+  hit counts as the swing lands. A hit flashes the crosshair red and wears
+  the tool. Being hit flashes the edges of the screen red and knocks you
+  back. Health is 100 and slowly comes back. Each hit does:
 
   | In your hand | To a player | To a bed | To a build |
   | --- | --- | --- | --- |
@@ -255,8 +293,9 @@ they agree.
 | Shift | Sprint / swim fast (uses stamina) |
 | Space | Jump / swim up |
 | C | Dive |
-| E | Gather from what you're looking at, pick something up, or (with the axe) chop a tree or split a log |
-| Left-click / F | In a multiplayer match: strike another team's player or bed under the crosshair |
+| E | With your hands: gather from what you're looking at, pick something up, build and repair |
+| Right-click | Use the selected item: swing a tool (fell a tree, split a log, cut a log off a fallen trunk, cut grass or a bush with the knife, break something built), eat food, or in a match put up your team's bahay kubo or place its bed (`R` turns it) |
+| Left-click / F | In a multiplayer match: strike with what's in your hand (a fist if nothing): another team's player or bed, or anything built in the way |
 | 1–9 / mouse wheel | Choose a hotbar slot |
 | I / Tab | Open or close the inventory and crafting |
 | K | Open or close the map |
@@ -265,11 +304,13 @@ they agree.
 | E on a build | Add the wood you carry, repair it with a plank (or log), or with empty arms rework its joints |
 | W / S on a ladder | Climb up or down |
 | Hold X | Take apart something you built, or clear a blueprint |
-| Right-click | Eat the selected item, or in a match put up your team's bahay kubo or place its bed (`R` turns it) |
 | M | Mute |
 | H | Hide the tips |
 | P | Performance readout (fps, quality, render scale, GPU) |
-| Esc | Pause (or close the inventory) |
+| Esc | Pause: the menu (or close the inventory; in the menu, back a page) |
+
+Settings > Keybinds in the menu lists these, and the keys of the inventory
+screen and the joinery mini-game.
 
 **Tips.** A first game shows one tip at a time at the bottom left
 (`ui/tutorial.js`), each done when you do what it says. On your own: walk,
@@ -281,7 +322,7 @@ strike. `H` hides them for good.
 **Dev mode**, for testing, is hidden: press `` ` `` five times in quick
 succession (within about 2½ seconds) to turn it on, and five times again to
 turn it off. A "Dev mode" badge shows at the top of the screen while it's
-on, and the start screen lists its keys. Its keys do nothing while it's off:
+on, and the menu lists its keys. Its keys do nothing while it's off:
 
 - `` ` `` then `1`–`7` forces a weather type (clear, overcast, rain,
   thunderstorm, fog, heatwave, cold snap); `` ` `` then `4` again during a
@@ -320,10 +361,11 @@ You carry a **hotbar** of 9 slots along the bottom of the screen and a
 **bag** of 27 more. Pick a hotbar slot with `1`–`9` or the mouse wheel; the
 item's name shows above the hotbar when you switch.
 
-Look at something within reach and press `E`. With the right tool selected
-you get more, or something else:
+Look at something within reach: `E` gathers it with your hands, and with
+the right tool selected, right-click swings the tool at it for more, or for
+something else:
 
-| Source | Gives | With the right tool | Gathers before it runs out | One gather comes back every |
+| Source | `E` gives | Right-click with the right tool | Gathers before it runs out | One gather comes back every |
 | --- | --- | --- | --- | --- |
 | Bush | 1–2 plant fibre, often 1–2 berries | Knife: twice the fibre | 3 | 2 min |
 | Grass | — | Knife: 1–2 fibre, never runs out | — | — |
@@ -362,13 +404,14 @@ For now there are three stone tools:
 | Stone axe | 2 sticks, 2 stones | 150 |
 | Stone pickaxe | 2 sticks, 3 stones | 50 |
 
-A tool is used up one gather at a time, and only where it does better (an
-axe at a bush wears nothing). A bar under its slot shows the uses left, and
-the tooltip gives the exact number. A selected tool is in your hand at the
-lower right; it bobs as you walk and swings when you use it, and its work
-is done when the swing lands, not when you press `E`. The pickaxe has no
-work on the island for now; in a multiplayer match it's the quickest way
-through an enemy bed. The knife and pickaxe strike down and forward. The axe chops level: it swings back to the right,
+A tool is used up one blow at a time, and only when it hits something it
+works on (a swing at the air wears nothing). A bar under its slot shows the
+uses left, and the tooltip gives the exact number. A selected tool is in
+your hand at the lower right; it bobs as you walk and swings when you
+right-click, and its work is done when the swing lands. `E` is only ever
+your hands. Every tool breaks what's built (see Timber and building); the
+pickaxe has no other work on the island for now, and in a multiplayer
+match it's the quickest way through an enemy bed. The knife and pickaxe strike down and forward. The axe chops level: it swings back to the right,
 sweeps across from right to left and bites in edge first right where the
 crosshair is, jolts with the blow, then pulls back. You can't start another
 swing until one is nearly over. Tools keep their wear when moved, dropped or
@@ -390,7 +433,7 @@ pause the game:
 
 Wood comes from trees, and it's carried in your arms, never in the bag.
 
-**Felling.** Select the axe, look at a tree and press `E` to chop. Each blow
+**Felling.** Select the axe, look at a tree and right-click to chop. Each blow
 shakes the tree. It takes 3 blows for a yerba mate, 4 for a birch, 6 for a
 eucalyptus and 8 for an oak, more for a big one; the prompt counts them.
 On the last blow the tree topples away from you, speeding up as it goes,
@@ -406,17 +449,17 @@ something out of the island's climate for good; dead wood costs it nothing
 **Logs and planks.** These are physical: they lie where they fall, roll to
 rest along the ground, float, and drift with the waves and the wind.
 
-- With the axe selected, `E` on a log splits it. Two blows and it falls
-  apart into 4 planks.
-- With anything else selected (or an empty slot), `E` picks a log or plank
-  up. You can carry 2 logs or 8 planks, one kind at a time.
+- With the axe selected, right-click a log to split it. Two blows and it
+  falls apart into 4 planks.
+- `E` picks a log or plank up, whatever is selected. You can carry 2 logs
+  or 8 planks, one kind at a time.
 - Logs are heavy: one stops you sprinting and two slow you by a third. Your
   arms are full while you carry wood, so you can't gather or use tools
   until you put it down.
 - `Q` puts one down in front of you, across your path. If you black out,
   you drop everything you carry.
 
-**Building.** Press `B` and the hotbar turns into the build bar. `1`–`8`
+**Building.** Press `B` and the hotbar turns into the build bar. `1`–`9`
 or the mouse wheel choose a piece:
 
 | Key | Piece | Costs | Goes |
@@ -499,6 +542,15 @@ Holding `X` for a moment on a piece takes it apart and gives all its wood
 back; on a blueprint it clears it and gives back what it had. A floor can't
 be taken apart while walls, a roof or a ladder stand on it, nor pilings with
 a floor on top.
+
+**Breaking it.** Any tool breaks what's built, faster than taking it
+apart but at a cost. With a tool selected, right-click a finished piece:
+each blow takes off as much of its condition as it would of another
+team's in a match (15% for the axe, 10% for the pickaxe, 4% for the knife;
+see Bed wars), and the piece darkens as it goes. At nothing it breaks,
+with whatever stands on it, and only half the wood in each is left lying
+where it stood. A piece that's only been knocked about can be repaired
+like a worn one.
 
 ## How the climate works
 
@@ -749,7 +801,7 @@ The trees and tools are the only model files (see Tree models below).
 ## Performance
 
 At startup the game checks which GPU the browser is using and picks a
-graphics tier:
+graphics tier (Settings > Graphics > Quality can choose another):
 
 | Tier | Typical GPU | Pixel ratio cap | Antialiasing | Sun shadows | 3D grass | Textures |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -757,8 +809,9 @@ graphics tier:
 | Medium | Intel / AMD integrated | 1.25 | On | 1024², 38 m, every other frame | 16 m | 512² |
 | High | GeForce RTX / Radeon RX | 1.5 | On | 2048², 64 m, softer edges | 28 m, denser | 1024² |
 
-Water quality is a separate setting on the pause screen (Esc), remembered
-between visits. It defaults to High unless the GPU is in the Low tier.
+Water quality is a separate setting (Settings > Water), remembered between
+visits. It defaults to High on the High tier and Medium otherwise: on
+integrated graphics High costs several frames a second.
 
 | Water quality | Grid | Wave components | Ripple samples |
 | --- | --- | --- | --- |
@@ -801,12 +854,37 @@ graphics the resolution may drop a step or two there.
 Press `P` to see GPU time (in browsers that allow GPU timer queries), frame
 rate, draw calls and triangles.
 
-Render resolution then adjusts automatically. It drops in 10% steps (down to
-60–75%) if the frame rate falls under 50 fps, and climbs back when there is
-headroom. Press `P` to watch it.
+**There is no frame rate cap** in the game. Browsers draw in step with the
+screen, so the most you'll see is its refresh rate (60, 120, 165 Hz…), and
+below that the GPU sets the pace. Measured on a laptop's Intel Graphics at
+1920×1080 (October 2026, Medium): about 40 fps among the trees and 55–58
+over the sea, so it can look stuck at 60.
 
-On laptops with two GPUs, browsers often use the integrated one. The start
-screen points this out. To use the dedicated GPU, set the browser to "High
+**Dynamic resolution** then adjusts the render resolution. The game times
+the screen's refresh rate before it draws anything (`measureRefresh` in
+`core/quality.js`), and by default aims for it: while the frame rate is
+under 90% of the target, the resolution drops 5% (10% if it's well short),
+down to 60–75%; while frames keep pace, it climbs back 5% at a time, and a
+step that fell short isn't tried again for half a minute. Settings >
+Graphics can aim for 120 or 60 fps instead, or turn it off. (Before, it
+only dropped under 50 fps and climbed back over 90, so on a 60 Hz screen it
+never climbed back.) Press `P` to watch it.
+
+On that same Intel laptop, what the settings buy (fps among the trees /
+over the sea):
+
+| Settings | Trees | Sea |
+| --- | --- | --- |
+| Medium, full resolution | 40 | 55 |
+| Medium, dynamic resolution at its 70% floor | 63 | 71 |
+| Medium, anti-aliasing off, full resolution | 54 | 72 |
+| Medium, anti-aliasing off, 80% | 64 | 97 |
+| Low | 100 | 120 |
+
+On laptops with two GPUs, browsers usually draw on the integrated one,
+however fast the other is. The menu points this out when it sees Intel or
+AMD integrated graphics (and the performance readout's last line names the
+GPU in use). To use the dedicated GPU, set the browser to "High
 performance" in Windows Settings > System > Display > Graphics.
 
 ## Tree models
@@ -834,7 +912,7 @@ npm run import-trees -- "<folder with Birch_A.glb, Oak_B.glb, ...>"
 
 The script uses only Node's built-in modules. The pack is free to use:
 credit isn't required but is appreciated, so the game credits it here (see
-Credits) and on the start screen.
+Credits) and on the menu's Credits page.
 
 ## Tool models
 
@@ -866,7 +944,8 @@ npm run import-tools -- "<the pack's Assets/gltf folder>"
 src/
   main.js               bootstraps the scene and runs the game loop
   shared.js             world constants, shared shader uniforms, helpers
-  core/quality.js       GPU detection, quality tiers, adaptive resolution, GPU timer, perf readout
+  core/quality.js       GPU detection, quality tiers, graphics settings, the screen's refresh rate,
+                        dynamic resolution, GPU timer, perf readout
   world/terrain.js      island heightmap, smooth terrain mesh, biome and canopy map (also for shade),
                         exact ground height
   world/textures.js     procedural textures: ground layers, cloud noise, leaf/grass/kelp sprites
@@ -914,7 +993,8 @@ src/
   ui/buildUI.js         the build bar, its piece icons and what needs repairs
   ui/joinery.js         the joinery mini-game: saw, chisel and pegs
   ui/tutorial.js        tips for a first game, one at a time, on your own or in a match
-  ui/lobbyUI.js         the multiplayer lobby on the start screen
+  ui/menu.js            the menu: its pages, settings rows, the keybinds screen, Esc to go back
+  ui/lobbyUI.js         the multiplayer lobby, in the menu
   ui/lineupUI.js        the lobby's line-up of everyone who has joined, in team colours
   ui/mapUI.js           the map (K): terrain, the sea, standing trees, what you've built, bases, you
   match/teams.js        the four multiplayer teams (shared with the game server)

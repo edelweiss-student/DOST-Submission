@@ -85,8 +85,11 @@ export class BedWars {
       this.placingKubo = false;
       hud.message(reason, 3);
     });
-    // What's built is shared, and another team's tools can break it.
-    building.share({ team: this.team, teamName: (team) => `Team ${TEAMS[team].name}`, send: (msg) => net.send('build', msg) });
+    // What's built is shared, and tools can break it once the fighting is on.
+    building.share({
+      team: this.team, teamName: (team) => `Team ${TEAMS[team].name}`, send: (msg) => net.send('build', msg),
+      canBreak: () => this.fighting && !this.peace,
+    });
     net.on('build', (msg) => building.apply(msg));
     net.on('pieceHit', ({ key, amount }) => building.apply({ op: 'hit', key, amount }));
   }
@@ -247,19 +250,20 @@ export class BedWars {
 
   // A swing landing (ray: from your eye, the way you look; tool: what's in
   // your hand, or 'none'): at whatever is nearest in reach, of another
-  // team's players, beds and what they built (your own team's builds stop
-  // it). Returns true if it hit something (so the tool wears).
+  // team's players and beds, and anything built (yours too, but your own
+  // team's bahay kubo stops it). Returns true if it hit something (so the
+  // tool wears).
   strike(ray, tool) {
     if (!this.fighting) return false;
     const foe = this.remotes.aimed(ray, REACH), bed = this.beds.aimed(ray, REACH, this.team);
     const enemy = foe && foe.team !== this.team ? foe : null;
     const piece = this.building.aimed(ray, REACH);
     const nearest = [enemy, bed, piece].filter(Boolean).sort((a, b) => a.distance - b.distance)[0];
-    if (!nearest || (nearest === piece && piece.team === this.team)) return false;
+    if (!nearest || (nearest === piece && piece.kubo && piece.team === this.team)) return false;
     if (this.peace) {
       if (performance.now() - this.warnedPeace > 3000) {
         this.warnedPeace = performance.now();
-        this.hud.message('No fighting until the barriers come down.', 3);
+        this.hud.message('Nothing can be hurt or broken until the barriers come down.', 3);
       }
       return false;
     }

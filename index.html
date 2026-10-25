@@ -60,7 +60,7 @@
       <div id="build-status"></div>
       <div id="build-name"></div>
       <div id="build-pieces"></div>
-      <div class="build-help"><kbd>E</kbd>Place <kbd>R</kbd>Turn or raise <kbd>1–8</kbd>Piece <kbd>B</kbd>Done</div>
+      <div class="build-help"><kbd>E</kbd>Place <kbd>R</kbd>Turn or raise <kbd>1–9</kbd>Piece <kbd>B</kbd>Done</div>
     </div>
     <div id="joinery" hidden>
       <div class="joinery-panel">
@@ -94,43 +94,147 @@
       <div id="inv-tooltip" hidden></div>
     </div>
 
-    <div id="overlay">
-      <div class="card">
-        <h1>WASHED AWAY</h1>
-        <p class="tagline">Every tree you fell brings the sea closer.</p>
-        <div id="lobby" hidden></div>
-        <span class="play">Click to play</span>
-        <button type="button" class="pill mode">Play multiplayer</button>
-        <div class="controls">
-          <b>WASD</b><span>Move / swim</span>
-          <b>Mouse</b><span>Look</span>
-          <b>Shift</b><span>Sprint / swim fast (uses stamina)</span>
-          <b>Space</b><span>Jump / swim up</span>
-          <b>C</b><span>Dive</span>
-          <b>E</b><span>Gather, pick up, chop / split with the axe</span>
-          <b class="mp-only">Click / F</b><span class="mp-only">Strike another team’s players and bed</span>
-          <b>1–9 / Wheel</b><span>Choose a hotbar slot</span>
-          <b>I / Tab</b><span>Inventory and crafting</span>
-          <b>K</b><span>Map</span>
-          <b>Q</b><span>Drop one of the selected item, or put down wood</span>
-          <b>B</b><span>Build: floors, pilings, walls, roofs and more</span>
-          <b>E on a build</b><span>Add wood, repair it, or work its joints</span>
-          <b>Hold X</b><span>Take apart what you built</span>
-          <b>Right-click</b><span>Eat the selected item, or put up your team’s bahay kubo or bed (R turns it)</span>
-          <b>M</b><span>Mute</span>
-          <b>H</b><span>Hide the tips</span>
-          <b>P</b><span>Performance readout</span>
-          <b>Esc</b><span>Pause</span>
+    <!-- The menu: a black panel down the left over the game's own sky and
+         sea (or, paused, the game). Pages swap in place (ui/menu.js). -->
+    <div id="menu">
+      <div class="menu-panel">
+        <header class="menu-head">
+          <h1>WASHED AWAY</h1>
+          <p class="tagline">Every tree you fell brings the sea closer.</p>
+        </header>
+        <div class="menu-pages">
+          <nav class="menu-page" data-page="main">
+            <button type="button" class="menu-item" data-go="play">Play</button>
+            <button type="button" class="menu-item" data-go="settings">Settings</button>
+            <button type="button" class="menu-item" data-go="credits">Credits</button>
+          </nav>
+          <nav class="menu-page" data-page="play" hidden>
+            <button type="button" class="menu-item" data-action="single">Singleplayer</button>
+            <button type="button" class="menu-item" data-go="multiplayer">Multiplayer</button>
+            <button type="button" class="menu-back" data-back>Back</button>
+          </nav>
+          <nav class="menu-page" data-page="multiplayer" hidden>
+            <button type="button" class="menu-item" data-action="bedwars">Bedwars</button>
+            <p class="menu-note">Four teams. Ten minutes to build behind barriers, then a typhoon: break the other teams’ beds, and keep yours above the flood.</p>
+            <button type="button" class="menu-back" data-back>Back</button>
+          </nav>
+          <nav class="menu-page" data-page="settings" hidden>
+            <button type="button" class="menu-item" data-action="keybinds">Keybinds</button>
+            <button type="button" class="menu-item" data-go="water">Water</button>
+            <button type="button" class="menu-item" data-go="graphics">Graphics</button>
+            <button type="button" class="menu-back" data-back>Back</button>
+          </nav>
+          <section class="menu-page" data-page="water" hidden>
+            <h2>Water</h2>
+            <div class="menu-options" id="water-options"></div>
+            <button type="button" class="menu-back" data-back>Back</button>
+          </section>
+          <section class="menu-page" data-page="graphics" hidden>
+            <h2>Graphics</h2>
+            <div class="menu-options" id="graphics-options"></div>
+            <p class="menu-note" id="graphics-restart" hidden></p>
+            <p class="menu-note gpu-tip"></p>
+            <button type="button" class="menu-back" data-back>Back</button>
+          </section>
+          <section class="menu-page" data-page="credits" hidden>
+            <h2>Credits</h2>
+            <dl class="credits">
+              <dt>Trees and fallen trunks</dt><dd>3D Retro World pack (version 0.01)</dd>
+              <dt>Knife, axe and pickaxe</dt><dd>KayKit : RPG Tools Bits by Kay Lousberg (CC0)</dd>
+              <dt>Built with</dt><dd>three.js, Vite and Socket.IO</dd>
+            </dl>
+            <p class="menu-note">Thank you to their creators.</p>
+            <button type="button" class="menu-back" data-back>Back</button>
+          </section>
+          <nav class="menu-page" data-page="pause" hidden>
+            <button type="button" class="menu-item" data-action="resume">Resume</button>
+            <button type="button" class="menu-item" data-go="settings">Settings</button>
+            <button type="button" class="menu-item quit" data-action="quit">Quit to menu</button>
+          </nav>
+          <section class="menu-page" data-page="lobby" hidden>
+            <h2>Bedwars</h2>
+            <div id="lobby" hidden></div>
+            <button type="button" class="menu-item join-match" data-action="resume">Play</button>
+          </section>
         </div>
-        <div class="settings">
-          <span>Water quality</span>
-          <button type="button" data-water="low">Low</button>
-          <button type="button" data-water="medium">Medium</button>
-          <button type="button" data-water="high">High</button>
+        <p class="menu-status"></p>
+        <p class="menu-hint gpu-tip"></p>
+        <p class="menu-dev" hidden>Dev mode: ` then 1–7 force weather (` then 4 again for a worse storm) · T skip an hour · G rogue wave set · ` five times to leave dev mode</p>
+      </div>
+    </div>
+
+    <!-- Settings > Keybinds: every key, over a tinted screen. -->
+    <div id="keybinds" hidden>
+      <div class="keybinds-panel">
+        <h2>Keybinds</h2>
+        <div class="keybinds-groups">
+          <section>
+            <h3>Moving</h3>
+            <dl>
+              <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Move, swim</dd>
+              <dt><kbd>Mouse</kbd></dt><dd>Look</dd>
+              <dt><kbd>Shift</kbd></dt><dd>Sprint, swim fast (uses stamina)</dd>
+              <dt><kbd>Space</kbd></dt><dd>Jump, swim up</dd>
+              <dt><kbd>C</kbd></dt><dd>Dive</dd>
+            </dl>
+          </section>
+          <section>
+            <h3>Hands and tools</h3>
+            <dl>
+              <dt><kbd>E</kbd></dt><dd>With your hands: gather, pick up, build and repair</dd>
+              <dt><kbd>Right-click</kbd></dt><dd>Use the selected item: swing a tool (chop, split logs, cut, break what’s built), eat, or put up your team’s bahay kubo or bed</dd>
+              <dt><kbd>R</kbd></dt><dd>Turn the bed or bahay kubo before you place it</dd>
+              <dt><kbd>1–9</kbd><kbd>Wheel</kbd></dt><dd>Choose a hotbar slot</dd>
+              <dt><kbd>Q</kbd></dt><dd>Drop one of the selected item, or put down wood</dd>
+              <dt>Hold <kbd>X</kbd></dt><dd>Take apart what you built</dd>
+            </dl>
+          </section>
+          <section>
+            <h3>Building</h3>
+            <dl>
+              <dt><kbd>B</kbd></dt><dd>Build mode on or off</dd>
+              <dt><kbd>E</kbd><kbd>Click</kbd></dt><dd>Place the blueprint</dd>
+              <dt><kbd>1–9</kbd><kbd>Wheel</kbd></dt><dd>Choose a piece</dd>
+              <dt><kbd>R</kbd></dt><dd>Turn a roof, raise or lower pilings</dd>
+              <dt><kbd>Right-click</kbd></dt><dd>Leave build mode</dd>
+              <dt><kbd>E</kbd> on a build</dt><dd>Add wood, repair it, or work its joints</dd>
+            </dl>
+          </section>
+          <section>
+            <h3>Fighting (multiplayer)</h3>
+            <dl>
+              <dt><kbd>Click</kbd><kbd>F</kbd></dt><dd>Strike with what’s in your hand: other teams’ players and beds, and what’s built</dd>
+            </dl>
+            <h3>Screens</h3>
+            <dl>
+              <dt><kbd>I</kbd><kbd>Tab</kbd></dt><dd>Inventory and crafting</dd>
+              <dt><kbd>K</kbd></dt><dd>Map</dd>
+              <dt><kbd>H</kbd></dt><dd>Hide the tips</dd>
+              <dt><kbd>M</kbd></dt><dd>Mute</dd>
+              <dt><kbd>P</kbd></dt><dd>Performance readout</dd>
+              <dt><kbd>Esc</kbd></dt><dd>Pause</dd>
+            </dl>
+          </section>
+          <section>
+            <h3>Inventory</h3>
+            <dl>
+              <dt><kbd>Click</kbd></dt><dd>Pick up, put down</dd>
+              <dt><kbd>Right-click</kbd></dt><dd>Split a stack, or put down one</dd>
+              <dt><kbd>Shift</kbd>-click</dt><dd>Move between bag and hotbar</dd>
+              <dt><kbd>1–9</kbd> over a slot</dt><dd>Swap it onto the hotbar</dd>
+              <dt>Click outside</dt><dd>Drop</dd>
+              <dt><kbd>I</kbd><kbd>Tab</kbd><kbd>Esc</kbd></dt><dd>Close</dd>
+            </dl>
+          </section>
+          <section>
+            <h3>Joinery</h3>
+            <dl>
+              <dt><kbd>E</kbd><kbd>Space</kbd><kbd>Click</kbd></dt><dd>Work the joint</dd>
+              <dt><kbd>X</kbd></dt><dd>Skip it (rough joints)</dd>
+            </dl>
+          </section>
         </div>
-        <div class="dev" hidden>Dev mode: ` then 1–7 force weather (` then 4 again for a worse storm) · T skip an hour · G rogue wave set · ` five times to leave dev mode</div>
-        <div id="gpu-tip"></div>
-        <div class="credits">Trees from the 3D Retro World pack. Tools from KayKit by Kay Lousberg. Thank you to their creators.</div>
+        <button type="button" class="menu-back" data-close>Back</button>
       </div>
     </div>
 

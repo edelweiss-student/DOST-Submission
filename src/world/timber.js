@@ -369,30 +369,31 @@ export function createTimber(scene, { terrain, water, forest, trees, wood, groun
     return best && { piece: best, score: bestScore };
   }
 
-  // E on a piece: split it (a log, with the axe in hand) or pick it up.
+  // A piece under the crosshair: E picks it up, and a swing of the axe
+  // (with your arms empty) splits a log.
   function focusOn(p, score, tool) {
     const held = carrying();
     const name = woodName(p.kind);
-    if (p.kind === 'log' && tool === 'axe' && !held) {
-      return {
-        score, key: p, swing: true, prompt: [['E', `Split into planks (${p.chops}/${SPLIT_CHOPS})`]],
-        act: () => {
-          split(p);
-          return { used: true };
-        },
-      };
-    }
     if (held && (held.kind !== p.kind || held.count >= CARRY[held.kind])) {
       const full = held.kind === p.kind ? `You can’t carry more than ${CARRY[held.kind]} ${woodName(held.kind, 2)}` : 'Your arms are full';
       return { score, key: p, dim: true, prompt: [['E', full], ['Q', 'Put one down']] };
     }
     const count = held ? ` (${held.count + 1}/${CARRY[p.kind]})` : '';
+    const splits = p.kind === 'log' && tool === 'axe' && !held;
     return {
-      score, key: p, prompt: [['E', `Pick up ${name}${count}`]],
+      score, key: p,
+      prompt: [['E', `Pick up ${name}${count}`], ...(splits ? [['Right-click', `Split into planks (${p.chops}/${SPLIT_CHOPS})`]] : [])],
       act: () => {
         pickUp(p);
         return {};
       },
+      use: splits
+        ? () => {
+          if (!pieces.includes(p)) return null;   // picked up mid-swing
+          split(p);
+          return { used: true };
+        }
+        : null,
     };
   }
 

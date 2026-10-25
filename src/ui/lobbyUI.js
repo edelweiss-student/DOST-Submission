@@ -9,10 +9,11 @@ const el = (tag, className, text) => {
 };
 const button = (className, text) => Object.assign(el('button', `pill ${className}`, text), { type: 'button' });
 
-// The multiplayer lobby on the start screen: your name, everyone who has
-// joined standing in a line-up in their team's colour, the four teams and
-// who's on them, Ready, and Start for the host. Once the match is on, just
-// your team. Names come from other players, so they only go in as text.
+// The multiplayer lobby, in the menu: your name, everyone who has joined
+// standing in a line-up in their team's colour, the four teams and who's
+// on them, Ready, and Start for the host. Once the match is on, just your
+// team (with the menu's Play under it). Names come from other players, so
+// they only go in as text.
 //
 // actions: onJoin(name), onTeam(index), onReady(ready), onStart(), onLeave().
 export class LobbyUI {
@@ -60,7 +61,7 @@ export class LobbyUI {
 
     this.banner = el('p', 'lobby-banner');
     this.statusLine = el('p', 'lobby-status');
-    this.leave = button('leave', 'Back to single-player');
+    this.leave = button('leave', 'Back to the menu');
     this.leave.addEventListener('click', onLeave);
     root.append(this.banner, this.join, this.lineupBox, this.teams, this.actions, this.statusLine, this.leave);
     this.lineupBox.hidden = true;
@@ -126,7 +127,7 @@ export class LobbyUI {
     this.lineup.start();
   }
 
-  // The match has started: just your team, over Click to play.
+  // The match has started: just your team, above the menu's Play.
   showMatch(team, players) {
     const mates = players.filter((p) => p.team === TEAMS.indexOf(team)).length;
     this.join.hidden = this.teams.hidden = this.actions.hidden = true;

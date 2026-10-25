@@ -32,20 +32,20 @@ export async function joinServer() {
   }
 }
 
-// The start screen becomes the lobby until the host starts the match; then
-// everyone spawns at their team's base, with its bed and bahay kubo in
-// their inventory. The match opens with the server's build phase: a
-// countdown, and barriers that keep each team out of the others' bases
-// until it ends, in fair weather. Then it's bed wars (bedwars.js) while a
-// bagyo builds on the match's clock (rules.js): the weather and the climate
+// The menu holds the lobby until the host starts the match; then everyone
+// spawns at their team's base, with its bed and bahay kubo in their
+// inventory. The match opens with the server's build phase: a countdown,
+// and barriers that keep each team out of the others' bases until it
+// ends, in fair weather. Then it's bed wars (bedwars.js) while a bagyo
+// builds on the match's clock (rules.js): the weather and the climate
 // follow it, the sea rises, and any bed the water reaches is washed away.
-// overlay: the start screen. Returns { inLobby,
-// intro, team, bases, barriersUp, fighting, strike, pressure, forecast,
-// update(dt) }: while inLobby, clicking the start screen doesn't start the
-// game; pressure is the climate's (0..1), and forecast the weather panel's
-// line about what's coming.
-export function createMatch({ net, seed, error }, { terrain, player, hud, overlay, scene, sea, camera, weather, building, inventory }) {
-  overlay.classList.add('mp', 'lobby');
+// menu: the menu's element (ui/menu.js), which has the class lobby while
+// the lobby is on. Returns { inLobby, intro, team, bases, barriersUp,
+// fighting, strike, pressure, forecast, update(dt) }: while inLobby, the
+// game can't be started; pressure is the climate's (0..1), and forecast
+// the weather panel's line about what's coming.
+export function createMatch({ net, seed, error }, { terrain, player, hud, menu, scene, sea, camera, weather, building, inventory }) {
+  menu.classList.add('mp', 'lobby');
   const leave = () => { location.href = location.pathname; };
   let name = '';
   try { name = localStorage.getItem(NAME_KEY) ?? ''; } catch { /* storage blocked */ }
@@ -108,7 +108,7 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
     hud.message(`Team ${TEAMS[hit].name}’s base is closed until the barriers come down (${clock(buildEnds - bumped)}).`, 3);
   };
 
-  const ui = new LobbyUI(overlay.querySelector('#lobby'), {
+  const ui = new LobbyUI(menu.querySelector('#lobby'), {
     name,
     onJoin(chosen) {
       name = chosen;
@@ -122,7 +122,7 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
     onLeave: leave,
   });
   const match = {
-    get inLobby() { return overlay.classList.contains('lobby'); },
+    get inLobby() { return menu.classList.contains('lobby'); },
     get intro() {
       if (!team) return null;
       const where = `You’re on Team ${team.name}, on the ${team.shore} shore.`;
@@ -205,7 +205,7 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, overla
     bases = findBases(terrain);
     player.spawn = bases[me.team];
     player.respawn();
-    overlay.classList.remove('lobby');
+    menu.classList.remove('lobby');
     ui.showMatch(team, players);
     wars = new BedWars({ net, players, me: net.id, bases, terrain, scene, player, camera, hud, building, inventory, sea, peace: buildLeft > 0 });
     if (buildLeft > 0) {

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { uniforms, clamp } from '../shared.js';
-import { MAX_STAIRS } from '../match/rules.js';
+import { MAX_STAIRS, PIECE_HP, damageOf } from '../match/rules.js';
 import { boardGeometry, logGeometry } from './wood.js';
 
 // Building with wood. Pieces snap to a 2 m grid: floors on posts or on log
@@ -23,13 +23,16 @@ import { boardGeometry, logGeometry } from './wood.js';
 // roofs; droughts crack it. The sea does the most damage: it floods what's
 // built low, pounds it with surf and leaves a stained high-water mark. Worn
 // boards grey and fall off; repairs with planks (or logs, for pilings) bring
-// a piece back; left alone it gives way and its wood floats off.
+// a piece back; left alone it gives way and its wood floats off. Tools
+// break things too: each blow costs a finished piece some of its condition
+// (DAMAGE in match/rules.js), and at nothing it falls, with whatever stood
+// on it, leaving half its wood.
 //
 // In a multiplayer match what's built is shared (share()): every change
 // goes to the other players' games, which apply() it, and pieces belong to
 // a team. Another team's pieces can't be built on or taken apart, only
-// broken with tools (match/bedwars.js), and they don't weather, so every
-// game agrees on what stands.
+// broken with tools (blows go through the server: match/bedwars.js), and
+// nothing weathers, so every game agrees on what stands.
 
 export const CELL = 2;             // the building grid (m); a floor fills one cell
 export const WALL_HEIGHT = 2.4;
@@ -772,10 +775,12 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     };
     // What you aim at: a floor's deck (not the posts under it), each of
     // the pilings (not the space between them, where a floor goes on top),
-    // or the whole piece.
+    // each board of a doorway or window (not the opening, so a swing goes
+    // through it), or the whole piece.
+    const byPart = plan.type === 'pilings' || plan.type === 'doorway' || plan.type === 'window';
     piece.aim = plan.type === 'floor'
       ? [new THREE.Box3(new THREE.Vector3(plan.x0, plan.y - 0.3, plan.z0), new THREE.Vector3(plan.x0 + CELL, plan.y, plan.z0 + CELL))]
-      : plan.type === 'pilings' ? piece.parts.map((part) => bounds([part])) : [piece.box];
+      : byPart ? piece.parts.map((part) => bounds([part])) : [piece.box];
     if (plan.type === 'floor' || plan.type === 'pilings') {
       const key = cellKey(plan.i, plan.j);
       const cell = cells.get(key) ?? { i: plan.i, j: plan.j, x0: plan.x0, z0: plan.z0, floor: null, roof: null, pilings: null };
@@ -957,8 +962,35 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     return { notify: piece.done ? `Took the ${piece.name} apart` : 'Blueprint cleared' };
   }
 
-  // Broken by another team's tools (a match): it falls, with what stood on
-  // it, the same in every game.
+  // A tool's blow on a finished piece on your own island: it loses
+  // condition, and at nothing it breaks (in a match blows go through the
+  // server instead: apply({ op: 'hit' })).
+  function strike(piece, tool) {
+    if (!pieces.includes(piece) || !piece.done) return null;
+    piece.health -= damageOf('piece', tool) / PIECE_HP;
+    piece.warnedLow = true;   // you know: no warning that it's wearing out
+    dirty = true;
+    if (piece.health > 0) {
+      onSound?.('knock', 0.8);
+      return { used: true };
+    }
+    smash(piece);
+    return { used: true, notify: `Broke the ${piece.name}` };
+  }
+
+  // Broken with tools on your own island: it falls, with whatever stood on
+  // it, and half the wood in each is left lying where it stood.
+  function smash(piece) {
+    if (!pieces.includes(piece)) return;
+    const on = standingOn(piece);
+    free(piece, Math.ceil((piece.done ? piece.cost : piece.added) / 2));
+    unregister(piece);
+    onSound?.('break', 1);
+    for (const other of on) smash(other);
+  }
+
+  // Broken by tools in a match: it falls, with what stood on it, the same
+  // in every game.
   function destroy(piece) {
     if (!pieces.includes(piece)) return;
     const on = standingOn(piece);
@@ -1202,7 +1234,8 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     },
 
     // The finished piece a swing along ray would hit within reach (a
-    // match's fighting): { key, team, distance }, or null.
+    // match's fighting): { key, team, kubo (part of a bahay kubo), distance },
+    // or null.
     aimed(ray, reach) {
       let best = null;
       for (const piece of pieces) {
@@ -1210,17 +1243,19 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
         for (const box of piece.aim) {
           if (box.containsPoint(ray.origin) || !ray.intersectBox(box, v)) continue;
           const distance = v.distanceTo(ray.origin);
-          if (distance <= reach && (!best || distance < best.distance)) best = { key: piece.key, team: piece.team, distance };
+          if (distance <= reach && (!best || distance < best.distance)) best = { key: piece.key, team: piece.team, kubo: !!piece.builtIn, distance };
         }
       }
       return best;
     },
 
-    // The piece under the crosshair, as { score, prompt, dim, act, hold }.
+    // The piece under the crosshair, as { score, prompt, dim, act, hold, use }.
     // E adds the plank (or log) you're carrying to a blueprint, repairs a
     // worn piece with it, or with empty arms reworks the joints; holding X
-    // takes the piece down.
-    focus(ray, carrying) {
+    // takes the piece down; a swing of the tool in hand (tool: its kind)
+    // breaks a finished one (in a match the swing's strike does that: see
+    // match/bedwars.js).
+    focus(ray, carrying, tool) {
       let best = null, bestT = REACH;
       for (const piece of pieces) {
         if (piece.center.distanceToSquared(ray.origin) > 100) continue;
@@ -1236,17 +1271,23 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
       if (!best) return null;
       const piece = best, wood = piece.material;
       const score = 3 - bestT * 0.3;
+      // A tool can break it: anything finished, but in a match not your own
+      // team's bahay kubo, and only once the fighting is on.
+      const ownKubo = sharing && piece.builtIn && piece.team === sharing.team;
+      const breaks = piece.done && !!tool && !carrying && !ownKubo && (sharing?.canBreak?.() ?? true);
+      const smashing = breaks ? [['Right-click', 'Break it']] : [];
+      const use = breaks && !sharing ? () => strike(piece, tool) : null;
       if (enemy(piece)) {
         const state = piece.done ? `${Math.ceil(piece.health * 100)}%` : 'blueprint';
-        return { score, key: piece, dim: true, prompt: [[null, `${sharing.teamName(piece.team)}’s ${piece.name} · ${state}`]] };
+        return { score, key: piece, dim: !breaks, prompt: [...smashing, [null, `${sharing.teamName(piece.team)}’s ${piece.name} · ${state}`]] };
       }
       const has = carrying?.kind === wood;
       // A bahay kubo: repairs, but no taking it apart for its wood.
       if (piece.builtIn) {
         const fix = has && piece.health < 0.97;
         return {
-          score, key: piece, dim: !fix, act: fix ? () => repair(piece) : null,
-          prompt: [...(fix ? [['E', `Repair with a ${wood} (+${Math.round(REPAIR[wood] * 100)}%)`]] : []), [null, describe(piece)]],
+          score, key: piece, dim: !fix && !breaks, act: fix ? () => repair(piece) : null,
+          prompt: [...(fix ? [['E', `Repair with a ${wood} (+${Math.round(REPAIR[wood] * 100)}%)`]] : []), ...smashing, [null, describe(piece)]],
         };
       }
       const hold = () => takeDown(piece);
@@ -1270,8 +1311,8 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
         prompt.push(['E', piece.joints == null ? 'Join the frame' : 'Rework the joints']);
         act = () => ({ joinery: joineryFor(piece) });
       }
-      prompt.push(['X', 'Hold to take apart'], [null, describe(piece)]);
-      return { score, key: piece, dim: !act, hold, act, prompt };
+      prompt.push(...smashing, ['X', 'Hold to take apart'], [null, describe(piece)]);
+      return { score, key: piece, dim: !act && !breaks, hold, act, use, prompt };
     },
 
     // How many finished pieces need repairs (under half), and the worst.

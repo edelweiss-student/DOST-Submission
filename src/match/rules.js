@@ -20,8 +20,9 @@ export const MAX_STAIRS = 3;     // stairs each player can build (on your own to
 export const SWING_GAP = 200;    // ms: the server counts at most one hit per player this often
 
 // What a swing does, by what's in your hand ('none' for a fist): to another
-// player (health is 100), to a bed, and to a piece another team built
-// (PIECE_HP each). The pickaxe is for beds, the axe for walls.
+// player (health is 100), to a bed, and to anything built (PIECE_HP each,
+// on your own island too: see world/building.js). The pickaxe is for beds,
+// the axe for walls.
 export const DAMAGE = {
   player: { none: 5, knife: 14, axe: 20, pickaxe: 16 },
   bed: { none: 3, knife: 5, axe: 12, pickaxe: 20 },
