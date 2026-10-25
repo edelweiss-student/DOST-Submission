@@ -65,6 +65,16 @@ html, body {
 /* A swing that hit someone (or a bed) in a match */
 #crosshair.hit { transform: scale(2.4); background: var(--health); }
 
+/* Watching a match: who you follow and the keys, at the bottom; none of a player's screen furniture */
+#spectate {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 7px 16px; border-radius: 10px; background: var(--panel); backdrop-filter: blur(4px);
+  font-size: 13px; color: var(--muted); pointer-events: none; text-align: center;
+}
+#spectate b { font-size: 15px; color: var(--text); }
+body.spectating :is(#bars, #hotbar, #hotbar-name, #prompt, #crosshair, #tutorial, #build-bar, #throw-meter) { display: none !important; }
+
 /* The spear drawn back: how hard it will be thrown */
 #throw-meter {
   position: fixed; left: 50%; top: calc(50% + 12px); transform: translateX(-50%);
@@ -433,7 +443,7 @@ html, body {
 #menu.lobby .join-match, #menu:not(.mp) .join-match { display: none; }
 /* While the menu is up, the game's screen furniture keeps out of the way. */
 body.in-menu :is(#weather-panel, #climate-panel, #bars, #hotbar, #hotbar-name, #prompt, #crosshair,
-  #tutorial, #message, #match-timer, #match-hud, #feed, #build-bar, #dev-badge) { visibility: hidden; }
+  #tutorial, #message, #match-timer, #match-hud, #feed, #build-bar, #dev-badge, #spectate) { visibility: hidden; }
 
 /* Settings > Keybinds: every key, over a tinted screen. */
 #keybinds {
@@ -477,6 +487,9 @@ body.in-menu :is(#weather-panel, #climate-panel, #bars, #hotbar, #hotbar-name, #
 .lobby-team li.you .name { font-weight: 700; }
 .lobby-team li.empty { color: #6f8291; font-style: italic; }
 .lobby-team .pill { padding: 2px 10px; font-size: 12px; }
+/* Spectators: across the whole width, in grey. */
+.lobby-watch { grid-column: 1 / -1; --team: var(--muted); }
+.lobby-watch ol { display: flex; flex-wrap: wrap; gap: 2px 14px; }
 .lobby-actions { display: flex; gap: 8px; justify-content: center; margin-top: 14px; }
 .lobby-banner { margin: 0 0 6px; font-weight: 600; color: var(--team); }
 .lobby-status { margin: 12px 0 8px; font-size: 13px; color: var(--muted); }

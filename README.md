@@ -118,8 +118,20 @@ game server. Two browser tabs make two players.
 **The lobby.** Play > Multiplayer > Bedwars in the menu opens it, in the
 menu's panel, widened. Pick a name and join. You're put on the team with the fewest players (up to 4 a team, 16
 in all), and you can switch to one with room, which takes back your Ready.
-The first to join hosts, then the next in line if they leave. Once everyone
-is ready, the host starts the match.
+Or choose **Watch instead** to spectate (up to 16 watch): spectators have no
+team and don't need to be Ready, and once every team is full, newcomers
+watch. The first to join hosts, then the next in line if they leave; a
+spectator can host too. Once every player is ready, the host starts the
+match.
+
+**Watching** (`match/spectator.js`), as a spectator or once you're out:
+nobody sees you and you can't touch anything. You start high over the
+island, flying freely: `WASD` moves the way you look, `Space` rises, `C`
+sinks, `Shift` goes faster and the mouse looks around. Click to follow a
+player from behind and above (click again for the next one; someone who
+goes down is skipped), and right-click to fly freely from there. A bar at
+the bottom says who you're watching. The map (`K`), mute (`M`) and the
+teams panel still work; the rest of a player's screen is hidden.
 
 Everyone who has joined stands in a line-up above the teams, grouped by
 team, with a marker over you. Each player is a low-poly survivor
@@ -260,8 +272,7 @@ to shed typhoon rain, and bamboo steps up to the door.
   (or is still in your inventory), a player who goes down (knocked out, or
   drowned) lies where they fell and comes back beside it 5 seconds later.
   Once it's destroyed or washed away, going down is for good: you're out. A
-  few seconds later you can walk about and watch, unseen and unable to
-  fight.
+  few seconds later you watch the rest of the match (see Watching above).
 - **The end.** The last team with anyone left wins (players who leave are
   out), or, when time runs out after the surge, the team with the most
   players still standing. Everyone sees who won, and "Back to the lobby"
@@ -412,8 +423,10 @@ There are three stone tools and a spear:
 
 A tool is used up one blow at a time, and only when it hits something it
 works on (a swing at the air wears nothing). A bar under its slot shows the
-uses left, and the tooltip gives the exact number. A selected tool is in
-your hand at the lower right; it bobs as you walk and swings when you
+uses left, and the tooltip gives the exact number. Whatever is in the
+selected hotbar slot shows in your hand at the lower right: a tool or the
+spear in your grip, sticks, stones, fibre or berries in your open palm (the
+team's bed and bahay kubo show where they'd go instead). It bobs as you walk and swings when you
 right-click, and its work is done when the swing lands. `E` is only ever
 your hands. Every tool breaks what's built (see Timber and building); the
 pickaxe has no other work on the island for now, and in a multiplayer
@@ -1021,6 +1034,7 @@ src/
                         the storm on the match's clock, no-build zones
   match/rules.js        the bed-wars rules: health, damage, reach, respawning, the storm and its
                         surge, the stairs limit (shared with the game server)
+  match/spectator.js    watching a match: flying freely, or following a player
   match/bedwars.js      bed wars in your game: your team's bahay kubo and bed from your
                         inventory, the flood washing beds away, striking, being hit, going down,
                         coming back or being out, the teams panel and feed, the end of the match

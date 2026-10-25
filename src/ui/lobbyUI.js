@@ -1,4 +1,4 @@
-import { TEAMS, TEAM_SIZE, NAME_LENGTH } from '../match/teams.js';
+import { TEAMS, TEAM_SIZE, NAME_LENGTH, WATCH } from '../match/teams.js';
 import { Lineup } from './lineupUI.js';
 
 const el = (tag, className, text) => {
@@ -11,7 +11,8 @@ const button = (className, text) => Object.assign(el('button', `pill ${className
 
 // The multiplayer lobby, in the menu: your name, everyone who has joined
 // standing in a line-up in their team's colour, the four teams and who's
-// on them, Ready, and Start for the host. Once the match is on, just your
+// on them, who's watching (spectators: no team, no Ready needed), Ready,
+// and Start for the host. Once the match is on, just your
 // team (with the menu's Play under it). Names come from other players, so
 // they only go in as text.
 //
@@ -51,6 +52,15 @@ export class LobbyUI {
       this.teams.append(box);
       return { list, switchTo };
     });
+    // Spectators: watching the match instead of playing.
+    const watch = el('section', 'lobby-team lobby-watch');
+    const watchHead = el('header');
+    watchHead.append(el('span', 'dot'), el('b', '', 'Watching'), el('small', '', 'spectators'));
+    this.watchList = el('ol');
+    this.watchButton = button('', 'Watch instead');
+    this.watchButton.addEventListener('click', () => onTeam(WATCH));
+    watch.append(watchHead, this.watchList, this.watchButton);
+    this.teams.append(watch);
 
     this.actions = el('div', 'lobby-actions');
     this.ready = button('ready', 'Ready');
@@ -76,31 +86,38 @@ export class LobbyUI {
     const open = phase === 'lobby';
     this.join.hidden = !open || !!you;
     this.actions.hidden = !open || !you;
-    this.showLineup(open && players.length > 0, players, me);
+    const playing = players.filter((p) => p.team !== WATCH);
+    this.showLineup(open && playing.length > 0, playing, me);
+    const item = (p) => {
+      const li = el('li', p.id === me ? 'you' : '');
+      const tags = [p.id === host && 'host', p.ready && p.team !== WATCH && 'ready'].filter(Boolean).join(' · ');
+      li.append(el('span', 'name', p.name), el('span', 'tags', tags));
+      return li;
+    };
+    const watchers = players.filter((p) => p.team === WATCH);
+    this.watchList.replaceChildren(...(watchers.length ? watchers.map(item) : [el('li', 'empty', 'No one yet')]));
+    this.watchButton.hidden = !open || !you || you.team === WATCH;
     TEAMS.forEach((team, i) => {
       const { list, switchTo } = this.teamBoxes[i];
       const members = players.filter((p) => p.team === i);
-      list.replaceChildren(...(members.length ? members.map((p) => {
-        const item = el('li', p.id === me ? 'you' : '');
-        const tags = [p.id === host && 'host', p.ready && 'ready'].filter(Boolean).join(' · ');
-        item.append(el('span', 'name', p.name), el('span', 'tags', tags));
-        return item;
-      }) : [el('li', 'empty', 'No one yet')]));
+      list.replaceChildren(...(members.length ? members.map(item) : [el('li', 'empty', 'No one yet')]));
       switchTo.hidden = !open || !you || you.team === i;
       switchTo.disabled = members.length >= TEAM_SIZE;
       switchTo.textContent = switchTo.disabled ? `${team.name} is full` : `Join ${team.name}`;
     });
+    const ready = playing.filter((p) => p.ready).length;
     if (you) {
+      this.ready.hidden = you.team === WATCH;
       this.ready.classList.toggle('active', you.ready);
       this.ready.textContent = you.ready ? 'Ready ✓' : 'Ready';
       this.start.hidden = you.id !== host;
-      this.start.disabled = !players.every((p) => p.ready);
+      this.start.disabled = !playing.length || ready < playing.length;
     }
-    const ready = players.filter((p) => p.ready).length;
     let text;
     if (!open) text = 'A match is under way. You can join the next one.';
     else if (!you) text = 'Pick a name and join. Teams are evened out as people join.';
-    else if (you.id === host) text = ready === players.length ? 'Everyone’s ready. Start when you like.' : `Waiting for everyone to be ready (${ready} of ${players.length}).`;
+    else if (you.id === host) text = !playing.length ? 'Someone has to play: pick a team.' : ready === playing.length ? 'Everyone’s ready. Start when you like.' : `Waiting for every player to be ready (${ready} of ${playing.length}).`;
+    else if (you.team === WATCH) text = `You’ll watch the match. Waiting for ${players.find((p) => p.id === host)?.name ?? 'the host'} to start it.`;
     else if (you.ready) text = `Waiting for ${players.find((p) => p.id === host)?.name ?? 'the host'} to start the match.`;
     else text = 'Press Ready when you’re set.';
     this.status(text);
@@ -127,14 +144,16 @@ export class LobbyUI {
     this.lineup.start();
   }
 
-  // The match has started: just your team, above the menu's Play.
+  // The match has started: just your team (or that you're watching), above
+  // the menu's Play.
   showMatch(team, players) {
-    const mates = players.filter((p) => p.team === TEAMS.indexOf(team)).length;
+    const playing = players.filter((p) => p.team !== WATCH).length;
     this.join.hidden = this.teams.hidden = this.actions.hidden = true;
     this.showLineup(false);
     this.banner.hidden = false;
-    this.banner.style.setProperty('--team', team.color);
-    this.banner.textContent = `Team ${team.name} · ${team.shore} shore · ${mates} of ${players.length} players`;
+    this.banner.style.setProperty('--team', team?.color ?? 'var(--text)');
+    const mates = team ? players.filter((p) => p.team === TEAMS.indexOf(team)).length : 0;
+    this.banner.textContent = team ? `Team ${team.name} · ${team.shore} shore · ${mates} of ${playing} players` : `Watching · ${playing} player${playing === 1 ? '' : 's'} in the match`;
     this.leave.textContent = 'Leave the match';
     this.status('');
   }

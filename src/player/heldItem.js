@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { isTool, toolGeometry } from '../items/models.js';
+import { isTool, toolGeometry, lyingGeometry } from '../items/models.js';
+import { ITEMS } from '../items/items.js';
 import { patchMaterial } from '../world/materials.js';
 import { LOG_LENGTH, LOG_RADIUS, PLANK, logGeometry, boardGeometry } from '../world/wood.js';
 import { CARRY } from '../world/timber.js';
@@ -13,6 +14,10 @@ const GRIP = {
   pickaxe: { scale: 0.58, y: -0.47, z: -0.6 },
   spear: { scale: 1, y: -0.3, z: -0.28 },
 };
+// Anything else in the selected slot sits in your open hand, grown to a
+// size that reads at a glance.
+const IN_HAND = { scale: 1.2, y: -0.29, z: -0.62 };
+const HAND_SIZE = { stick: 0.75, stone: 1.1, fibre: 1.1, berries: 1.2 };
 
 // How each tool swings. duration in seconds; hit: when in the swing the
 // tool lands (0..1), which is when its work is done.
@@ -47,8 +52,10 @@ const SWINGS = { knife: STRIKE, axe: CHOP, pickaxe: STRIKE, spear: THRUST };
 const UP = new THREE.Vector3(0, 1, 0);
 const ease = (t) => t * t * (3 - 2 * t);
 
-// What's in your hands, at the lower right of the view: the selected tool,
-// which bobs as you walk and swings when you use it, or the wood you're
+// What's in your hands, at the lower right of the view: whatever is in the
+// selected hotbar slot (a tool, or sticks, stones, fibre, berries...; the
+// team's bed and bahay kubo show where they'd go instead), which bobs as
+// you walk and swings when you use it, or the wood you're
 // carrying instead (logs on your shoulder, planks under your arm). The
 // spear is held pointing ahead, and drawn back over your shoulder to throw.
 // wood: the wood materials (world/wood.js), shared with the logs and
@@ -172,11 +179,11 @@ export function createHeldItem(scene, camera, wood) {
     // take the place of the tool.
     update(dt, stack, speed, carried = []) {
       showCarried(carried);
-      const id = !carried.length && stack && isTool(stack.id) ? stack.id : null;
+      const id = !carried.length && stack && !ITEMS[stack.id].keep ? stack.id : null;
       if (id !== shown) {
         if (shown) models[shown].visible = false;
         if (id) {
-          models[id] ??= hand.add(new THREE.Mesh(toolGeometry(id), material)).children.at(-1);
+          models[id] ??= hand.add(new THREE.Mesh(isTool(id) ? toolGeometry(id) : lyingGeometry(id), material)).children.at(-1);
           models[id].visible = true;
         }
         shown = id;
@@ -196,7 +203,7 @@ export function createHeldItem(scene, camera, wood) {
       if (u >= 1) swing = null;
       if (!id) return;
       // At rest: low on the right, bobbing as you walk.
-      const grip = GRIP[id];
+      const grip = GRIP[id] ?? { ...IN_HAND, scale: HAND_SIZE[id] ?? IN_HAND.scale };
       hand.scale.setScalar(grip.scale);
       const sway = Math.sin(bob * 2) * 0.012 * moving;
       if (id === 'spear') {
@@ -204,6 +211,10 @@ export function createHeldItem(scene, camera, wood) {
         // rises over your shoulder, its point lifting.
         rest.pos.set(0.3 + drawn * 0.06, grip.y + drawn * 0.22 + sway, grip.z + drawn * 0.3);
         rest.quat.setFromEuler(spearTurn.set(-Math.PI / 2 + 0.1 + drawn * 0.14, 0.12 - drawn * 0.06, 0));
+      } else if (!GRIP[id]) {
+        // In your palm, tipped towards you.
+        rest.pos.set(0.3, grip.y + sway, grip.z);
+        rest.quat.setFromEuler(euler.set(0.5, 0.6, 0.1 + Math.sin(bob) * 0.02 * moving));
       } else {
         rest.pos.set(0.34, grip.y + sway, grip.z);
         rest.quat.setFromEuler(euler.set(-0.45, 0.35, 0.45 + Math.sin(bob) * 0.02 * moving));

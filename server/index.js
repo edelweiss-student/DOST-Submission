@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { randomInt } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { Server } from 'socket.io';
-import { TEAMS, BUILD_TIME } from '../src/match/teams.js';
+import { TEAMS, BUILD_TIME, WATCH } from '../src/match/teams.js';
 import { Lobby } from './lobby.js';
 import { Match } from './match.js';
 import { RESPAWN_TIME, SURGE, FINAL, PIECE_HP, MAX_STAIRS, damageOf } from '../src/match/rules.js';
@@ -89,7 +89,7 @@ const http = createServer(serveFile);
 const io = new Server(http, { maxHttpBufferSize: 64 * 1024 });
 const lobby = new Lobby(SEED, BUILD);
 const broadcast = () => io.emit('lobby', lobby.state);
-const teamOf = (id) => TEAMS[lobby.players.get(id)?.team]?.name;
+const teamOf = (id) => (lobby.players.get(id)?.team === WATCH ? 'the spectators' : `Team ${TEAMS[lobby.players.get(id)?.team]?.name}`);
 const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 // The bed-wars match while it's on (server/match.js). When its build phase
 // ends, the barriers come down and every base is open, and the storm
@@ -132,18 +132,20 @@ io.on('connection', (socket) => {
   };
 
   socket.on('join', (name) => {
-    if (act(() => lobby.join(socket.id, name))) console.log(`${lobby.players.get(socket.id).name} joined Team ${teamOf(socket.id)}`);
+    if (act(() => lobby.join(socket.id, name))) console.log(`${lobby.players.get(socket.id).name} joined ${teamOf(socket.id)}`);
   });
   socket.on('team', (team) => act(() => lobby.setTeam(socket.id, team)));
   socket.on('ready', (ready) => act(() => lobby.setReady(socket.id, ready)));
   socket.on('start', () => {
     const error = lobby.start(socket.id);
     if (error) return socket.emit('notice', error);
-    console.log(`Match started: ${lobby.players.size} player${lobby.players.size === 1 ? '' : 's'}, island ${lobby.seed}, ${clock(BUILD)} to build`);
+    // Spectators watch: the match itself is only those on a team.
+    const playing = lobby.state.players.filter((p) => p.team !== WATCH), watching = lobby.players.size - playing.length;
+    console.log(`Match started: ${playing.length} player${playing.length === 1 ? '' : 's'}${watching ? ` and ${watching} watching` : ''}, island ${lobby.seed}, ${clock(BUILD)} to build`);
     io.emit('start', { seed: lobby.seed, players: lobby.state.players, buildLeft: lobby.buildLeft });
     broadcast();
     endMatch();
-    match = new Match(lobby.state.players);
+    match = new Match(playing);
     tick = setInterval(() => io.volatile.emit('moves', match.snapshot()), 50);
     opening = setTimeout(() => {
       console.log('The build phase is over: every base is open, and the storm is building');

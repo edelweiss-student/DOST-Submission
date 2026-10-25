@@ -1,6 +1,6 @@
 import { connect } from '../net/net.js';
 import { LobbyUI } from '../ui/lobbyUI.js';
-import { TEAMS, BASE_RADIUS } from './teams.js';
+import { TEAMS, BASE_RADIUS, WATCH } from './teams.js';
 import { findBases } from './bases.js';
 import { Barriers } from './barriers.js';
 import { BedWars } from './bedwars.js';
@@ -50,7 +50,8 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, menu, 
   let name = '';
   try { name = localStorage.getItem(NAME_KEY) ?? ''; } catch { /* storage blocked */ }
   let joined = false;   // asked to join, so ask again after a reconnect
-  let team = null;      // ours, once the match is on
+  let inMatch = false;  // the match is on (and we're in it, playing or watching)
+  let team = null;      // ours, once the match is on (null for a spectator)
   let teamIndex = -1;
   let bases = null;     // every team's, once the match is on
   let barriers = null;
@@ -124,7 +125,8 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, menu, 
   const match = {
     get inLobby() { return menu.classList.contains('lobby'); },
     get intro() {
-      if (!team) return null;
+      if (!inMatch) return null;
+      if (!team) return 'You’re watching the match. Click to follow a player, right-click to fly freely; WASD, Space and C fly you about.';
       const where = `You’re on Team ${team.name}, on the ${team.shore} shore.`;
       const left = buildEnds - performance.now();
       return buildEnds && left > 1000
@@ -153,6 +155,13 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, menu, 
     aimKubo: (ray) => wars?.aimKubo(ray) ?? null,
     placeKubo: (ray) => wars?.placeKubo(ray),
     turnKubo: () => wars?.turnKubo(),
+    // Watching (a spectator, or out): the camera is the spectator's
+    // (spectator.js), moved by the keys held (keys); click follows the next
+    // player, right-click flies freely.
+    get spectating() { return !!wars?.spectating; },
+    spectate: (dt, keys) => wars?.spectator.update(dt, keys),
+    followNext: () => wars?.spectator.next(),
+    flyFreely: () => wars?.spectator.free(),
     get pressure() { return stormStart ? pressureAt(stormTime(), surgeAt) : 0; },
     get opened() { return !!stormStart; },
     // A building plan, refused within BASE_RADIUS of another team's base
@@ -198,18 +207,21 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, menu, 
   }
 
   net.on('lobby', (state) => {
-    if (!team) ui.render(state, net.id);
+    if (!inMatch) ui.render(state, net.id);
     else wars?.left(state.players);
   });
   net.on('notice', (text) => ui.notice(text));
   net.on('start', ({ players, buildLeft = 0 }) => {
     const me = players.find((p) => p.id === net.id);
     if (!me) return;   // it started without us
-    team = TEAMS[me.team];
+    inMatch = true;
+    team = TEAMS[me.team] ?? null;
     teamIndex = me.team;
     bases = findBases(terrain);
-    player.spawn = bases[me.team];
-    player.respawn();
+    if (me.team !== WATCH) {
+      player.spawn = bases[me.team];
+      player.respawn();
+    }
     menu.classList.remove('lobby');
     ui.showMatch(team, players);
     wars = new BedWars({ net, players, me: net.id, bases, terrain, scene, player, camera, hud, building, inventory, sea, spears, peace: buildLeft > 0 });
@@ -231,12 +243,12 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, menu, 
   // After a reconnect the server says hello again.
   net.on('welcome', (hello) => {
     if (hello.seed !== seed) location.reload();   // it restarted with another island
-    else if (team) hud.message('Back in touch with the game server.', 4);
+    else if (inMatch) hud.message('Back in touch with the game server.', 4);
     else if (joined) net.send('join', name);
   });
-  net.on('connect', () => { if (!team) ui.notice('Reconnected.', 2); });
+  net.on('connect', () => { if (!inMatch) ui.notice('Reconnected.', 2); });
   const lost = () => {
-    if (team) hud.message('Lost touch with the game server. Trying to reconnect…', 5);
+    if (inMatch) hud.message('Lost touch with the game server. Trying to reconnect…', 5);
     else ui.notice('Lost touch with the game server. Trying to reconnect…', 60);
   };
   net.on('disconnect', lost);

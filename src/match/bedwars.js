@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { uniforms } from '../shared.js';
-import { TEAMS, BASE_RADIUS } from './teams.js';
+import { TEAMS, BASE_RADIUS, WATCH } from './teams.js';
 import { CELL } from '../world/building.js';
 import { BED_HP, RESPAWN_TIME, REACH } from './rules.js';
 import { RemotePlayers } from './remotePlayers.js';
 import { Beds } from './beds.js';
+import { Spectator } from './spectator.js';
 
 const $ = (id) => document.getElementById(id);
 const SEND = 0.05;   // seconds between telling the server where you are
@@ -14,7 +15,8 @@ const FLOODED = 0.25;   // metres of water over a bed's foot that wash it away (
 // The bed-wars side of a match (see rules.js), from the start on: the other
 // players, your team's bed (in your inventory until someone places it), the
 // beds, swinging at them, being hurt, going down and coming back at your
-// bed, being out once it's gone, the teams' state on screen, and the end.
+// bed, being out once it's gone (and then watching the rest), the teams'
+// state on screen, and the end. A spectator (team WATCH) only watches.
 // net: the connection; players: the match's ([{ id, name, team }]); me:
 // your id; peace: true while the build phase lasts (nothing can be hurt
 // until the barriers come down).
@@ -25,6 +27,8 @@ export class BedWars {
     this.surf = {};
     this.me = me;
     ({ team: this.team, name: this.name } = players.find((p) => p.id === me));
+    this.watching = this.team === WATCH;   // a spectator, from the start
+    const playing = players.filter((p) => p.team !== WATCH);
     this.out = false;
     this.over = false;
     this.downAt = 0;          // when you went down (performance.now()), while you're down
@@ -37,12 +41,15 @@ export class BedWars {
 
     // Each team in the match: its bed's health, and its players.
     this.teams = new Map();
-    for (const p of [...players].sort((a, b) => a.team - b.team)) {
+    for (const p of [...playing].sort((a, b) => a.team - b.team)) {
       if (!this.teams.has(p.team)) this.teams.set(p.team, { hp: BED_HP, members: new Map() });
       this.teams.get(p.team).members.set(p.id, { name: p.name, out: false });
     }
     this.remotes = new RemotePlayers(scene);
-    this.remotes.add(players, me);
+    this.remotes.add(playing, me);
+    // Watching: a free camera, or following a player (spectator.js).
+    this.spectator = new Spectator(camera, this.remotes, terrain);
+    if (this.watching) this.spectator.start(true);
     // Your team's bed starts in your inventory (and your teammates'): the
     // first to place it decides where it stands. The server hears where
     // the bases are and where a bed nobody placed would go.
@@ -55,8 +62,10 @@ export class BedWars {
     this.kuboTurn = 0;          // which side its door faces (R)
     this.placingKubo = false;
     this.showingKubo = false;   // its see-through preview is up
-    inventory.add('kubo', 1);
-    inventory.add('bed', 1);
+    if (!this.watching) {
+      inventory.add('kubo', 1);
+      inventory.add('bed', 1);
+    }
     net.send('beds', this.beds.defaults);
     net.send('bases', bases.map(({ x, z }) => ({ x, z })));
     net.send('kubos', this.kuboDefaults());
@@ -101,7 +110,10 @@ export class BedWars {
   }
 
   // Up and about (not down, not out, the match not over).
-  get fighting() { return !this.over && !this.out && !this.player.dead; }
+  get fighting() { return !this.over && !this.out && !this.watching && !this.player.dead; }
+
+  // Watching (a spectator, or out of the match).
+  get spectating() { return this.spectator.on; }
 
   bedStands(team) { return (this.teams.get(team)?.hp ?? 0) > 0; }
   who(name) { return name === this.name ? 'you' : name; }
@@ -345,18 +357,19 @@ export class BedWars {
   }
 
   // Out for good: your bed was gone when you went down. After a moment you
-  // can look around again, unseen and unable to fight.
+  // watch the rest of the match (spectator.js), from where you fell.
   goOut() {
     this.out = true;
     this.downAt = 0;
     this.deathScreen.hidden = false;
     this.deathScreen.querySelector('b').textContent = 'You’re out';
-    this.deathScreen.querySelector('span').textContent = 'Your team’s bed was gone, so there’s no coming back. You can still look around.';
+    this.deathScreen.querySelector('span').textContent = 'Your team’s bed was gone, so there’s no coming back. You can watch the rest of the match.';
     setTimeout(() => {
       if (this.over) return;
       this.deathScreen.hidden = true;
       this.player.dead = false;
-      this.player.respawn();
+      this.spectator.start();
+      this.hud.message('You’re watching now. Click to follow a player, right-click to fly freely.', 6);
     }, 5000);
   }
 

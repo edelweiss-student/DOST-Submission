@@ -336,7 +336,7 @@ function onPlay() {
   if (!started) {
     started = true;
     hud.message(match?.intro ?? 'Day 1. Explore the island and the reef. Strip the island bare and the sea will wash it away.', 6);
-    tutorial.begin();
+    if (!match?.spectating) tutorial.begin();
   }
 }
 const pause = () => menu.open('pause');
@@ -779,6 +779,8 @@ addEventListener('keydown', (e) => {
     return;
   }
   if (player.dead) return;
+  // Watching: only the map, mute and the tips (the spectator flies on WASD).
+  if (match?.spectating && !['KeyK', 'KeyM', 'KeyH'].includes(e.code)) return;
   if (digit >= 1 && build.on) {
     if (digit <= PIECES.length) choosePiece(digit - 1);
   } else if (digit >= 1) {
@@ -833,6 +835,12 @@ renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 // strikes in a match. In the joinery mini-game a click works.
 renderer.domElement.addEventListener('mousedown', (e) => {
   if (!isPlaying() || inventoryUI.open || player.dead) return;
+  // Watching: click follows the next player, right-click flies freely.
+  if (match?.spectating) {
+    if (e.button === 0) match.followNext();
+    else if (e.button === 2) match.flyFreely();
+    return;
+  }
   if (joinery.open) {
     if (e.button === 0) joinery.act();
   } else if (e.button === 2) {
@@ -905,7 +913,9 @@ function step() {
   else climate.update(sdt, { rain: weather.current.rain, x: player.pos.x, z: player.pos.z });
   sea.update(sdt, weather, sky.state.time);
   player.burden = timber.burden;
-  player.update(sdt, t, weather.heatIndex);
+  // Watching a match, the camera is the spectator's; otherwise it's your eyes.
+  if (match?.spectating) match.spectate(sdt, player.keys);
+  else player.update(sdt, t, weather.heatIndex);
   uniforms.uPlayerPos.value.copy(player.pos);
   gathering.update(sdt, t);
   timber.update(sdt, t, player);
@@ -916,7 +926,7 @@ function step() {
   // What's under the crosshair, or where a blueprint would go.
   // (With the map up you can still move, but not act on what's in front of
   // you; knocked out in a match, neither.)
-  const playing = isPlaying() && !inventoryUI.open && !joinery.open && !map.open && !player.dead;
+  const playing = isPlaying() && !inventoryUI.open && !joinery.open && !map.open && !player.dead && !match?.spectating;
   camera.getWorldDirection(aimDir);
   aimRay.set(camera.position, aimDir);
   focus = null;
@@ -953,7 +963,7 @@ function step() {
   map.update(dt, player, camera);
   match?.update(dt);
   if (playing) tutorial.update(sdt, { player, inventory, open: !!match?.opened });
-  held.update(sdt, inventory.current, Math.hypot(player.vel.x, player.vel.z), timber.carried);
+  held.update(sdt, match?.spectating ? null : inventory.current, Math.hypot(player.vel.x, player.vel.z), timber.carried);
   // What's drawn from: your eyes, or until you start, the menu's view.
   const view = started ? camera : menuCamera;
   if (!started) updateMenuView(dt);

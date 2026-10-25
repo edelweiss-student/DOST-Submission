@@ -1,8 +1,9 @@
-import { TEAMS, TEAM_SIZE, NAME_LENGTH, BUILD_TIME } from '../src/match/teams.js';
+import { TEAMS, TEAM_SIZE, NAME_LENGTH, BUILD_TIME, WATCH, MAX_WATCHING } from '../src/match/teams.js';
 
 // The lobby: who's in, on which team, who's ready, and who hosts (the first
-// to join, then the next in line when they leave). The host starts the
-// match once everyone is ready, and it opens with a build phase of
+// to join, then the next in line when they leave). Anyone can watch
+// instead of playing (team WATCH): spectators don't need to be ready. The
+// host starts the match once every player is ready, and it opens with a build phase of
 // buildTime seconds, while barriers keep each team out of the others'
 // bases. There's one match at a time: once everyone has left it, the lobby
 // opens again.
@@ -28,30 +29,35 @@ export class Lobby {
     return { phase: this.phase, seed: this.seed, host: this.host, players: [...this.players.values()], buildLeft: this.buildLeft };
   }
 
-  // How many players each team has.
+  // How many players each team has (spectators aside).
   counts() {
     const counts = TEAMS.map(() => 0);
-    for (const p of this.players.values()) counts[p.team]++;
+    for (const p of this.players.values()) if (p.team !== WATCH) counts[p.team]++;
     return counts;
   }
 
-  // Joining puts you on the team with the fewest players.
+  get watching() { return [...this.players.values()].filter((p) => p.team === WATCH).length; }
+
+  // Joining puts you on the team with the fewest players, or once every
+  // team is full, with the spectators.
   join(id, name) {
     if (this.phase !== 'lobby') return 'A match is under way. You can join the next one.';
     if (this.players.has(id)) return null;
-    if (this.players.size >= TEAMS.length * TEAM_SIZE) return 'The lobby is full.';
     const counts = this.counts();
-    const team = counts.indexOf(Math.min(...counts));
+    const fewest = Math.min(...counts);
+    if (fewest >= TEAM_SIZE && this.watching >= MAX_WATCHING) return 'The lobby is full.';
+    const team = fewest < TEAM_SIZE ? counts.indexOf(fewest) : WATCH;
     this.players.set(id, { id, name: cleanName(name, `Player ${this.players.size + 1}`), team, ready: false });
     this.version++;
     return null;
   }
 
-  // Switching teams takes back your ready.
+  // Switching teams (or to watching) takes back your ready.
   setTeam(id, team) {
     const p = this.players.get(id);
-    if (!p || this.phase !== 'lobby' || !Number.isInteger(team) || !TEAMS[team] || team === p.team) return null;
-    if (this.counts()[team] >= TEAM_SIZE) return `Team ${TEAMS[team].name} is full.`;
+    if (!p || this.phase !== 'lobby' || !Number.isInteger(team) || !(TEAMS[team] || team === WATCH) || team === p.team) return null;
+    if (team === WATCH && this.watching >= MAX_WATCHING) return 'There are as many spectators as there can be.';
+    if (team !== WATCH && this.counts()[team] >= TEAM_SIZE) return `Team ${TEAMS[team].name} is full.`;
     p.team = team;
     p.ready = false;
     this.version++;
@@ -69,7 +75,9 @@ export class Lobby {
   start(id) {
     if (this.phase !== 'lobby') return 'The match has already started.';
     if (id !== this.host) return 'Only the host can start the match.';
-    if (![...this.players.values()].every((p) => p.ready)) return 'Everyone has to be ready first.';
+    const playing = [...this.players.values()].filter((p) => p.team !== WATCH);
+    if (!playing.length) return 'Someone has to play: pick a team.';
+    if (!playing.every((p) => p.ready)) return 'Every player has to be ready first.';
     this.phase = 'playing';
     this.buildEnds = Date.now() + this.buildTime * 1000;
     this.version++;

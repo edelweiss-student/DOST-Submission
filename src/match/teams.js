@@ -11,6 +11,10 @@ export const TEAMS = [
 ];
 
 export const TEAM_SIZE = 4;      // most players on one team
+// A spectator's team: watching the match, not playing in it. Anyone can
+// choose it in the lobby, and players who are out watch the rest too.
+export const WATCH = -1;
+export const MAX_WATCHING = 16;  // most spectators
 export const NAME_LENGTH = 16;   // longest player name
 
 // A match opens with a build phase: for BUILD_TIME seconds a barrier keeps
