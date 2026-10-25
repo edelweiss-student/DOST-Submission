@@ -86,10 +86,11 @@ export function createTrailer(ctx) {
   }
   const hideActors = () => actors.forEach((a) => { if (a) a.model.object.visible = false; });
 
-  // A spear from one point to another, flying for `time` seconds, only to be seen.
+  // A spear from one point to another, flying for `flight` seconds, heard
+  // louder the nearer it's thrown.
   function throwSpear(from, to, flight = 0.9) {
     const v = new THREE.Vector3((to.x - from.x) / flight, (to.y - from.y) / flight + 0.5 * 9.8 * flight, (to.z - from.z) / flight);
-    spears.ghost(from.clone(), v);
+    spears.ghost(from.clone(), v, Math.max(0.7, 1 - from.distanceTo(camera.position) / 30));
   }
   const handOf = (i, reach = 0.5) => {
     const o = actor(i).model.object, [fx, fz] = ahead(o.rotation.y);
@@ -240,6 +241,7 @@ export function createTrailer(ctx) {
       // Felling a tree: the axe bites, and it comes down.
       duration: 8,
       hand: 'axe',
+      background: 0.6,
       start() {
         const tr = site.tree;
         if (!tr) return;
@@ -321,6 +323,7 @@ export function createTrailer(ctx) {
     {
       // Bed wars: four teams round a bahay kubo, spears flying.
       duration: 9,
+      background: 0.5,
       start() {
         time(9);
         weatherTo('overcast');
@@ -349,6 +352,7 @@ export function createTrailer(ctx) {
     {
       // Up close: a charge on Asul's bed, spears flying back.
       duration: 7,
+      background: 0.45,
       start() {
         weatherTo('rain', 0, 1);
         setUpWars();
@@ -510,6 +514,7 @@ export function createTrailer(ctx) {
     camera.fov = 70;
     camera.updateProjectionMatrix();
     weather.hold = false;
+    audio.background = 1;
     const done = (file) => onEnd?.(file);
     if (!recorder) return done(null);
     recorder.onstop = () => {
@@ -555,7 +560,7 @@ export function createTrailer(ctx) {
         const stream = out.captureStream(60);
         if (audio.ctx) {
           const dest = audio.ctx.createMediaStreamDestination();
-          audio.master.connect(dest);
+          audio.muffle.connect(dest);   // as you hear it: muffled under water
           for (const track of dest.stream.getAudioTracks()) stream.addTrack(track);
         }
         const type = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus'].find((m) => MediaRecorder.isTypeSupported(m));
@@ -579,6 +584,7 @@ export function createTrailer(ctx) {
       if (i !== shot) {
         shot = i;
         hand(shots[i].hand);   // empty-handed but for the first-person shots
+        audio.background = shots[i].background ?? 1;   // quieter wind and rain where there's action to hear
         shots[i].start?.call(shots[i]);
       }
       local = t - start;

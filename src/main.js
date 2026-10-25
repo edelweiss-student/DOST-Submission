@@ -213,7 +213,11 @@ const spears = createSpears(scene, {
   terrain, water, colliders: vegetation.colliders, building, inventory,
   dropItem: (stack, from, velocity) => gathering.drop(stack, from, velocity),
   strike: (ray, length) => match?.spearStrike(ray, length) ?? null,
-  onSound: (name, strength) => (name === 'splash' ? audio.splash(strength * 6) : audio.wood(name, strength)),
+  onSound: (name, strength) => {
+    if (name === 'splash') audio.splash(strength * 6);
+    else if (name === 'throw') audio.whoosh(strength);
+    else audio.wood(name, strength);
+  },
   onBroken: () => hud.message('Your spear broke where it struck.', 3),
 });
 

@@ -4,6 +4,7 @@ export class Ambience {
   constructor() {
     this.ctx = null;
     this.muted = false;
+    this.background = 1;   // how loud the wind, rain and surf are (the trailer turns them down)
   }
 
   start() {
@@ -64,11 +65,11 @@ export class Ambience {
 
   update(weather, underwater, seaHs) {
     if (!this.ctx) return;
-    const t = this.ctx.currentTime, c = weather.current;
+    const t = this.ctx.currentTime, c = weather.current, b = this.background;
     const set = (param, v) => param.setTargetAtTime(v, t, 0.4);
-    set(this.wind.gain, (0.05 + c.wind * c.wind * 0.6) * (underwater ? 0.25 : 1));
-    set(this.rain.gain, c.rain * 0.3 * (underwater ? 0.15 : 1));
-    set(this.surf.gain, 0.05 + Math.min(seaHs, 4) * 0.05);
+    set(this.wind.gain, (0.05 + c.wind * c.wind * 0.6) * (underwater ? 0.25 : 1) * b);
+    set(this.rain.gain, c.rain * 0.3 * (underwater ? 0.15 : 1) * b);
+    set(this.surf.gain, (0.05 + Math.min(seaHs, 4) * 0.05) * b);
     set(this.rumble.gain, underwater ? 0.55 : 0);
     set(this.muffle.frequency, underwater ? 520 : 18000);
     set(this.master.gain, this.muted ? 0 : 0.7);
@@ -113,6 +114,47 @@ export class Ambience {
     src.stop(t + 0.75);
   }
 
+  // Something thrown (a spear) rushing past: noise swept up and back down.
+  whoosh(strength = 1) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime, s = Math.max(0.05, strength);
+    const src = ctx.createBufferSource();
+    src.buffer = this.white;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.Q.value = 1.2;
+    band.frequency.setValueAtTime(500, t);
+    band.frequency.exponentialRampToValueAtTime(2200, t + 0.12);
+    band.frequency.exponentialRampToValueAtTime(700, t + 0.4);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.8 * s, t + 0.1);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+    src.connect(band).connect(g).connect(this.master);
+    src.start(t, Math.random());
+    src.stop(t + 0.5);
+  }
+
+  // A trunk groaning as it leans: a low buzz through a narrow band.
+  groan(strength, length) {
+    const ctx = this.ctx, t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(95, t);
+    o.frequency.exponentialRampToValueAtTime(55, t + length);
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = 420;
+    band.Q.value = 4;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.22 * strength, t + 0.3);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + length);
+    o.connect(band).connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + length + 0.05);
+  }
+
   // A short filtered noise burst: the building block of the wood sounds.
   burst(buffer, type, freq, q, peak, decay, delay = 0) {
     const ctx = this.ctx, t = ctx.currentTime + delay;
@@ -132,7 +174,8 @@ export class Ambience {
   }
 
   // Wood: an axe biting (chop), a log splitting (split), a tree cracking
-  // as it goes over (crack) and hitting the ground (thud), its crown
+  // and groaning as it goes over (crack) and crashing down, leaves and all
+  // (thud), its crown
   // breaking up (break), logs and planks knocking down (log, plank), and a
   // plank going into a build (knock). strength 0..1.
   wood(kind, strength = 1) {
@@ -150,10 +193,15 @@ export class Ambience {
       case 'crack':
         this.burst(this.white, 'bandpass', 2200, 0.8, 0.8 * s, 0.35);
         this.burst(this.white, 'bandpass', 1200, 2, 0.5 * s, 0.6, 0.25);
+        // Fibres snapping one after another.
+        for (let i = 0; i < 6; i++) this.burst(this.white, 'bandpass', 1600 + Math.random() * 1400, 3, 0.35 * s, 0.05, 0.15 + i * 0.16 + Math.random() * 0.08);
+        this.groan(s, 1.6);
         break;
       case 'thud':
         this.burst(this.brown, 'lowpass', 110, 0.7, 1.6 * s, 1.3);
+        this.burst(this.brown, 'lowpass', 420, 0.7, 0.9 * s, 0.5);   // the body small speakers can play
         this.burst(this.white, 'bandpass', 2500, 0.6, 0.3 * s, 0.8, 0.05);
+        this.burst(this.white, 'bandpass', 4500, 0.5, 0.45 * s, 1.1, 0.03);   // the crown crashing through leaves
         break;
       case 'break':
         this.burst(this.white, 'bandpass', 3200, 0.5, 0.2 * s, 0.6);

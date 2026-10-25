@@ -103,11 +103,12 @@ export class BedWars {
     });
     net.on('build', (msg) => building.apply(msg));
     net.on('pieceHit', ({ key, amount }) => building.apply({ op: 'hit', key, amount }));
-    // Someone else's spear, flying where they threw it (only to be seen).
+    // Someone else's spear, flying where they threw it (only to be seen,
+    // and heard within 40 m).
     const vec = (a) => (Array.isArray(a) && a.length === 3 && a.every(Number.isFinite) ? new THREE.Vector3(...a) : null);
     net.on('throw', ({ from, vel } = {}) => {
       const f = vec(from), v = vec(vel);
-      if (f && v) spears?.ghost(f, v);
+      if (f && v) spears?.ghost(f, v, Math.max(0, 1 - f.distanceTo(this.camera.position) / 40));
     });
   }
 

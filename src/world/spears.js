@@ -27,7 +27,8 @@ const UP = new THREE.Vector3(0, 1, 0);
 // strike(ray, length): in a match, the other team's player a stretch of a
 // flight passes through, already reported, as how far along it, or null.
 // dropItem(stack, position, velocity): an item into the world (gathering.js).
-// onSound(name, strength); onBroken(): your spear wore out where it struck.
+// onSound(name, strength): 'throw', 'knock', 'splash'; onBroken(): your
+// spear wore out where it struck.
 export function createSpears(scene, { terrain, water, colliders, building, inventory, dropItem, strike, onSound, onBroken }) {
   const spears = [];
   const material = patchMaterial(new THREE.MeshLambertMaterial({ vertexColors: true }), { key: 'world-item', snowMin: 0.6 });
@@ -149,15 +150,18 @@ export function createSpears(scene, { terrain, water, colliders, building, inven
     throw(eye, tip, vel, stack) {
       const s = { tip: tip.clone(), vel: vel.clone(), dir: vel.clone().normalize(), stack, flying: true, left: Infinity };
       add(s);
+      onSound?.('throw', 1);
       const reach = tip.distanceTo(eye);
       ray.set(eye, b.copy(tip).sub(eye).normalize());
       const piece = building.aimed(ray, reach);
       if (piece) stick(s, ray.at(piece.distance, a));
     },
 
-    // Someone else's throw, in a match: just to be seen.
-    ghost(from, vel) {
+    // Someone else's throw, in a match: just to be seen, and heard (loud:
+    // 0..1, by how near it is).
+    ghost(from, vel, loud = 0) {
       add({ tip: from.clone(), vel: vel.clone(), dir: vel.clone().normalize(), stack: null, flying: true, left: Infinity });
+      if (loud > 0) onSound?.('throw', loud);
     },
 
     update(dt, t) {

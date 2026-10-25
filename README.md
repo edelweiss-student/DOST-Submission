@@ -96,6 +96,10 @@ tree, a house on stilts going up over the shallows, the fish over a reef, a
 storm rolling in as the sea rises, the flood across the beach, four teams
 round a bahay kubo with spears flying, a charge that breaks Team Asul's bed,
 and the title over a storm at dusk. Captions name each feature, lower left.
+Every sound is the game's own, as you'd hear it there: the axe biting, the
+tree cracking, groaning and crashing down, spears whooshing past and
+knocking in, a bed breaking, rain and thunder. The wind, rain and surf are
+turned down in the felling and bed-wars shots so the action carries.
 `game.playTrailer(false, seconds)` in the console starts it partway, to
 look at one shot.
 
@@ -1070,7 +1074,8 @@ src/
   match/beds.js         each team's bed: the model, where it can go (and the see-through preview),
                         where it stands, coming back beside it, what a swing hits
   net/net.js            the connection to the game server (Socket.IO, loaded only for multiplayer)
-  audio/ambience.js     synthesized wind, rain, surf, underwater, thunder, splashes, wood sounds
+  audio/ambience.js     synthesized wind, rain, surf, underwater, thunder, splashes, wood sounds,
+                        a thrown spear's whoosh
 server/
   index.js              the game server: serves the built game (with caching), runs the lobby
                         and the match over Socket.IO
