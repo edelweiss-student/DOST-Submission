@@ -8,6 +8,10 @@ what you do to the island. Strip it bare and the rising sea washes it away.
 With friends, it's a fast bed-wars match for up to four teams, fought as a
 typhoon builds (see Multiplayer).
 
+**Play it online:** https://washed-away.onrender.com, and
+https://washed-away.onrender.com/?mp for multiplayer. If nobody has played
+for a while, the first visit takes about a minute while the server wakes up.
+
 ## Run
 
 ```bash
@@ -21,12 +25,11 @@ same network, see Multiplayer below; to play from a link, see Play online.
 
 ## Play online
 
-The game is hosted on [Render](https://render.com) as one free web service,
-set up by `render.yaml`. Render builds the game and runs the game server,
-which serves it, multiplayer included. Open the address Render gives the
-service (such as https://washed-away.onrender.com) to play, and add `/?mp`
-for multiplayer. Every push to `master` deploys the new version within a few
-minutes.
+The game is online at https://washed-away.onrender.com (add `/?mp` for
+multiplayer), hosted on [Render](https://render.com) as one free web
+service, set up by `render.yaml`. Render builds the game and runs the game
+server, which serves it, multiplayer included. Every push to `master`
+deploys the new version within a few minutes.
 
 On the free plan the server sleeps after 15 minutes without visitors. The
 next visit wakes it, which takes about a minute, and a woken server picks a
