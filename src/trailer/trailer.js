@@ -26,6 +26,19 @@ const mix = (a, b, u) => a + (b - a) * u;
 const clamp01 = (u) => Math.min(1, Math.max(0, u));
 const EDGE_KEYS = (i, j) => [`x${i},${j}`, `z${i + 1},${j}`, `x${i},${j + 1}`, `z${i},${j}`];
 const SIDES = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+// The music: "Cold Metal Grip", made for the trailer with Google's
+// generative AI (it carries a SynthID watermark), 82 s to the trailer's
+// 81. It plays under the game's own sound, `level` loud (lower in shots
+// with a `music` level of their own, where there's something to hear),
+// with `bass` dB off below about 120 Hz so the felling and the storm come
+// through. The trailer keeps time by it, so the two never drift apart.
+const MUSIC = { url: 'audio/cold-metal-grip.mp3', level: 0.5, bass: -4 };
+// The recording's sound (game and music together) is evened out by a
+// gentle compressor, made `louder` (dB), and held under `ceiling` (dB) by a
+// limiter, so it plays about as loud as other trailers without clipping.
+// (The browser's compressors add a little gain of their own, so the
+// ceiling leaves room for it.)
+const MASTER = { threshold: -20, ratio: 3, louder: 3, ceiling: -3 };
 
 // ctx: the game's parts the trailer drives (see main.js).
 export function createTrailer(ctx) {
@@ -38,7 +51,10 @@ export function createTrailer(ctx) {
   document.body.append(out);
   const g2 = out.getContext('2d');
 
-  let running = false, t = 0, shot = -1, local = 0, recorder = null, chunks = [], onEnd = null;
+  let running = false, starting = false, t = 0, shot = -1, local = 0, recorder = null, chunks = [], onEnd = null;
+  // The music: fetched as the trailer page opens, decoded on the first play.
+  const musicData = fetch(`${import.meta.env.BASE_URL}${MUSIC.url}`).then((r) => (r.ok ? r.arrayBuffer() : null)).catch(() => null);
+  let musicBuffer = null, music = null;   // music: { source, gain, startAt (the audio clock at t = 0) }
   let site = null;   // where each shot happens, found when it starts
   const actors = [];
   let beds = null;
@@ -242,6 +258,7 @@ export function createTrailer(ctx) {
       duration: 8,
       hand: 'axe',
       background: 0.6,
+      music: 0.45,
       start() {
         const tr = site.tree;
         if (!tr) return;
@@ -324,6 +341,7 @@ export function createTrailer(ctx) {
       // Bed wars: four teams round a bahay kubo, spears flying.
       duration: 9,
       background: 0.5,
+      music: 0.6,
       start() {
         time(9);
         weatherTo('overcast');
@@ -355,6 +373,7 @@ export function createTrailer(ctx) {
       // Up close: a charge on Asul's bed, spears flying back.
       duration: 7,
       background: 0.45,
+      music: 0.6,
       start() {
         weatherTo('rain', 0, 1);
         setUpWars();
@@ -515,8 +534,49 @@ export function createTrailer(ctx) {
     }
   }
 
+  // The recording's sound: what goes into the node this returns is
+  // compressed, made louder and limited (MASTER), then added to stream.
+  function mastering(ctx, stream) {
+    const input = ctx.createGain();
+    const compressor = ctx.createDynamicsCompressor();
+    Object.entries({ threshold: MASTER.threshold, ratio: MASTER.ratio, knee: 10, attack: 0.005, release: 0.2 }).forEach(([k, v]) => { compressor[k].value = v; });
+    const louder = ctx.createGain();
+    louder.gain.value = 10 ** (MASTER.louder / 20);
+    const limiter = ctx.createDynamicsCompressor();
+    Object.entries({ threshold: MASTER.ceiling, ratio: 20, knee: 0, attack: 0.001, release: 0.1 }).forEach(([k, v]) => { limiter[k].value = v; });
+    const sink = ctx.createMediaStreamDestination();
+    input.connect(compressor).connect(louder).connect(limiter).connect(sink);
+    for (const track of sink.stream.getAudioTracks()) stream.addTrack(track);
+    return input;
+  }
+
+  // The music from `from` seconds in, to the speakers and the recording
+  // (dest), if it's there.
+  function startMusic(from, dest) {
+    if (!musicBuffer || !audio.ctx) return;
+    const ctx = audio.ctx;
+    const shelf = Object.assign(ctx.createBiquadFilter(), { type: 'lowshelf' });
+    shelf.frequency.value = 120;
+    shelf.gain.value = MUSIC.bass;
+    const gain = ctx.createGain();
+    gain.gain.value = audio.muted ? 0 : MUSIC.level;   // its first beat lands with the first frame
+    const source = Object.assign(ctx.createBufferSource(), { buffer: musicBuffer });
+    source.connect(shelf).connect(gain).connect(ctx.destination);
+    if (dest) gain.connect(dest);
+    const at = ctx.currentTime + 0.05;
+    source.start(at, from);
+    music = { source, gain, startAt: at - from };
+  }
+  function stopMusic() {
+    if (!music) return;
+    music.source.stop();
+    music.gain.disconnect();
+    music = null;
+  }
+
   function finish() {
     running = false;
+    stopMusic();
     document.body.classList.remove('trailer');
     out.hidden = true;
     hideActors();
@@ -549,7 +609,14 @@ export function createTrailer(ctx) {
     // Plays it from the start (or from `from` seconds in, to look at one
     // shot); record: also records it to a file, which downloads at the end.
     // ended(file) is called then ({ size, type, url } when recorded).
-    play({ record = false, from = 0 } = {}, ended = null) {
+    async play({ record = false, from = 0 } = {}, ended = null) {
+      if (running || starting) return;
+      starting = true;
+      if (audio.ctx && !musicBuffer) {
+        const data = await musicData;
+        if (data) musicBuffer = await audio.ctx.decodeAudioData(data.slice(0)).catch(() => null);
+      }
+      starting = false;
       onEnd = ended;
       site ??= findSites();
       if (!site.tree || site.tree.felled) site.tree = nearestTree();
@@ -565,12 +632,12 @@ export function createTrailer(ctx) {
       camera.updateProjectionMatrix();
       renderer.setPixelRatio(1);
       renderer.setSize(W, H, false);
+      let dest = null;
       if (record) {
         const stream = out.captureStream(60);
         if (audio.ctx) {
-          const dest = audio.ctx.createMediaStreamDestination();
+          dest = mastering(audio.ctx, stream);
           audio.muffle.connect(dest);   // as you hear it: muffled under water
-          for (const track of dest.stream.getAudioTracks()) stream.addTrack(track);
         }
         const type = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus'].find((m) => MediaRecorder.isTypeSupported(m));
         chunks = [];
@@ -578,12 +645,14 @@ export function createTrailer(ctx) {
         recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
         recorder.start(1000);
       }
+      startMusic(from, dest);
     },
 
     // Every frame instead of your own movement: the shot moves the camera.
     update(dt) {
       if (!running) return;
-      t += dt;
+      // In time with the music while it plays (frames can come late).
+      t = music ? Math.max(t, audio.ctx.currentTime - music.startAt) : t + dt;
       let start = 0, i = 0;
       while (i < shots.length && t >= start + shots[i].duration) start += shots[i++].duration;
       if (i >= shots.length) {
@@ -596,6 +665,7 @@ export function createTrailer(ctx) {
         audio.background = shots[i].background ?? 1;   // quieter wind and rain where there's action to hear
         shots[i].start?.call(shots[i]);
       }
+      if (music) music.gain.gain.setTargetAtTime(audio.muted ? 0 : MUSIC.level * (shots[i].music ?? 1), audio.ctx.currentTime, 0.4);
       local = t - start;
       shots[i].update.call(shots[i], local / shots[i].duration, local);
       for (const a of actors) if (a?.model.object.visible) a.model.update(dt, a.speed);

@@ -86,8 +86,8 @@ back to the Graphics page; otherwise they wait for the next time it loads.
 `/?trailer` opens the menu on a **Trailer** page (`trailer/trailer.js`): an
 81-second trailer played live in the game, on this island, with nothing but
 what the game does. **Preview** plays it; **Record** plays it and saves
-`washed-away-trailer.mp4` (1920 × 1080 at 60 fps with the game's sound,
-about 160 MB) to your downloads when it ends. Record it in a browser
+`washed-away-trailer.mp4` (1920 × 1080 at 60 fps with the game's sound and
+the music, about 160–190 MB) to your downloads when it ends. Record it in a browser
 drawing on the graphics card, so no frames drop.
 
 Its shots, after a cold open looking down on a lone survivor ("Every tree
@@ -96,10 +96,21 @@ tree, a house on stilts going up over the shallows, the fish over a reef, a
 storm rolling in as the sea rises, the flood across the beach, four teams
 round a bahay kubo with spears flying, a charge that breaks Team Asul's bed,
 and the title over a storm at dusk. Captions name each feature, lower left.
-Every sound is the game's own, as you'd hear it there: the axe biting, the
-tree cracking, groaning and crashing down, spears whooshing past and
-knocking in, a bed breaking, rain and thunder. The wind, rain and surf are
-turned down in the felling and bed-wars shots so the action carries.
+Every sound effect is the game's own, as you'd hear it there: the axe
+biting, the tree cracking, groaning and crashing down, spears whooshing
+past and knocking in, a bed breaking, rain and thunder. The wind, rain and
+surf are turned down in the felling and bed-wars shots so the action
+carries.
+
+Under it plays **Cold Metal Grip** (`public/audio/cold-metal-grip.mp3`,
+82 s, made with Google's generative AI; see Credits), fetched only by the
+trailer page. Its opening hits land on the cold open, it kicks in as the
+walk inland starts, and it fades out with the title. It's mixed under the
+game's sound with a little of its bass taken off, and lower still under
+the felling and the bed wars, and the trailer keeps time by it, so even
+late frames can't put the pictures out of step with it. The recording's
+sound goes through a gentle compressor and a limiter, so it plays about as
+loud as other trailers without clipping.
 `game.playTrailer(false, seconds)` in the console starts it partway, to
 look at one shot.
 
@@ -1114,3 +1125,8 @@ The trees and fallen trunks come from the **3D Retro World** pack (version
 The knife, axe and pickaxe are from **KayKit : RPG Tools Bits** by Kay
 Lousberg (<https://www.kaylousberg.com>), released under CC0. Thank you,
 Kay.
+
+The trailer's music, **Cold Metal Grip**, was made with Google's generative
+AI for this trailer; the file carries Google's content credentials and an
+imperceptible SynthID watermark saying so. It's disclosed with the rest of
+the AI use (Form 03).
