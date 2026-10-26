@@ -15,7 +15,7 @@ export const SOLO = [
   { text: 'Open the inventory with I and craft a stone axe.', done: (s) => s.has('axe') },
   { text: 'Select the axe (1–9) and right-click a tree to swing at it until it falls. The prompt counts the blows.', done: (s) => s.felled },
   { text: 'Press B to build. Place a floor with E, then split logs into planks with the axe (right-click) and carry them to it (E).', done: (s) => s.built },
-  { text: 'Every tree you fell raises the climate’s pressure (top right) and brings the sea closer. Build high, and look after the island.', done: (s) => s.shown > 14 },
+  { text: 'Every tree you cut down raises the climate’s pressure (top right) and brings the sea closer. Build high, and look after the island.', done: (s) => s.shown > 14 },
 ];
 
 export const MATCH = [

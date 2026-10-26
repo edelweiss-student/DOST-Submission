@@ -230,7 +230,7 @@ export function createTrailer(ctx) {
         const h = mix(48, 9, ease(u)), a = site.yaw + 0.5 * u, gy = ground(site.x, site.z);
         look(site.x + Math.sin(a) * 0.6, gy + h, site.z + Math.cos(a) * 0.6, site.x, gy, site.z);
       },
-      text: [{ from: 3.2, to: 6.8, center: 'EVERY TREE YOU FELL' }],
+      text: [{ from: 3.2, to: 6.8, center: 'EVERY TREE YOU CUT DOWN' }],
     },
     {
       // Behind them, the sea ahead.
@@ -501,7 +501,7 @@ export function createTrailer(ctx) {
     g2.font = 'italic 500 40px system-ui, "Segoe UI", sans-serif';
     g2.letterSpacing = '2px';
     g2.fillStyle = '#d7e3ea';
-    g2.fillText('Every tree you fell brings the sea closer.', W / 2, H / 2 + 60);
+    g2.fillText('Every tree you cut down brings the sea closer.', W / 2, H / 2 + 60);
     g2.globalAlpha = clamp01((s - 3.4) / 1);
     g2.font = '800 40px system-ui, "Segoe UI", sans-serif';
     g2.letterSpacing = '8px';

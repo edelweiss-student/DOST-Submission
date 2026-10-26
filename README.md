@@ -1,6 +1,6 @@
 # Washed Away
 
-Every tree you fell brings the sea closer. A survival and exploration game
+Every tree you cut down brings the sea closer. A survival and exploration game
 built with three.js, on a Philippine island: a smooth wave-driven ocean
 with a reef and kelp forest to dive into, and a climate that keeps shifting
 and answers what you do to the island. Strip it bare and the rising sea
@@ -91,7 +91,7 @@ the music, about 160–190 MB) to your downloads when it ends. Record it in a br
 drawing on the graphics card, so no frames drop.
 
 Its shots, after a cold open looking down on a lone survivor ("Every tree
-you fell brings the sea closer"): walking inland with an axe, felling a
+you cut down brings the sea closer"): walking inland with an axe, felling a
 tree, a house on stilts going up over the shallows, the fish over a reef, a
 storm rolling in as the sea rises, the flood across the beach, four teams
 round a bahay kubo with spears flying, a charge that breaks Team Asul's bed,
