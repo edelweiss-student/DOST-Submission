@@ -49,11 +49,14 @@ export const spearDamage = (charge) => Math.round(SPEAR.damage[0] + (SPEAR.damag
 // storms push it further in. Any bed the water reaches is washed away; a
 // bed raised high (in a bahay kubo on its stilts) stays dry. SURGE is the
 // storm surge at the storm's peak; FINAL seconds later time is up: the
-// team with the most players still in wins, and a tie is a draw. Times are
-// seconds after the barriers come down; the server can shorten the storm
-// for testing (--surge), and its stages and FINAL keep their places in it.
-export const SURGE = 480;
-export const FINAL = 180;
+// team with the most players still in wins; level on that, the one whose
+// bed has the most health left; level on that too, the one that knocked
+// out the most players; only then is it a draw. Times are seconds after
+// the barriers come down (a match is 12 minutes with the build phase);
+// the server can shorten the storm for testing (--surge), and its stages
+// and FINAL keep their places in it.
+export const SURGE = 330;
+export const FINAL = 150;
 // Each stage starts at a fraction of the way to the surge. The storms'
 // winds match the Philippines' wind signals (weather/weather.js): about
 // 58 km/h (Signal No. 1), 76 (No. 2) and 98 (No. 3).

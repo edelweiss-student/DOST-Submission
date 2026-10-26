@@ -119,9 +119,9 @@ look at one shot.
 Bed wars for up to four teams, on a game server. Players join a lobby, are
 put on teams, and spawn at their team's base, with its bahay kubo and bed
 in their inventory to put up wherever they choose, when the host starts
-the match. It opens with a 10-minute build phase behind barriers that keep
+the match. It opens with a 4-minute build phase behind barriers that keep
 each team out of the others' bases; then it's a fast fight to be the last
-team standing. Climate change comes as a typhoon on a fixed clock, the same
+team standing, 12 minutes in all at most. Climate change comes as a typhoon on a fixed clock, the same
 for every team: the weather worsens, the sea rises, and any bed the water
 reaches is washed away.
 
@@ -188,9 +188,9 @@ sea (it can rise 2.4 m, and storm surges 1.4 m more). They're worked out from
 the island, so every player finds the same spots, about 180 m apart. You
 spawn at yours facing the middle of the island.
 
-**The build phase.** A match opens with 10 minutes of building
+**The build phase.** A match opens with 4 minutes of building
 (`match/barriers.js`), timed by the server so every player's countdown agrees:
-"Build phase · barriers down in 9:59" at the top of the screen, amber in the
+"Build phase · barriers down in 3:59" at the top of the screen, amber in the
 last minute, with a warning when one minute is left.
 
 - **Barriers.** A solid wall in each team's colour rings every base, 50 m
@@ -220,18 +220,21 @@ last minute, with a warning when one minute is left.
 
 **The storm** (`match/rules.js`). Climate change in a match is the same for
 every team, on the server's clock, not what anyone does. When the barriers
-come down a bagyo (typhoon) builds in stages two minutes apart: rain bands
+come down a bagyo (typhoon) builds in stages about 80 seconds apart: rain bands
 first, then storms of about 58, 76 and 98 km/h, which raise wind
 Signals No. 1, 2 and 3. The climate's pressure climbs with it to Crisis, so
-the sea rises (up to 2.4 m, and the storm's surge on top, peaking eight
-minutes in) and floods the beaches. **Any bed the water reaches is washed
+the sea rises (up to 2.4 m, and the storm's surge on top, peaking five and a
+half minutes in) and floods the beaches. **Any bed the water reaches is washed
 away**, as if it had been broken: once the water has stood over its foot for
 a moment, its team can't come back after going down. A bed raised above
 the flood, as in a bahay kubo on its stilts, stays dry. (The bases are at
 least 5 m above the sea, so the flood mostly threatens beds put down low,
-on the beaches and near the shore.) Three minutes after the surge time is
-up, and the team with the most players still standing wins; a tie is a
-draw. The top of the screen counts down to the surge, then to the end, and
+on the beaches and near the shore.) Two and a half minutes after the
+surge time is up, and the team with the most players still standing wins.
+Level on that, the team whose bed has the most health left wins (a broken
+or washed-away bed counts as none), and level on that too, the team that
+knocked out the most other players; only if all three are level is it a
+draw. The end screen says which decided it. The top of the screen counts down to the surge, then to the end, and
 the weather panel says what's coming next.
 
 **The bahay kubo.** Each team has one, the house on stilts of the
