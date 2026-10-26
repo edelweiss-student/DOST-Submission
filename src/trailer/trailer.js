@@ -173,7 +173,7 @@ export function createTrailer(ctx) {
   }
 
   // The house on stilts, a piece at a time: pilings, floors, walls (a
-  // doorway facing the land), roofs. Returns them in building order.
+  // door facing the land), roofs. Returns them in building order.
   function housePieces() {
     const { i0, j0, top } = site.house, list = [];
     const cells = [[0, 0], [1, 0], [0, 1], [1, 1]].map(([a, b]) => [i0 + a, j0 + b]);
@@ -186,8 +186,8 @@ export function createTrailer(ctx) {
       for (let side = 0; side < 4; side++) {
         const [di, dj] = SIDES[side];
         if (cells.some(([a, b]) => a === i + di && b === j + dj)) continue;   // inside the house
-        const type = side === landSide && !door ? 'doorway' : side === (landSide + 2) % 4 ? 'window' : 'wall';
-        if (type === 'doorway') door = true;
+        const type = side === landSide && !door ? 'door' : side === (landSide + 2) % 4 ? 'window' : 'wall';
+        if (type === 'door') door = true;
         list.push({ key: `edge:${EDGE_KEYS(i, j)[side]}`, plan: { type, i, j, side, y: top + DECK } });
       }
     }

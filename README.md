@@ -274,13 +274,13 @@ to shed typhoon rain, and bamboo steps up to the door.
   | In your hand | To a player | To a bed | To a build |
   | --- | --- | --- | --- |
   | Nothing | 5 | 3 | 2 |
-  | Knife | 14 | 5 | 4 |
-  | Axe | 20 | 12 | 15 |
-  | Pickaxe | 16 | 20 | 10 |
-  | Spear (jab) | 16 | 4 | 3 |
+  | Knife | 14 | 5 | 5 |
+  | Axe | 20 | 12 | 5 |
+  | Pickaxe | 16 | 20 | 5 |
+  | Spear (jab) | 16 | 4 | 5 |
 
   A bed has 200 health (10 blows of a pickaxe, 17 of an axe) and a built
-  piece 100 (7 blows of an axe). A thrown spear hurts another team's
+  piece 100: every tool takes 5% off it a blow, so 20 blows break it. A thrown spear hurts another team's
   player for 18 to 45, by how far it was drawn back (beds and builds it only
   sticks in). The thrower's game sees the hit and the server checks it: one
   hit a throw, within 90 m of where it was thrown from, and none in the
@@ -350,7 +350,7 @@ they agree.
 | I / Tab | Open or close the inventory and crafting |
 | K | Open or close the map |
 | Q | Drop one of the selected item, or put down the wood you're carrying |
-| B | Build mode: `1`–`9` or the wheel choose a piece, `R` turns it, `Z` raises or lowers pilings, `E` (or left-click) places it, `B` or right-click leaves |
+| B | Build mode: `1`–`8` or the wheel choose a piece, `R` turns it, `Z` raises or lowers pilings, `E` (or left-click) places it, `B` or right-click leaves |
 | E on a build | Add the wood you carry, repair it with a plank (or log), or with empty arms open or shut a door, or rework the joints of anything else |
 | Hold X | Take apart something you built, or clear a blueprint |
 | M | Mute |
@@ -393,7 +393,7 @@ and a 100 m scale bar. It shows:
 - the sea where it is now, so as the sea rises the beaches shrink on the map;
 - every tree still standing (felled trees disappear from it, so you can see
   where you've cleared);
-- what you've built: floors and pilings as cells, walls, windows, doorways,
+- what you've built: floors and pilings as cells, walls, windows, doors,
   railings and stairs along their edges, and blueprints in outline;
 - in a multiplayer match, the four team bases in their colours, with yours
   marked, and their barriers ringed while the build phase lasts; once it's
@@ -422,17 +422,18 @@ something else:
 | Grass | — | Knife: 1–2 fibre, never runs out | — | — |
 | Tree | — | Axe: fells it (see Timber and building) | — | — |
 | Fallen trunk | — | Axe: cuts a log off it | 3 | 10 min |
+| Boulder | — | Pickaxe: mines 2–3 stones | 4 | 5 min |
 
 Sources regrow in game time, so not while paused. Bushes the sea has killed
-give only fibre. Without the right tool, a tree or a fallen trunk only says
-what it needs. A message tells you when your bag is full; anything that
+give only fibre. Without the right tool, a tree, a fallen trunk or a
+boulder only says what it needs. A message tells you when your bag is full; anything that
 doesn't fit is left behind.
 
 **Sticks and stones** lie loose on the ground: sticks near the trees (about
 3 in 5 trees have one within a few metres, and a felled tree's crown leaves
 more), and stones in little piles of 1 to 3 on the beaches. Look at one and
 press `E` to pick it up. It's gone for good, so they get scarcer as the
-island is picked over. Boulders give nothing.
+island is picked over; after that, mine boulders with a pickaxe.
 
 Items stack (sticks and stones 32, fibre 48, berries 24). Wood isn't an
 item: it never goes in the bag (see below). Berries are food: right-click
@@ -467,8 +468,8 @@ spear in your grip, sticks, stones, fibre or berries in your open palm (the
 team's bed and bahay kubo show where they'd go instead). It bobs as you walk and swings when you
 right-click, and its work is done when the swing lands. `E` is only ever
 your hands. Every tool breaks what's built (see Timber and building); the
-pickaxe has no other work on the island for now, and in a multiplayer
-match it's the quickest way through an enemy bed. The knife and pickaxe strike down and forward. The axe chops level: it swings back to the right,
+pickaxe mines stones from boulders, and in a multiplayer match it's the
+quickest way through an enemy bed. The knife and pickaxe strike down and forward. The axe chops level: it swings back to the right,
 sweeps across from right to left and bites in edge first right where the
 crosshair is, jolts with the blow, then pulls back. You can't start another
 swing until one is nearly over. Tools keep their wear when moved, dropped or
@@ -534,13 +535,12 @@ pilings stand:
 | --- | --- | --- | --- |
 | 1 | Floor | 6 planks | On posts on the ground or out over the water, snapped to a 2 m grid, or on top of pilings (`R` turns its boards) |
 | 2 | Wall | 6 planks | Along the floor edge nearest the crosshair (`R` turns it round the floor, a side at a time) |
-| 3 | Doorway | 4 planks | Like a wall, with an opening to walk through |
+| 3 | Door | 7 planks | A wall with a doorway and a plank door hung in it. `E` opens it (it swings in, over the floor it was built from) and shuts it; shut, it stops you like a wall. In a match only your own team can open your doors: anyone else has to break them |
 | 4 | Roof | 8 planks | Over a floor: a pitched roof with boarded gable ends (`R` turns the ridge) |
 | 5 | Pilings | 4 logs | Four log stilts driven into the ground or the seabed. A floor goes on top of them, 2, 3, 4 or 5 m above the water (`Z` changes the height). Two diagonal log braces stiffen two opposite sides (`R` turns them to the other two) |
 | 6 | Window | 5 planks | A wall with a window in it |
 | 7 | Railing | 3 planks | Along a floor edge, so you don't fall off |
-| 8 | Stairs | 5 planks | Steps you walk up, at about 40° from a floor edge (an open one, a doorway or a door) down to the ground, the seabed, or a lower floor in the way (they land on it), for floors 0.6 to 6 m up. Everyone can build 3 at most (a bahay kubo's own steps don't count); take one apart to build another |
-| 9 | Door | 7 planks | A doorway with a plank door hung in it. `E` opens it (it swings in, over the floor it was built from) and shuts it; shut, it stops you like a wall. In a match only your own team can open your doors: anyone else has to break them |
+| 8 | Stairs | 5 planks | Steps you walk up, at about 40° from a floor edge (an open one, or a door's doorway) down to the ground, the seabed, or a lower floor in the way (they land on it), for floors 0.6 to 6 m up. Everyone can build 3 at most (a bahay kubo's own steps don't count); take one apart to build another |
 
 A see-through preview follows the crosshair: green where the piece fits,
 red (with the reason) where it doesn't. A floor levels itself above the
@@ -553,7 +553,7 @@ much further the sea may still rise. Press `E` to place a **blueprint**.
 Then bring the wood: planks, or logs for pilings. With it in your arms, look
 at the blueprint and press `E` to add one; the piece grows board by board.
 Once it has everything it's solid: you stand on floors (and step or climb
-onto them, even out of the water), walls, doorways and railings stop you,
+onto them, even out of the water), walls, shut doors and railings stop you,
 pilings stand in your way, and a roof shades you from the sun like a tree's
 crown and keeps the rain off what's under it.
 
@@ -612,11 +612,10 @@ back; on a blueprint it clears it and gives back what it had. A floor can't
 be taken apart while walls, a roof or stairs stand on it, nor pilings with
 a floor on top.
 
-**Breaking it.** Any tool breaks what's built, faster than taking it
-apart but at a cost. With a tool selected, right-click a finished piece:
-each blow takes off as much of its condition as it would of another
-team's in a match (15% for the axe, 10% for the pickaxe, 4% for the knife;
-see Bed wars), and the piece darkens as it goes. At nothing it breaks,
+**Breaking it.** Any tool breaks what's built, at a cost. With a tool
+selected, right-click a finished piece: each blow takes off as much of its
+condition as it would of another team's in a match (5% for any tool, so
+20 blows; see Bed wars), and the piece darkens as it goes. At nothing it breaks,
 with whatever stands on it, and only half the wood in each is left lying
 where it stood. A piece that's only been knocked about can be repaired
 like a worn one.
@@ -1027,7 +1026,7 @@ src/
   world/wood.js         wood materials and shapes: bark, plank grain, cut ends, logs, boards
   world/timber.js       felling, stumps, logs and planks in the world, splitting, carrying
   world/spears.js       thrown spears: flight, sticking where they strike, picking up again, hits in a match
-  world/building.js     floors, pilings, walls, windows, doorways, railings, stairs and
+  world/building.js     floors, pilings, walls, windows, doors, railings, stairs and
                         roofs: placing, blueprints, building up, joints, weather and sea wear,
                         high-water marks, repairs, taking apart, turning, standing, colliding,
                         roof shade; the bahay kubo; shared between the players of a match

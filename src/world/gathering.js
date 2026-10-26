@@ -15,7 +15,8 @@ const STONE_PILES = 110;    // little piles of loose stones along the beaches
 // runs out). tool: the tool that does better here, or (needs) the only one
 // that works; label and give(rng, { tool, dead }) depend on whether it's
 // selected. Trees are felled with the axe, and fallen trunks give logs
-// (see timber.js); sticks and stones lie loose on the ground instead.
+// (see timber.js); boulders give stones to the pickaxe. Sticks and stones
+// also lie loose on the ground.
 const SOURCES = {
   tree: { tool: 'axe', needs: 'Fell it with an axe' },
   bush: {
@@ -30,6 +31,11 @@ const SOURCES = {
   log: {
     stock: 3, regrow: 600, tool: 'axe', needs: 'Cut logs off it with an axe',
     label: () => 'Cut a log off',
+  },
+  rock: {
+    stock: 4, regrow: 300, tool: 'pickaxe', needs: 'Mine stones from it with a pickaxe',
+    label: () => 'Mine stones',
+    give: (r) => [['stone', r() < 0.3 ? 3 : 2]],
   },
   grass: {
     tool: 'knife', label: () => 'Cut grass',
@@ -65,7 +71,8 @@ class Grid {
 }
 
 // Gathering from bushes and (with a knife) grass, felling trees and
-// cutting logs off fallen trunks (with an axe), picking up the sticks and
+// cutting logs off fallen trunks (with an axe), mining stones from boulders
+// (with a pickaxe), picking up the sticks and
 // stones lying loose on the ground, and items in the world (dropped, or
 // thrown out of a full bag). Stones and tools sink; everything else floats, drifting
 // with the waves and the wind. groundAt(x, z, y): the terrain, or a floor
@@ -74,9 +81,10 @@ class Grid {
 // Loose sticks and stones are free.
 export function createGathering(scene, { terrain, water, vegetation, inventory, timber, groundAt, rng, onImpact }) {
   const grid = new Grid();
-  const { trees, bushes, logs } = vegetation.sources;
+  const { trees, bushes, rocks, logs } = vegetation.sources;
   for (const t of trees) grid.add(t.x, t.z, { kind: 'tree', x: t.x, z: t.z, r: SPECIES[t.species].trunk * t.s, tree: t });
   for (const b of bushes) grid.add(b.x, b.z, { kind: 'bush', x: b.x, z: b.z, y: b.y, r: 1.1 * b.s });
+  for (const r of rocks) grid.add(r.x, r.z, { kind: 'rock', x: r.x, z: r.z, r: 0.9 * Math.max(r.sx, r.sz) });
   for (const l of logs) {
     const source = { kind: 'log', x: l.x, z: l.z, dx: l.dx, dz: l.dz, len: l.len, yaw: l.yaw, r: 0.55 * l.s };
     for (let d = 0; d <= l.len; d += 4) grid.add(l.x + l.dx * d, l.z + l.dz * d, source);
@@ -350,8 +358,8 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
       if (kind.stock && s.stock <= 0) {
         return { score: target.score, key: s, hands: true, dim: true, prompt: [[null, 'Nothing left here for now']] };
       }
-      // By hand where it can be done by hand (not grass, nor a fallen
-      // trunk), and better with the right tool.
+      // By hand where it can be done by hand (not grass, a fallen trunk or
+      // a boulder), and better with the right tool.
       const act = kind.needs || s.kind === 'grass' ? null : () => gather(target, simTime, null, player);
       return {
         score: target.score, key: s, hands: true, act, use,

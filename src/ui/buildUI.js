@@ -37,12 +37,6 @@ const DRAW = {
     lines(ctx, [[10, 22.5, 54, 22.5], [10, 33, 54, 33], [10, 43.5, 54, 43.5]]);
     lines(ctx, [[12, 12, 12, 54], [52, 12, 52, 54]], 4);
   },
-  doorway(ctx) {
-    boards(ctx, [[10, 12], [54, 12], [54, 54], [10, 54]]);
-    lines(ctx, [[10, 22.5, 54, 22.5], [10, 33, 23, 33], [41, 33, 54, 33], [10, 43.5, 23, 43.5], [41, 43.5, 54, 43.5]]);
-    ctx.fillStyle = '#16100a';
-    ctx.fillRect(23, 22.5, 18, 31.5);
-  },
   roof(ctx) {
     // A gable end: the triangle boarded up under two sloping roofs.
     boards(ctx, [[32, 16], [52, 40], [12, 40]]);

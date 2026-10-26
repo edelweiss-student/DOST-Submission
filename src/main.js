@@ -732,7 +732,7 @@ function useSelected() {
 
 // Keys: 1-9 or the mouse wheel pick a hotbar slot, I or Tab open the
 // inventory, E gathers, picks up, builds and repairs (by hand), Q drops one
-// of the selected item (or puts down wood you're carrying), B builds (1-9
+// of the selected item (or puts down wood you're carrying), B builds (1-8
 // or the wheel pick the piece, R turns it, Z raises pilings), holding X
 // takes apart, F strikes (in a match), K opens the map, P toggles the
 // performance readout, M mutes. In the joinery mini-game, E or Space works

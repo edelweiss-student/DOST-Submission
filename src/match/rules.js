@@ -21,12 +21,13 @@ export const SWING_GAP = 200;    // ms: the server counts at most one hit per pl
 
 // What a swing does, by what's in your hand ('none' for a fist): to another
 // player (health is 100), to a bed, and to anything built (PIECE_HP each,
-// on your own island too: see world/building.js). The pickaxe is for beds,
-// the axe for walls.
+// on your own island too: see world/building.js). The pickaxe is for beds;
+// every tool takes 5% off a build a blow (20 blows to break one), and a
+// fist 2%.
 export const DAMAGE = {
   player: { none: 5, knife: 14, axe: 20, pickaxe: 16, spear: 16 },
   bed: { none: 3, knife: 5, axe: 12, pickaxe: 20, spear: 4 },
-  piece: { none: 2, knife: 4, axe: 15, pickaxe: 10, spear: 3 },
+  piece: { none: 2, knife: 5, axe: 5, pickaxe: 5, spear: 5 },
 };
 export const PIECE_HP = 100;
 export const damageOf = (target, tool) => DAMAGE[target][tool] ?? DAMAGE[target].none;

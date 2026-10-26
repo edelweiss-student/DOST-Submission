@@ -4,8 +4,9 @@ import { MAX_STAIRS, PIECE_HP, damageOf } from '../match/rules.js';
 import { boardGeometry, logGeometry } from './wood.js';
 
 // Building with wood. Pieces snap to a 2 m grid: floors on posts or on log
-// pilings (on land or out over the water), walls, windows, doorways, doors,
-// railings and stairs along a floor's edges, and pitched roofs over floors.
+// pilings (on land or out over the water), walls, windows, doors (each in
+// its own doorway), railings and stairs along a floor's edges, and pitched
+// roofs over floors.
 // A door swings open into its floor and shut again (E); in a match only
 // its own team can open it, and anyone else has to break it down.
 // Every piece turns (R, the `turn` of a plan): a floor's boards, a roof's
@@ -69,13 +70,12 @@ const SIDES = [[0, -1], [1, 0], [0, 1], [-1, 0]];   // neighbouring cell across 
 export const PIECES = [
   { id: 'floor', name: 'Floor', cost: 6, hint: 'A plank deck on posts, or on pilings (R turns its boards)' },
   { id: 'wall', name: 'Wall', cost: 6, hint: 'Along the edge of a floor (R turns it round the floor)' },
-  { id: 'doorway', name: 'Doorway', cost: 4, hint: 'A wall you can walk through (R turns it round the floor)' },
+  { id: 'door', name: 'Door', cost: 7, hint: 'A wall with a doorway and its door: E opens and shuts it (R turns it round the floor)' },
   { id: 'roof', name: 'Roof', cost: 8, hint: 'Over a floor: shade, and shelter from the rain (R turns its ridge)' },
   { id: 'pilings', name: 'Pilings', cost: 4, material: 'log', hint: 'Log stilts in the ground or seabed, to build a floor on high above the sea' },
   { id: 'window', name: 'Window', cost: 5, hint: 'A wall with a window in it (R turns it round the floor)' },
   { id: 'railing', name: 'Railing', cost: 3, hint: 'Along a floor edge, so you don’t fall off (R turns it round the floor)' },
   { id: 'stairs', name: 'Stairs', cost: 5, hint: `Steps up to a raised floor from one of its edges, ${MAX_STAIRS} each (R turns them round the floor)` },
-  { id: 'door', name: 'Door', cost: 7, hint: 'A doorway with a door: E opens and shuts it (R turns it round the floor)' },
 ];
 const PIECE = Object.fromEntries(PIECES.map((p) => [p.id, p]));
 
@@ -89,13 +89,13 @@ const WEAR = {
   surf: 0.0011,      // waves on pilings, by how rough the sea is
 };
 // How much wind gets at each piece.
-const EXPOSURE = { floor: 0.5, wall: 1, doorway: 1, door: 1, window: 1.1, roof: 1.4, pilings: 0.3, railing: 0.8, stairs: 0.6 };
+const EXPOSURE = { floor: 0.5, wall: 1, door: 1, window: 1.1, roof: 1.4, pilings: 0.3, railing: 0.8, stairs: 0.6 };
 // Thick logs outlast planks.
 const RESIST = { pilings: 5 };
 // Condition back per plank (or log) used in a repair.
 const REPAIR = { plank: 0.4, log: 0.5 };
 // Ground each piece covers (m²), which stresses the land under it (see climate/entity.js).
-const FOOTPRINT = { floor: CELL * CELL, pilings: 0.5, wall: 0.3, doorway: 0.3, door: 0.3, window: 0.3, railing: 0.2, roof: 0, stairs: 0.8 };
+const FOOTPRINT = { floor: CELL * CELL, pilings: 0.5, wall: 0.3, door: 0.3, window: 0.3, railing: 0.2, roof: 0, stairs: 0.8 };
 
 // Joinery decides how well a piece holds together (q 0..1): from rough
 // joints, which wear about as fast as unjoined ones, to masterful ones that
@@ -215,8 +215,8 @@ function leafParts(edge, y, step) {
   return parts;
 }
 
-// Six boards on edge between two corner posts. A doorway (or door) leaves
-// a gap below the top board, a window one in the middle.
+// Six boards on edge between two corner posts. A door's doorway leaves a
+// gap below the top board, a window one in the middle.
 function wallParts(edge, y, type) {
   const { ax, az, bx, bz } = edge;
   const parts = [];
@@ -228,7 +228,7 @@ function wallParts(edge, y, type) {
   const post = uz === 0 ? 0.14 : 0.15;
   for (const k of [0.07, CELL - 0.07]) upright(parts, 1, ax + ux * k, az + uz * k, y, y + WALL_HEIGHT + (uz === 0 ? 0 : 0.01), post, post, yaw);
   if (type === 'door') parts.push(...leafParts(edge, y, cost));
-  const gap = type === 'doorway' || type === 'door' ? { from: 0, to: DOOR.height, width: DOOR.width }
+  const gap = type === 'door' ? { from: 0, to: DOOR.height, width: DOOR.width }
     : type === 'window' ? { from: WINDOW.sill, to: WINDOW.top, width: WINDOW.width } : null;
   if (gap) {
     // A frame round the opening, and a sill under a window.
@@ -455,8 +455,8 @@ function pushFromRect(p, r, x0, z0, x1, z1) {
 export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, shadows, takeWood, release, onMessage, onSound, onChange, onImpact }) {
   // Grid cells with a floor and/or pilings: { i, j, x0, z0, y (deck top), floor, roof, pilings, top (of the pilings) }.
   const cells = new Map();
-  const edges = new Map();   // walls, windows, doorways and railings by edge key
-  const stairs = new Map();  // stairs by edge key (they can share an edge with a doorway)
+  const edges = new Map();   // walls, windows, doors and railings by edge key
+  const stairs = new Map();  // stairs by edge key (they can share an edge with a door)
   const pieces = [];
   let dirty = true;
 
@@ -696,7 +696,7 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     return { c, side, edge: edgeOf(c.i, c.j, side) };
   }
 
-  // Walls, windows, doorways and railings: on a floor's edge.
+  // Walls, windows, doors and railings: on a floor's edge.
   function planEdge(type, ray, turn) {
     const at = floorSide(ray, turn);
     if (!at) return null;
@@ -728,7 +728,7 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     const plan = { type: 'stairs', cell: c, edge, side, y: c.y, bottom, run, parts };
     const on = edges.get(edge.key);
     if (stairs.has(edge.key)) return { ...plan, reason: 'There are stairs here already' };
-    if (on && on.type !== 'doorway' && on.type !== 'door') return { ...plan, reason: `There’s a ${on.name} in the way` };
+    if (on && on.type !== 'door') return { ...plan, reason: `There’s a ${on.name} in the way` };
     // A floor beside it lower down is fine (the stairs go down onto it);
     // one about as high you can just step onto.
     const other = cells.get(cellKey(c.i + SIDES[side][0], c.j + SIDES[side][1]));
@@ -842,9 +842,9 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     };
     // What you aim at: a floor's deck (not the posts under it), each of
     // the pilings (not the space between them, where a floor goes on top),
-    // each board of a doorway, door or window (not the opening, so a swing
-    // goes through it), or the whole piece.
-    const byPart = plan.type === 'pilings' || plan.type === 'doorway' || plan.type === 'door' || plan.type === 'window';
+    // each board of a door or window (not the opening, so a swing goes
+    // through it), or the whole piece.
+    const byPart = plan.type === 'pilings' || plan.type === 'door' || plan.type === 'window';
     piece.aim = plan.type === 'floor'
       ? [new THREE.Box3(new THREE.Vector3(plan.x0, plan.y - 0.3, plan.z0), new THREE.Vector3(plan.x0 + CELL, plan.y, plan.z0 + CELL))]
       : byPart ? piece.parts.map((part) => bounds([part])) : [piece.box];
@@ -928,27 +928,25 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
       const ux = (bx - ax) / CELL, uz = (bz - az) / CELL;
       if (piece.type === 'railing') {
         piece.segments = [{ ax, az, bx, bz, y0: y, y1: y + RAIL }];
-      } else if (piece.type === 'doorway' || piece.type === 'door') {
-        // Either side of the opening, and the lintel over it (and the door,
-        // where it's swung to).
+      } else if (piece.type === 'door') {
+        // Either side of the doorway, the lintel over it, and the door,
+        // where it's swung to.
         const side = (CELL - DOOR.width) / 2;
+        piece.leafSegment = { y0: y, y1: y + DOOR.height };
         piece.segments = [
           { ax, az, bx: ax + ux * side, bz: az + uz * side, y0: y, y1: y + WALL_HEIGHT },
           { ax: bx - ux * side, az: bz - uz * side, bx, bz, y0: y, y1: y + WALL_HEIGHT },
           { ax, az, bx, bz, y0: y + DOOR.height, y1: y + WALL_HEIGHT },
+          piece.leafSegment,
         ];
-        if (piece.type === 'door') {
-          piece.leafSegment = { y0: y, y1: y + DOOR.height };
-          piece.segments.push(piece.leafSegment);
-          // Looking into the doorway finds the door, open or shut (E), though
-          // a swing goes through it when it's open.
-          const mx = (ax + bx) / 2, mz = (az + bz) / 2, w = DOOR.width / 2, d = 0.25;
-          piece.opening = new THREE.Box3(
-            new THREE.Vector3(mx - Math.abs(ux) * w - Math.abs(uz) * d, y, mz - Math.abs(uz) * w - Math.abs(ux) * d),
-            new THREE.Vector3(mx + Math.abs(ux) * w + Math.abs(uz) * d, y + DOOR.height, mz + Math.abs(uz) * w + Math.abs(ux) * d),
-          );
-          hang(piece);
-        }
+        // Looking into the doorway finds the door, open or shut (E), though
+        // a swing goes through it when it's open.
+        const mx = (ax + bx) / 2, mz = (az + bz) / 2, w = DOOR.width / 2, d = 0.25;
+        piece.opening = new THREE.Box3(
+          new THREE.Vector3(mx - Math.abs(ux) * w - Math.abs(uz) * d, y, mz - Math.abs(uz) * w - Math.abs(ux) * d),
+          new THREE.Vector3(mx + Math.abs(ux) * w + Math.abs(uz) * d, y + DOOR.height, mz + Math.abs(uz) * w + Math.abs(ux) * d),
+        );
+        hang(piece);
       } else {
         piece.segments = [{ ax, az, bx, bz, y0: y, y1: y + WALL_HEIGHT }];
       }
