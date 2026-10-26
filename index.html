@@ -25,6 +25,7 @@
 
     <div id="climate-panel" class="panel">
       <div id="clock"></div>
+      <div id="score" hidden></div>
       <div id="sea"></div>
       <div id="climate"></div>
       <div id="region"></div>
@@ -113,8 +114,15 @@
           <nav class="menu-page" data-page="play" hidden>
             <button type="button" class="menu-item" data-action="single">Singleplayer</button>
             <button type="button" class="menu-item" data-go="multiplayer">Multiplayer</button>
+            <button type="button" class="menu-item" data-go="leaderboard">Leaderboard</button>
             <button type="button" class="menu-back" data-back>Back</button>
           </nav>
+          <section class="menu-page" data-page="leaderboard" hidden>
+            <h2>Leaderboard</h2>
+            <ol id="leaderboard" class="leaderboard"></ol>
+            <p class="menu-note">Your best runs on your own, in this browser. A run lasts until you black out or quit. Each new day scores 10 points for every finished piece you've built that's still standing and dry, times how balanced the climate is: ×1 Balanced, ×0.6 Unstable, ×0.3 Severe, ×0.1 Crisis. Build, but fell as few trees as you can.</p>
+            <button type="button" class="menu-back" data-back>Back</button>
+          </section>
           <nav class="menu-page" data-page="multiplayer" hidden>
             <button type="button" class="menu-item" data-action="bedwars">Bedwars</button>
             <p class="menu-note">Four teams. Four minutes to build behind barriers, then a typhoon: break the other teams’ beds, and keep yours above the flood.</p>

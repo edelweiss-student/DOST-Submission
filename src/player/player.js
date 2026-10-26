@@ -194,10 +194,28 @@ export class Player {
     const sea = this.water.surface(p.x, p.z, t, headSample).height;
     this.underwater = this.camera.position.y < sea - 0.05;
     this.depth = Math.max(0, sea - this.camera.position.y);
+    this.footsteps(dt, g, sprint);
     this.breathe(dt);
     this.warm(dt, heatIndex, g, submerged);
     const moving = ix !== 0 || iz !== 0 || (this.swimming && (k.has('Space') || k.has('KeyC')));
     this.tire(dt, t, sprint && moving, moving);
+  }
+
+  // A footstep every stride on the ground (longer strides sprinting), or a
+  // stroke swimming: onStep(surface, strength), where surface is 'sand',
+  // 'grass', 'wood' (something built), 'water' (wading) or 'swim'. g: the
+  // ground under you.
+  footsteps(dt, g, sprint) {
+    const p = this.pos, speed = Math.hypot(this.vel.x, this.vel.z);
+    if (!(this.grounded || this.swimming) || speed < 0.8) return;
+    this.stride = (this.stride ?? 0) + speed * dt;
+    if (this.stride < (this.swimming ? 2.2 : sprint ? 1.6 : 1.25)) return;
+    this.stride = 0;
+    const surface = this.swimming ? 'swim'
+      : this.inWater ? 'water'
+        : g > this.terrain.heightAt(p.x, p.z) + 0.05 ? 'wood'
+          : this.terrain.grassAt(p.x, p.z) > 0.3 ? 'grass' : 'sand';
+    this.onStep?.(surface, Math.min(1, speed / SPRINT));
   }
 
   swim(dt, sprint, ix, iz, surf) {

@@ -1456,5 +1456,8 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     },
 
     get count() { return { pieces: pieces.length, built: pieces.filter((p) => p.done).length }; },
+    // Finished pieces still standing and dry (pilings are meant to stand in
+    // the sea), for the score on your own (ui/scoreboard.js).
+    get standing() { return pieces.filter((p) => p.done && (p.type === 'pilings' || !(p.water > p.low))).length; },
   };
 }

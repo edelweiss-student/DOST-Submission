@@ -56,7 +56,8 @@ island's west shore with the morning sun behind it (`menuView` in
 
 - **Play**: **Singleplayer** starts on the island on your own, once it's
   made; **Multiplayer** lists the multiplayer modes, for now
-  **Bedwars**, which opens the lobby (the same as `/?mp`).
+  **Bedwars**, which opens the lobby (the same as `/?mp`); **Leaderboard**
+  lists your best runs on your own (see Score and leaderboard).
 - **Settings**: **Keybinds** shows every key (not dev mode's) on a tinted
   screen over the sea; **Water** and **Graphics** are the settings below.
 - **Credits**: the tree and tool packs, and what the game is built with.
@@ -80,6 +81,24 @@ menu is up, the game's panels, hotbar and tips keep out of the way.
 Quality and anti-aliasing are set as the game loads. Changed from the menu
 before you've started on your own, the game loads again at once and comes
 back to the Graphics page; otherwise they wait for the next time it loads.
+
+## Score and leaderboard
+
+On your own, every run has a score (`ui/scoreboard.js`), shown under the
+day and time: "Score 120 · +40 tomorrow · best 300". A run lasts from when
+you start until you black out (drowning) or quit to the menu. Each new day
+scores **10 points for every finished piece you've built that's still
+standing and dry** (pilings count, since they're meant to stand in the
+sea), **times how balanced the climate is**: ×1 Balanced, ×0.6 Unstable,
+×0.3 Severe, ×0.1 Crisis. So the points are in building, but building
+takes wood, and every tree felled for it pushes the climate the wrong way;
+and what's built wears down unless you repair it. A message says what each
+new day brought.
+
+When a run ends, a message gives its score and its place, and it goes on
+the **Leaderboard** (Play, then Leaderboard): your ten best runs, with how
+many days each lasted and when, kept in this browser. A new run starts at
+once.
 
 ## Trailer
 
@@ -287,8 +306,8 @@ to shed typhoon rain, and bamboo steps up to the door.
   your own team's bahay kubo, which stops it. With nothing of those in
   reach, a tool does its usual work (a tree to fell, a log to split). The
   hit counts as the swing lands. A hit flashes the crosshair red and wears
-  the tool. Being hit flashes the edges of the screen red and knocks you
-  back. Health is 100 and comes back slowly on its own, but only 6
+  the tool, with a thwack (a duller thump on a bed). Being hit flashes
+  the edges of the screen red, knocks you back and makes you grunt. Health is 100 and comes back slowly on its own, but only 6
   seconds after you were last hurt: in a fight, eat berries (20 health a
   handful). Each hit does:
 
@@ -344,15 +363,25 @@ everyone is ready. It only sends out real changes. It also referees the
 fight (`server/match.js`): it checks every hit (other team, both up, within
 reach, not too often), keeps the beds' health, and decides who comes back
 and who's out. It passes on what's built, each piece stamped with its
-team, times the storm and its surge, and calls time. Newcomers wait while a
+team, times the storm, its surge and the flood, and passes on blows on trees. Newcomers wait while a
 match is on; when it's over, or once
 everyone has left it, the lobby opens again. Single-player never loads
 Socket.IO.
 
-**Not shared yet:** felling and gathering still run separately on each
-player's machine (a tree you fell still stands in the others' games), and
-so do the tides. The weather and the sea level follow the match's clock, so
-they agree.
+**Shared across the match:** besides what's built, every blow on a tree
+goes to the others' games (through the server), so a tree you fell comes
+down for everyone, the same way (which side it falls to comes from where
+it stands, not chance). The time of day runs on the match's own clock
+(`dayAt()` in `world/sky.js`, worked out in fixed steps), so the sun, the
+night and the tides agree in every game to within a few milliseconds, and
+the weather, sea level and flood follow the match's clock too. What's
+still each player's own: the logs a felled tree breaks into, and what's
+gathered from bushes, grass and boulders.
+
+**Playtesting.** `PLAYTEST.md` is a guide for a playtest with 4 to 8
+people: what to tell them, what to watch for, and what to ask after each
+match. It was run first with two full game windows and six scripted
+players: start to finish, through the storm and the flood, with no errors.
 
 ## Controls
 
@@ -791,6 +820,19 @@ Heat makes all of this worse:
   midday sun and 6–7 at night, against 12 on a mild day. Swimming in the
   sea, you tire no faster than on a mild day.
 
+## Sound
+
+Every sound is made as it plays from noise and simple tones
+(`audio/ambience.js`), so the game ships no sound files (only the trailer
+has music). Around you: wind, rain, surf, thunder, and a rumble and a
+muffled world under water. What you do: footsteps that sound like what's
+underfoot (sand, grass, the boards of something built, wading water) and
+strokes when you swim, splashes, the axe biting, a tree cracking, groaning
+and crashing down, logs and planks knocking down, building, a thrown
+spear's whoosh. In a match: a thwack when your blow lands (a thump on a
+bed), a grunt when you're hurt, and a horn when any team's bed is broken
+or washed away.
+
 ## Graphics
 
 Everything except the trees and tools is generated when the game starts.
@@ -1084,6 +1126,7 @@ src/
   ui/joinery.js         the joinery mini-game: saw, chisel and pegs
   ui/tutorial.js        tips for a first game, one at a time, on your own or in a match
   ui/menu.js            the menu: its pages, settings rows, the keybinds screen, Esc to go back
+  ui/scoreboard.js      the score on your own, and the leaderboard of your best runs
   ui/lobbyUI.js         the multiplayer lobby, in the menu
   ui/lineupUI.js        the lobby's line-up of everyone who has joined, in team colours
   ui/mapUI.js           the map (K): terrain, the sea, standing trees, what you've built, bases,
@@ -1108,7 +1151,7 @@ src/
                         where it stands, coming back beside it, what a swing hits
   net/net.js            the connection to the game server (Socket.IO, loaded only for multiplayer)
   audio/ambience.js     synthesized wind, rain, surf, underwater, thunder, splashes, wood sounds,
-                        a thrown spear's whoosh
+                        a thrown spear's whoosh, footsteps, hits, being hurt and the bed horn
 server/
   index.js              the game server: serves the built game (with caching), runs the lobby
                         and the match over Socket.IO

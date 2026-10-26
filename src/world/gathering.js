@@ -241,6 +241,7 @@ export function createGathering(scene, { terrain, water, vegetation, inventory, 
       consider({ loose: it }, it.x, it.z, Math.hypot(it.x - px, it.z - pz), 1);
     }
     for (const s of grid.near(px, pz, found)) {
+      if (s.tree?.felled) continue;   // felled in another player's game (a match)
       let cx = s.x, cz = s.z;
       if (s.kind === 'log') {
         // Nearest point along the trunk.

@@ -141,7 +141,7 @@ io.on('connection', (socket) => {
     // Spectators watch: the match itself is only those on a team.
     const playing = lobby.state.players.filter((p) => p.team !== WATCH), watching = lobby.players.size - playing.length;
     console.log(`Match started: ${playing.length} player${playing.length === 1 ? '' : 's'}${watching ? ` and ${watching} watching` : ''}, island ${lobby.seed}, ${clock(BUILD)} to build`);
-    io.emit('start', { seed: lobby.seed, players: lobby.state.players, buildLeft: lobby.buildLeft });
+    io.emit('start', { seed: lobby.seed, players: lobby.state.players, buildLeft: lobby.buildLeft, buildTime: BUILD });
     broadcast();
     endMatch();
     match = new Match(playing);
@@ -256,6 +256,13 @@ io.on('connection', (socket) => {
     const { key, tool } = data ?? {};
     if (!match || lobby.buildLeft > 0 || typeof key !== 'string' || key.length > 40) return;
     if (match.swing(socket.id, Date.now())) io.emit('pieceHit', { key, amount: damageOf('piece', tool) / PIECE_HP });
+  });
+  // A blow on a tree: the same tree in everyone else's game.
+  socket.on('chop', (msg) => {
+    const { tree, from } = msg ?? {};
+    if (!match?.players.has(socket.id) || !Number.isInteger(tree) || tree < 0 || tree > 100000) return;
+    if (!Array.isArray(from) || from.length !== 2 || !from.every(Number.isFinite)) return;
+    socket.broadcast.emit('chop', { tree, from });
   });
   socket.on('died', () => {
     const down = match?.died(socket.id, Date.now());

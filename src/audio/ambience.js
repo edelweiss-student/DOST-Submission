@@ -135,6 +135,87 @@ export class Ambience {
     src.stop(t + 0.5);
   }
 
+  // A footstep (or, swimming, a stroke) on `surface`: 'sand', 'grass',
+  // 'wood' (something built), 'water' (wading) or 'swim'; strength 0..1,
+  // how fast you're going. Each one a little different.
+  step(surface, strength = 0.5) {
+    if (!this.ctx) return;
+    const s = 0.5 + 0.5 * strength, j = 0.85 + Math.random() * 0.3;
+    switch (surface) {
+      case 'sand':
+        this.burst(this.white, 'bandpass', 700 * j, 0.8, 0.12 * s, 0.11);
+        this.burst(this.brown, 'lowpass', 200, 0.7, 0.18 * s, 0.08);
+        break;
+      case 'grass':
+        this.burst(this.white, 'bandpass', 3200 * j, 0.7, 0.08 * s, 0.13);
+        this.burst(this.brown, 'lowpass', 180, 0.7, 0.14 * s, 0.07);
+        break;
+      case 'wood':
+        this.burst(this.white, 'bandpass', 520 * j, 3, 0.22 * s, 0.07);
+        this.burst(this.brown, 'lowpass', 160, 0.7, 0.3 * s, 0.1);
+        break;
+      case 'water':
+        this.burst(this.white, 'bandpass', 1400 * j, 0.6, 0.16 * s, 0.22);
+        break;
+      case 'swim':
+        this.burst(this.white, 'bandpass', 900 * j, 0.6, 0.12 * s, 0.35);
+        break;
+    }
+  }
+
+  // In a match: hurt (a thump and a grunt, strength 0..1 by how hard), a
+  // blow of yours landing on a player (hit) or a bed (hit('bed')), and a
+  // horn when any team's bed is broken or washed away.
+  hurt(strength = 1) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime, s = Math.min(1, Math.max(0.3, strength));
+    this.burst(this.brown, 'lowpass', 140, 0.7, 0.9 * s, 0.25);
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(240, t);
+    o.frequency.exponentialRampToValueAtTime(110, t + 0.22);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.35 * s, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+    o.connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + 0.3);
+  }
+
+  hit(target = 'player') {
+    if (!this.ctx) return;
+    if (target === 'bed') {
+      this.burst(this.brown, 'lowpass', 300, 0.7, 0.6, 0.18);
+      this.burst(this.white, 'bandpass', 900, 1, 0.25, 0.15);
+    } else {
+      this.burst(this.white, 'bandpass', 2000, 1.5, 0.5, 0.06);
+      this.burst(this.brown, 'lowpass', 250, 0.7, 0.6, 0.12);
+    }
+  }
+
+  horn() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const low = ctx.createBiquadFilter();
+    low.type = 'lowpass';
+    low.frequency.value = 900;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.22, t + 0.08);
+    g.gain.setValueAtTime(0.22, t + 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 2.1);
+    low.connect(g).connect(this.master);
+    for (const f of [110, 110.7, 165]) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = f;
+      o.connect(low);
+      o.start(t);
+      o.stop(t + 2.2);
+    }
+  }
+
   // A trunk groaning as it leans: a low buzz through a narrow band.
   groan(strength, length) {
     const ctx = this.ctx, t = ctx.currentTime;

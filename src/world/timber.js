@@ -45,9 +45,10 @@ export function raySegment(o, u, c, a, h, out) {
 
 // groundAt(x, z, y): the terrain, or a floor built there below y.
 // dropItem(stack, position, velocity): puts an item in the world (sticks from a crown).
-// onSound(name, strength): chops, cracks and thuds.
+// onSound(name, strength): chops, cracks and thuds. onChop(tree, from): a
+// blow of yours (not one from another game), for a match to share.
 // onImpact({ kind: 'fell', tree }): a tree came down (for the climate, climate/entity.js).
-export function createTimber(scene, { terrain, water, forest, trees, wood, groundAt, dropItem, onSound, onImpact, rng, shadows }) {
+export function createTimber(scene, { terrain, water, forest, trees, wood, groundAt, dropItem, onSound, onImpact, onChop, rng, shadows }) {
   const pieces = [];      // logs and planks lying in the world (or floating)
   const carried = [];     // in your arms, last picked up last
   const stumps = [];
@@ -201,9 +202,12 @@ export function createTimber(scene, { terrain, water, forest, trees, wood, groun
     changed = true;
   }
 
-  // An axe blow on a standing tree, from where you stand. Returns true when
-  // it's the last one and the tree comes down.
-  function chop(tree, from) {
+  // An axe blow on a standing tree, from where you stand ({ x, z }), or (in
+  // a match) one from another player's game (remote). Returns true when it's
+  // the last one and the tree comes down.
+  function chop(tree, from, remote = false) {
+    if (tree.felled) return false;
+    if (!remote) onChop?.(tree, from);
     let c = chopping.get(tree);
     if (!c) chopping.set(tree, (c = { handle: forest.detach(tree), shake: 0, dx: 1, dz: 0 }));
     tree.chops = (tree.chops ?? 0) + 1;
@@ -214,11 +218,13 @@ export function createTimber(scene, { terrain, water, forest, trees, wood, groun
     onSound?.('chop', 1);
     if (tree.chops < chopsNeeded(tree)) return false;
 
-    // Timber! It falls away from you, a little to one side or the other.
+    // Timber! It falls away from you, a little to one side or the other
+    // (which side, from where it stands, so it's the same in every game).
     chopping.delete(tree);
     tree.felled = true;
     onImpact?.({ kind: 'fell', tree });
-    const turn = (rng() - 0.5) * 0.6, cos = Math.cos(turn), sin = Math.sin(turn);
+    const lean = Math.sin(tree.x * 12.9898 + tree.z * 78.233) * 43758.5453;
+    const turn = (lean - Math.floor(lean) - 0.5) * 0.6, cos = Math.cos(turn), sin = Math.sin(turn);
     const sp = SPECIES[tree.species];
     terrain.addCanopy(tree.x, tree.z, sp.crown * tree.s, -sp.shade);
     terrain.commitCanopy();

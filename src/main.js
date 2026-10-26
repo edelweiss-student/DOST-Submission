@@ -42,6 +42,7 @@ import { joinServer, createMatch } from './match/multiplayer.js';
 import { MapUI } from './ui/mapUI.js';
 import { createTrailer } from './trailer/trailer.js';
 import { Menu } from './ui/menu.js';
+import { Scoreboard } from './ui/scoreboard.js';
 
 // The menu is up from the start, while the island is made: its own pages
 // work at once, and Singleplayer waits until the island is ready.
@@ -161,10 +162,15 @@ const timber = createTimber(scene, {
     climate.record(e);
     tutorial.event('felled');
   },
+  onChop: (tree, from) => match?.chopped(tree, from),
   rng: mulberry32(seed + 3),
 });
 player.structures = building;
-player.onBlackout = () => timber.dropAll(player.pos);
+player.onBlackout = () => {
+  timber.dropAll(player.pos);
+  // After the player's own "you blacked out" message, in place of it.
+  if (!match) setTimeout(() => endRun('You blacked out and woke up on the shore'));
+};
 
 // Items: the bag with its hotbar and screen, and gathering from the world.
 // Gathering has its own random numbers, so it doesn't change the weather's.
@@ -311,6 +317,7 @@ function announceSignal() {
 precip.onStrike = (distance) => audio.thunder(distance);
 sea.onSurge = () => hud.message('Storm surge! The sea is pushing inland.', 5);
 player.onMessage = (text) => hud.message(text, 5);
+player.onStep = (surface, strength) => audio.step(surface, strength);
 player.onSplash = (x, y, z, speed) => {
   splashes.emit(x, y, z, speed);
   audio.splash(speed);
@@ -330,7 +337,10 @@ if (autoTier(gpu) !== 'high' && /Intel|AMD Radeon\(TM\) Graphics|AMD Radeon Grap
 const isPlaying = () => player.controls.isLocked || player.dragLook || inventoryUI.open;
 player.enableDragLook(renderer.domElement);
 // Multiplayer: the menu holds the lobby until the match starts.
-const match = server && createMatch(server, { terrain, player, hud, menu: menu.root, scene, sea, camera, weather, building, inventory, spears });
+const match = server && createMatch(server, {
+  terrain, player, hud, menu: menu.root, scene, sea, camera, weather, building, inventory, spears, timber, sky,
+  trees: vegetation.sources.trees, sound: (name, ...args) => audio[name]?.(...args),
+});
 if (match) menu.button('quit').textContent = 'Leave the match';
 const map = new MapUI({ terrain, trees: vegetation.sources.trees, building, sea, climate, match });
 // Tips for a first game (H hides them).
@@ -395,9 +405,32 @@ function menuAction(name, button) {
       }, 3000);
       return;
     }
+    if (!match && started) endRun();
     location.href = location.pathname;   // the main menu, without ?mp
   }
 }
+
+// The score on your own (ui/scoreboard.js): a new day's points as it
+// comes, the line under the clock, and the run's end (blacking out, or
+// quitting) onto the leaderboard.
+const scoreboard = new Scoreboard(document.getElementById('leaderboard'));
+const scoreLine = !server && !trailer ? document.getElementById('score') : null;
+function keepScore() {
+  if (!started || !isPlaying()) return;
+  const standing = building.standing;
+  const gain = scoreboard.update(sky.state.day, standing, climate.tier);
+  if (gain) hud.message(`A new day: +${gain} points for the ${standing} piece${standing === 1 ? '' : 's'} you have standing (×${[1, 0.6, 0.3, 0.1][climate.tier]} for the climate).`, 6);
+  const text = `Score ${scoreboard.score} · +${scoreboard.next(standing, climate.tier)} tomorrow · best ${scoreboard.best}`;
+  if (scoreLine.textContent !== text) scoreLine.textContent = text;
+  scoreLine.hidden = false;
+}
+function endRun(why = 'Your run is over') {
+  const run = scoreboard.end();
+  if (!run) return;
+  const place = run.rank ? ` (#${run.rank} on your leaderboard)` : '';
+  hud.message(`${why}: ${run.score} points over ${run.days} day${run.days === 1 ? '' : 's'}${place}. A new run starts now.`, 8);
+}
+addEventListener('pagehide', () => { if (!match && started) scoreboard.end(); });
 
 // The trailer page: plays it, or records it, at full resolution, then
 // comes back here.
@@ -1034,6 +1067,7 @@ function step() {
   renderer.shadowMap.needsUpdate = sky.sun.intensity > 0.02 && shadowFrame === 0;
 
   audio.update(weather, player.underwater, water.waves.hs);
+  if (scoreLine) keepScore();
   hud.update(dt, { weather, sea, climate, regions: !match, forecast: match?.forecast, clock: sky.clock(), player, waves: water.waves });
   gpuTimer.begin(perf.visible);
   renderer.render(scene, view);

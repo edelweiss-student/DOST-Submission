@@ -4,6 +4,27 @@ import { createAtmosphere, skyRadiance, sunTransmittance, SKY_LUT_GLSL } from '.
 import { CLOUD_COVERAGE_GLSL } from './materials.js';
 
 const DAY_LENGTH = 720;   // seconds of daylight+dusk per full cycle (nights run faster)
+
+// The time of day `seconds` after starting at `from` (0..1): { time, day },
+// worked out in fixed half-second steps the way the sky's own clock runs
+// (nights 2.5 times faster), so every game in a match comes to the same
+// answer however its frames fall. Kept from one call to the next.
+const DAY_STEP = 0.5;
+let dayCache = null;
+const nightAt = (time) => Math.sin((time - 0.25) * Math.PI * 2) < -0.05;
+export function dayAt(seconds, from = 0.3) {
+  if (!dayCache || dayCache.from !== from || seconds < dayCache.s) dayCache = { from, s: 0, time: from, day: 1 };
+  const c = dayCache;
+  const advance = (time, s) => time + (s / DAY_LENGTH) * (nightAt(time) ? 2.5 : 1);
+  while (c.s + DAY_STEP <= seconds) {
+    c.time = advance(c.time, DAY_STEP);
+    if (c.time >= 1) { c.time -= 1; c.day += 1; }
+    c.s += DAY_STEP;
+  }
+  let time = advance(c.time, seconds - c.s), day = c.day;
+  if (time >= 1) { time -= 1; day += 1; }
+  return { time, day };
+}
 const SUN_E = 3.2;        // sunlight above the atmosphere, in scene units
 const SKY_GAIN = 1.6;     // sky brightness (makes up for the multiple scattering we skip)
 const AMBIENT_GAIN = 1.5; // extra fill light from the sky and the ground
@@ -152,6 +173,7 @@ export function createSky(scene, renderer, { cloudTexture, shadowMap = 0, shadow
 
   const sunDir = new THREE.Vector3(), moonDir = new THREE.Vector3(), lightDir = new THREE.Vector3();
   const state = { time: 0.3, day: 1 };
+  let following = null;   // in a match: seconds since it began (follow())
   const fogColor = new THREE.Color(), tmp = new THREE.Color(), tmp2 = new THREE.Color();
   const top = new THREE.Color(), horizon = new THREE.Color(), lightColor = new THREE.Color();
 
@@ -190,10 +212,17 @@ export function createSky(scene, renderer, { cloudTexture, shadowMap = 0, shadow
   }
 
   function update(dt, camera, w, flash) {
-    // Nights pass 2.5x faster so the game stays playable.
-    const prevElev = Math.sin((state.time - 0.25) * Math.PI * 2);
-    state.time += (dt / DAY_LENGTH) * (prevElev < -0.05 ? 2.5 : 1);
-    if (state.time >= 1) { state.time -= 1; state.day += 1; }
+    // Nights pass 2.5x faster so the game stays playable. In a match the
+    // time comes from the match's own clock, so every game shares it (and
+    // with it the tides).
+    const since = following?.();
+    if (since != null) {
+      Object.assign(state, dayAt(Math.max(0, since)));
+    } else {
+      const prevElev = Math.sin((state.time - 0.25) * Math.PI * 2);
+      state.time += (dt / DAY_LENGTH) * (prevElev < -0.05 ? 2.5 : 1);
+      if (state.time >= 1) { state.time -= 1; state.day += 1; }
+    }
 
     const ang = (state.time - 0.25) * Math.PI * 2;
     sunDir.set(Math.cos(ang), Math.sin(ang), 0.3).normalize();
@@ -316,5 +345,8 @@ export function createSky(scene, renderer, { cloudTexture, shadowMap = 0, shadow
 
   function skip(hours) { state.time = (state.time + hours / 24) % 1; }
 
-  return { update, clock, skip, dome, state, sun };
+  // In a match: the time of day follows seconds(), the seconds since it
+  // began (null: its own clock again).
+  const follow = (seconds) => { following = seconds; };
+  return { update, clock, skip, follow, dome, state, sun };
 }

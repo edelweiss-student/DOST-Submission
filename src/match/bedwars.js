@@ -22,8 +22,9 @@ const FLOODED = 0.25;   // metres of water over a bed's foot that wash it away (
 // your id; peace: true while the build phase lasts (nothing can be hurt
 // until the barriers come down).
 export class BedWars {
-  constructor({ net, players, me, bases, terrain, scene, player, camera, hud, building, inventory, sea, spears, peace }) {
-    Object.assign(this, { net, player, camera, hud, building, inventory, sea, bases, peace });
+  // sound(name, ...): a sound from audio/ambience.js ('hurt', 'hit', 'horn', 'wood').
+  constructor({ net, players, me, bases, terrain, scene, player, camera, hud, building, inventory, sea, spears, sound, peace }) {
+    Object.assign(this, { net, player, camera, hud, building, inventory, sea, bases, peace, sound: sound ?? (() => {}) });
     this.floodClock = 0;
     this.surf = {};
     this.me = me;
@@ -332,6 +333,8 @@ export class BedWars {
     if (nearest === enemy) this.net.send('hit', { target: enemy.id, tool });
     else if (nearest === bed) this.net.send('hitBed', { team: bed.team, tool });
     else this.net.send('hitPiece', { key: piece.key, tool });
+    if (nearest === piece) this.sound('wood', 'knock', 0.8);
+    else this.sound('hit', nearest === bed ? 'bed' : 'player');
     const crosshair = $('crosshair');
     crosshair.classList.add('hit');
     setTimeout(() => crosshair.classList.remove('hit'), 140);
@@ -355,6 +358,7 @@ export class BedWars {
     const foe = this.remotes.aimed(ray, length);
     if (!foe || foe.team === this.team) return null;
     this.net.send('spearHit', { target: foe.id });
+    this.sound('hit', 'player');
     const crosshair = $('crosshair');
     crosshair.classList.add('hit');
     setTimeout(() => crosshair.classList.remove('hit'), 140);
@@ -366,6 +370,7 @@ export class BedWars {
     if (!this.fighting) return;
     const p = this.player;
     p.hurt(amount);
+    this.sound('hurt', amount / 30);
     this.hurtBy = by;
     const dx = p.pos.x - from[0], dz = p.pos.z - from[1], d = Math.hypot(dx, dz) || 1;
     p.vel.x += (dx / d) * 6;
@@ -431,6 +436,7 @@ export class BedWars {
 
   // A bed broken (by), or washed away when the flood reached it.
   bedDestroyed(team, by, flood = false) {
+    this.sound('horn');
     const t = this.teams.get(team);
     if (t) t.hp = 0;
     this.beds.destroy(team);

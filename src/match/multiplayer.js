@@ -44,7 +44,7 @@ export async function joinServer() {
 // fighting, strike, pressure, forecast, update(dt) }: while inLobby, the
 // game can't be started; pressure is the climate's (0..1), and forecast
 // the weather panel's line about what's coming.
-export function createMatch({ net, seed, error }, { terrain, player, hud, menu, scene, sea, camera, weather, building, inventory, spears }) {
+export function createMatch({ net, seed, error }, { terrain, player, hud, menu, scene, sea, camera, weather, building, inventory, spears, timber, trees, sky, sound }) {
   menu.classList.add('mp', 'lobby');
   const leave = () => { location.href = location.pathname; };
   let name = '';
@@ -173,6 +173,12 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, menu, 
     followNext: () => wars?.spectator.next(),
     flyFreely: () => wars?.spectator.free(),
     get pressure() { return stormStart ? pressureAt(stormTime(), surgeAt) : 0; },
+    // A blow of yours on a tree (from: where you stood), for the others' games.
+    chopped(tree, from) {
+      if (!inMatch) return;
+      const r = (x) => Math.round(x * 100) / 100;
+      net.send('chop', { tree: trees.indexOf(tree), from: [r(from.x), r(from.z)] });
+    },
     get opened() { return !!stormStart; },
     // A building plan, refused within BASE_RADIUS of another team's base
     // (one in the match).
@@ -222,10 +228,13 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, menu, 
     else wars?.left(state.players);
   });
   net.on('notice', (text) => ui.notice(text));
-  net.on('start', ({ players, buildLeft = 0 }) => {
+  net.on('start', ({ players, buildLeft = 0, buildTime = buildLeft / 1000 }) => {
     const me = players.find((p) => p.id === net.id);
     if (!me) return;   // it started without us
     inMatch = true;
+    // The time of day (and so the tide) runs on the match's clock, the same in every game.
+    const began = performance.now() - (buildTime * 1000 - buildLeft);
+    sky.follow(() => (performance.now() - began) / 1000);
     team = TEAMS[me.team] ?? null;
     teamIndex = me.team;
     bases = findBases(terrain);
@@ -235,7 +244,7 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, menu, 
     }
     menu.classList.remove('lobby');
     ui.showMatch(team, players);
-    wars = new BedWars({ net, players, me: net.id, bases, terrain, scene, player, camera, hud, building, inventory, sea, spears, peace: buildLeft > 0 });
+    wars = new BedWars({ net, players, me: net.id, bases, terrain, scene, player, camera, hud, building, inventory, sea, spears, sound, peace: buildLeft > 0 });
     if (buildLeft > 0) {
       buildEnds = performance.now() + buildLeft;
       warned = buildLeft <= 60000;   // no warning for a phase shorter than that
@@ -246,6 +255,12 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, menu, 
     }
   });
   net.on('basesOpen', open);
+  // A blow on a tree in another player's game: in ours too, so it comes
+  // down for everyone (each game keeps its own logs).
+  net.on('chop', ({ tree, from } = {}) => {
+    const t = trees[tree];
+    if (t && Array.isArray(from)) timber.chop(t, { x: from[0], z: from[1] }, true);
+  });
   // The storm surge, at the storm's peak.
   net.on('surge', () => {
     surged = true;
