@@ -6,6 +6,7 @@ import { BED_HP, RESPAWN_TIME, REACH } from './rules.js';
 import { RemotePlayers } from './remotePlayers.js';
 import { Beds } from './beds.js';
 import { Spectator } from './spectator.js';
+import { itemCode } from '../items/items.js';
 
 const $ = (id) => document.getElementById(id);
 const SEND = 0.05;   // seconds between telling the server where you are
@@ -40,6 +41,10 @@ export class BedWars {
     this.intruders = new Set();   // other teams' players in your base, as last seen
     this.intruderClock = 0;
     this.dir = new THREE.Vector3();
+    // What the others see you doing: swings and throws so far (counted
+    // round 0..99), and whether you're drawing a spear back.
+    this.acts = 0;
+    this.drawing = false;
 
     // Each team in the match: its bed's health, and its players.
     this.teams = new Map();
@@ -136,8 +141,13 @@ export class BedWars {
     const p = this.player.pos, v = this.player.vel;
     this.camera.getWorldDirection(this.dir);
     const r = (x) => Math.round(x * 100) / 100;
-    this.net.send('move', [r(p.x), r(p.y), r(p.z), r(Math.atan2(-this.dir.x, -this.dir.z)), r(Math.hypot(v.x, v.z))], true);
+    // With what's in your hand (negative while a spear is drawn back), and your swings so far.
+    const held = itemCode(this.inventory.current?.id) * (this.drawing ? -1 : 1);
+    this.net.send('move', [r(p.x), r(p.y), r(p.z), r(Math.atan2(-this.dir.x, -this.dir.z)), r(Math.hypot(v.x, v.z)), held, this.acts], true);
   }
+
+  // A swing of what's in your hand (or your fist), for the others to see.
+  acted() { this.acts = (this.acts + 1) % 100; }
 
   // Once the barriers are down, anyone from another team inside your base
   // (within BASE_RADIUS of it, where its barrier stood) shows on your map
@@ -331,6 +341,7 @@ export class BedWars {
   // Your spear thrown (from, vel: Vector3s; charge 0..1): the others see it
   // fly, and the server keeps it for the hit it may make.
   throwSpear(from, vel, charge) {
+    this.acted();
     const r = (x) => Math.round(x * 100) / 100;
     this.net.send('throw', { from: from.toArray().map(r), vel: vel.toArray().map(r), charge: r(charge) });
   }
@@ -354,7 +365,7 @@ export class BedWars {
   hurt({ amount, by, from }) {
     if (!this.fighting) return;
     const p = this.player;
-    p.health -= amount;
+    p.hurt(amount);
     this.hurtBy = by;
     const dx = p.pos.x - from[0], dz = p.pos.z - from[1], d = Math.hypot(dx, dz) || 1;
     p.vel.x += (dx / d) * 6;

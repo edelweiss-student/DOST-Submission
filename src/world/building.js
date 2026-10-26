@@ -4,8 +4,10 @@ import { MAX_STAIRS, PIECE_HP, damageOf } from '../match/rules.js';
 import { boardGeometry, logGeometry } from './wood.js';
 
 // Building with wood. Pieces snap to a 2 m grid: floors on posts or on log
-// pilings (on land or out over the water), walls, windows, doorways,
+// pilings (on land or out over the water), walls, windows, doorways, doors,
 // railings and stairs along a floor's edges, and pitched roofs over floors.
+// A door swings open into its floor and shut again (E); in a match only
+// its own team can open it, and anyone else has to break it down.
 // Every piece turns (R, the `turn` of a plan): a floor's boards, a roof's
 // ridge and the braces between pilings go either way, and the pieces on
 // an edge go round their floor a side at a time; pilings also stand at one
@@ -28,8 +30,14 @@ import { boardGeometry, logGeometry } from './wood.js';
 // boards grey and fall off; repairs with planks (or logs, for pilings) bring
 // a piece back; left alone it gives way and its wood floats off. Tools
 // break things too: each blow costs a finished piece some of its condition
-// (DAMAGE in match/rules.js), and at nothing it falls, with whatever stood
-// on it, leaving half its wood.
+// (DAMAGE in match/rules.js), and at nothing it falls, leaving half its wood.
+//
+// What's left may still stand: every piece has a stability (stabilities()).
+// Pilings, and floors on their own posts, stand on the ground. A floor
+// whose pilings are broken hangs off the floors beside it, a little less
+// stable for each floor between it and the ground, and walls, roofs and
+// stairs are as stable as the floors under them. Whatever is left with
+// nothing holding it up falls.
 //
 // In a multiplayer match what's built is shared (share()): every change
 // goes to the other players' games, which apply() it, and pieces belong to
@@ -39,7 +47,7 @@ import { boardGeometry, logGeometry } from './wood.js';
 
 export const CELL = 2;             // the building grid (m); a floor fills one cell
 export const WALL_HEIGHT = 2.4;
-const DOOR = { width: 0.95, height: 2 };
+const DOOR = { width: 0.95, height: 2, open: 1.7, time: 0.35 };   // open: how far it swings (radians), in `time` seconds
 const WINDOW = { width: 0.8, sill: 1.2, top: 2 };
 const RAIL = 1.05;                 // railing height (m)
 const RISE = 0.95;                 // roof ridge above the walls (m)
@@ -73,6 +81,7 @@ export const PIECES = [
   { id: 'window', name: 'Window', cost: 5, hint: 'A wall with a window in it (R turns it round the floor)' },
   { id: 'railing', name: 'Railing', cost: 3, hint: 'Along a floor edge, so you don’t fall off (R turns it round the floor)' },
   { id: 'stairs', name: 'Stairs', cost: 5, hint: `Steps up to a raised floor from one of its edges, ${MAX_STAIRS} each (R turns them round the floor)` },
+  { id: 'door', name: 'Door', cost: 7, hint: 'A doorway with a door: E opens and shuts it (R turns it round the floor)' },
 ];
 const PIECE = Object.fromEntries(PIECES.map((p) => [p.id, p]));
 
@@ -86,13 +95,17 @@ const WEAR = {
   surf: 0.0011,      // waves on pilings, by how rough the sea is
 };
 // How much wind gets at each piece.
-const EXPOSURE = { floor: 0.5, wall: 1, doorway: 1, window: 1.1, roof: 1.4, pilings: 0.3, railing: 0.8, stairs: 0.6 };
+const EXPOSURE = { floor: 0.5, wall: 1, doorway: 1, door: 1, window: 1.1, roof: 1.4, pilings: 0.3, railing: 0.8, stairs: 0.6 };
 // Thick logs outlast planks.
 const RESIST = { pilings: 5 };
 // Condition back per plank (or log) used in a repair.
 const REPAIR = { plank: 0.4, log: 0.5 };
 // Ground each piece covers (m²), which stresses the land under it (see climate/entity.js).
-const FOOTPRINT = { floor: CELL * CELL, pilings: 0.5, wall: 0.3, doorway: 0.3, window: 0.3, railing: 0.2, roof: 0, stairs: 0.8 };
+const FOOTPRINT = { floor: CELL * CELL, pilings: 0.5, wall: 0.3, doorway: 0.3, door: 0.3, window: 0.3, railing: 0.2, roof: 0, stairs: 0.8 };
+// Stability: how much less stable a floor is for each floor between it and
+// one that stands on the ground, and how far apart (m) floors can be in
+// height and still hold each other up.
+const STABILITY = { step: 0.25, level: 0.35 };
 
 // Joinery decides how well a piece holds together (q 0..1): from rough
 // joints, which wear about as fast as unjoined ones, to masterful ones that
@@ -184,9 +197,38 @@ function pilingParts(terrain, x0, z0, top, braces = null) {
   return parts;
 }
 
-// Six boards on edge between two corner posts. A doorway leaves a gap
-// below the top board, a window one in the middle.
-function wallParts({ ax, az, bx, bz }, y, type) {
+// A door's hinge: at one side of its edge's opening, with the way along the
+// edge (u) and out of the floor it was built from (n). It swings in, away
+// from n.
+function hingeOf({ ax, az, bx, bz, nx, nz }) {
+  const ux = (bx - ax) / CELL, uz = (bz - az) / CELL;
+  return { x: (ax + bx) / 2 - (ux * DOOR.width) / 2, z: (az + bz) / 2 - (uz * DOOR.width) / 2, ux, uz, nx, nz };
+}
+// A board of a door's leaf, swung open `angle` radians about its hinge:
+// leaf { along (from the hinge), inward (off the leaf's face), y, size }.
+function leafMatrix(h, leaf, angle, m) {
+  const c = Math.cos(angle), s = Math.sin(angle);
+  const ax = h.ux * c - h.nx * s, az = h.uz * c - h.nz * s;    // along the leaf
+  const ix = -h.nx * c - h.ux * s, iz = -h.nz * c - h.uz * s;  // off its inside face
+  e.set(0, Math.atan2(-az, ax), 0);
+  return m.compose(pos.set(h.x + ax * leaf.along + ix * leaf.inward, leaf.y, h.z + az * leaf.along + iz * leaf.inward), q.setFromEuler(e), scl.set(...leaf.size));
+}
+// The door itself, shut: three planks held by two battens on the inside,
+// the last thing to go in.
+function leafParts(edge, y, step) {
+  const h = hingeOf(edge), w = DOOR.width - 0.03, parts = [];
+  const leaves = [
+    ...[0, 1, 2].map((k) => ({ along: 0.015 + ((k + 0.5) * w) / 3, inward: 0, y: y + DOOR.height / 2, size: [w / 3 - 0.01, DOOR.height - 0.06, 0.05] })),
+    ...[0.45, 1.55].map((at) => ({ along: 0.015 + w / 2, inward: 0.045, y: y + at, size: [w - 0.06, 0.11, 0.04] })),
+  ];
+  for (const leaf of leaves) parts.push({ step, frame: false, leaf, matrix: leafMatrix(h, leaf, 0, new THREE.Matrix4()) });
+  return parts;
+}
+
+// Six boards on edge between two corner posts. A doorway (or door) leaves
+// a gap below the top board, a window one in the middle.
+function wallParts(edge, y, type) {
+  const { ax, az, bx, bz } = edge;
   const parts = [];
   const cost = PIECE[type].cost;
   const ux = (bx - ax) / CELL, uz = (bz - az) / CELL;
@@ -195,7 +237,8 @@ function wallParts({ ax, az, bx, bz }, y, type) {
   // Posts just inside the ends, so walls meeting at a corner don't share one.
   const post = uz === 0 ? 0.14 : 0.15;
   for (const k of [0.07, CELL - 0.07]) upright(parts, 1, ax + ux * k, az + uz * k, y, y + WALL_HEIGHT + (uz === 0 ? 0 : 0.01), post, post, yaw);
-  const gap = type === 'doorway' ? { from: 0, to: DOOR.height, width: DOOR.width }
+  if (type === 'door') parts.push(...leafParts(edge, y, cost));
+  const gap = type === 'doorway' || type === 'door' ? { from: 0, to: DOOR.height, width: DOOR.width }
     : type === 'window' ? { from: WINDOW.sill, to: WINDOW.top, width: WINDOW.width } : null;
   if (gap) {
     // A frame round the opening, and a sill under a window.
@@ -264,17 +307,22 @@ function roofParts(x0, z0, y, dir) {
 }
 
 // Stairs from a floor's edge (its top at `top`) out and down to the
-// ground: two stringers and a tread every STAIRS.rise or so.
+// ground, or to a lower floor in the way (ground.heightAt(x, z)): two
+// stringers and a tread every STAIRS.rise or so.
 // Returns { parts, bottom (the ground at their foot), run (how far out) }.
-function stairsParts(terrain, { ax, az, bx, bz, nx, nz }, top) {
+function stairsParts(ground, { ax, az, bx, bz, nx, nz }, top) {
   const ux = (bx - ax) / CELL, uz = (bz - az) / CELL, mx = (ax + bx) / 2, mz = (az + bz) / 2;
   const pitch = Math.tan(STAIRS.angle);
-  let bottom = terrain.heightAt(mx + nx, mz + nz), run = 1;
-  for (let k = 0; k < 4; k++) {
-    run = Math.max(0.6, (top - bottom) / pitch);
-    bottom = Math.min(top - 0.3, terrain.heightAt(mx + nx * run, mz + nz * run));
+  // Out from the edge until the slope down meets the ground (or a floor).
+  let bottom = top - 12 * pitch;
+  for (let out = 0.05; out < 12; out += 0.05) {
+    const g = Math.min(top - 0.3, ground.heightAt(mx + nx * out, mz + nz * out));
+    if (top - out * pitch <= g) {
+      bottom = g;
+      break;
+    }
   }
-  run = Math.max(0.6, (top - bottom) / pitch);
+  const run = Math.max(0.6, (top - bottom) / pitch);
   const rise = top - bottom, len = Math.hypot(rise, run), tilt = Math.atan2(rise, run);
   const parts = [];
   for (const sgn of [-1, 1]) {
@@ -568,6 +616,14 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
       return dx * dx + dz * dz < c.r * c.r;
     });
   }
+  // What stairs down from a floor at `top` land on: the ground, or a lower
+  // floor (built or planned) that's in the way.
+  const stepsGround = (top) => ({
+    heightAt(x, z) {
+      const c = cells.get(cellKey(Math.floor(x / CELL), Math.floor(z / CELL))), g = terrain.heightAt(x, z);
+      return c?.floor && c.y < top - 0.3 ? Math.max(g, c.y) : g;
+    },
+  });
   // Highest and lowest ground under a cell.
   function groundUnder(x0, z0) {
     let high = -Infinity, low = Infinity;
@@ -673,18 +729,21 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
   // Stairs you've built yourself (not a kubo's own steps): MAX_STAIRS at most.
   const ownStairs = () => pieces.filter((p) => p.type === 'stairs' && !p.remote && !p.builtIn).length;
 
-  // Stairs: down from a floor's edge to the ground.
+  // Stairs: down from a floor's edge to the ground, or onto a lower floor.
   function planStairs(ray, turn) {
     const at = floorSide(ray, turn);
     if (!at) return null;
     const { c, side, edge } = at;
-    const { parts, bottom, run } = stairsParts(terrain, edge, c.y);
+    const { parts, bottom, run } = stairsParts(stepsGround(c.y), edge, c.y);
     const plan = { type: 'stairs', cell: c, edge, side, y: c.y, bottom, run, parts };
     const on = edges.get(edge.key);
     if (stairs.has(edge.key)) return { ...plan, reason: 'There are stairs here already' };
-    if (on && on.type !== 'doorway') return { ...plan, reason: `There’s a ${on.name} in the way` };
+    if (on && on.type !== 'doorway' && on.type !== 'door') return { ...plan, reason: `There’s a ${on.name} in the way` };
+    // A floor beside it lower down is fine (the stairs go down onto it);
+    // one about as high you can just step onto.
     const other = cells.get(cellKey(c.i + SIDES[side][0], c.j + SIDES[side][1]));
-    if (other?.floor && Math.abs(other.y - c.y) < 1.5) return { ...plan, reason: 'There’s a floor on the other side' };
+    if (other?.floor && other.y > c.y + 0.05) return { ...plan, reason: 'There’s a higher floor in the way' };
+    if (other?.floor && other.y > c.y - STAIRS.min) return { ...plan, reason: 'The floor beside it is close enough to step onto' };
     if (c.y - bottom < STAIRS.min) return { ...plan, reason: 'Too low for stairs: just step up' };
     if (c.y - bottom > STAIRS.max) return { ...plan, reason: 'Too high for stairs here: build up to it from a lower floor' };
     if (ownStairs() >= MAX_STAIRS) return { ...plan, reason: `You can build ${MAX_STAIRS} stairs at most` };
@@ -729,15 +788,15 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
       const i = i0 + a, j = j0 + b, x0 = i * CELL, z0 = j * CELL;
       plans.push({ type: 'floor', i, j, x0, z0, y: deck, onPilings: true, parts: bamboo(floorParts(terrain, x0, z0, deck, true), 'slat') });
     }
-    // Two edges a side: the doorway and a window at the front, a wall and a
+    // Two edges a side: the door and a window at the front, a wall and a
     // window at the back, a window and a wall at each end.
     for (let side = 0; side < 4; side++) {
-      const kinds = side === turn ? ['doorway', 'window'] : side === (turn + 2) % 4 ? ['wall', 'window'] : ['window', 'wall'];
+      const kinds = side === turn ? ['door', 'window'] : side === (turn + 2) % 4 ? ['wall', 'window'] : ['window', 'wall'];
       SIDE_CELLS[side].forEach(([a, b], k) => {
         const cellIJ = [i0 + a, j0 + b], edge = edgeOf(i0 + a, j0 + b, side);
         plans.push({ type: kinds[k], cellIJ, edge, side, y: deck, parts: bamboo(wallParts(edge, deck, kinds[k]), 'sawali') });
-        if (kinds[k] !== 'doorway') return;
-        const steps = stairsParts(terrain, edge, deck);
+        if (kinds[k] !== 'door') return;
+        const steps = stairsParts(stepsGround(deck), edge, deck);
         plans.push({ type: 'stairs', cellIJ, edge, side, y: deck, bottom: steps.bottom, run: steps.run, parts: bamboo(steps.parts, 'slat') });
       });
     }
@@ -751,7 +810,7 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
   let sharing = null;
   const byKey = (key) => pieces.find((p) => p.key === key);
   const share = (msg) => sharing?.send(msg);
-  const stateOf = (piece) => ({ op: 'state', key: piece.key, added: piece.added, done: piece.done, joints: piece.joints, health: piece.health });
+  const stateOf = (piece) => ({ op: 'state', key: piece.key, added: piece.added, done: piece.done, joints: piece.joints, health: piece.health, open: !!piece.open });
   const enemy = (piece) => sharing && piece.team !== undefined && piece.team !== sharing.team;
   // What another game needs to place the same piece.
   const specOf = (plan) => ({
@@ -771,7 +830,7 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     const edge = edgeOf(i, j, spec.side);
     if (type === 'stairs') {
       if (stairs.has(edge.key)) return null;
-      const { parts, bottom, run } = stairsParts(terrain, edge, cell.y);
+      const { parts, bottom, run } = stairsParts(stepsGround(cell.y), edge, cell.y);
       return { type, cell, edge, side: spec.side, y: cell.y, bottom, run, parts, ok: true };
     }
     if (edges.has(edge.key)) return null;
@@ -793,9 +852,9 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     };
     // What you aim at: a floor's deck (not the posts under it), each of
     // the pilings (not the space between them, where a floor goes on top),
-    // each board of a doorway or window (not the opening, so a swing goes
-    // through it), or the whole piece.
-    const byPart = plan.type === 'pilings' || plan.type === 'doorway' || plan.type === 'window';
+    // each board of a doorway, door or window (not the opening, so a swing
+    // goes through it), or the whole piece.
+    const byPart = plan.type === 'pilings' || plan.type === 'doorway' || plan.type === 'door' || plan.type === 'window';
     piece.aim = plan.type === 'floor'
       ? [new THREE.Box3(new THREE.Vector3(plan.x0, plan.y - 0.3, plan.z0), new THREE.Vector3(plan.x0 + CELL, plan.y, plan.z0 + CELL))]
       : byPart ? piece.parts.map((part) => bounds([part])) : [piece.box];
@@ -808,6 +867,7 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
         cell.floor = piece;
         cell.y = plan.y;
         piece.low = plan.y - DECK;   // the underside of the deck (posts and pilings are meant to stand in water)
+        piece.onPilings = !!plan.onPilings;   // else it stands on its own posts
       } else {
         cell.pilings = piece;
         cell.top = plan.top;
@@ -822,13 +882,16 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
       stairs.set(plan.edge.key, piece);
       piece.cell = plan.cell;
       piece.edge = plan.edge;
+      piece.side = plan.side;
       piece.low = plan.bottom;
       piece.run = plan.run;
     } else {
       edges.set(plan.edge.key, piece);
       piece.cell = plan.cell;
       piece.edge = plan.edge;
+      piece.side = plan.side;
       piece.low = plan.y;
+      if (plan.type === 'door') Object.assign(piece, { hinge: hingeOf(plan.edge), open: false, swing: 0 });
     }
     piece.center = piece.box.getCenter(new THREE.Vector3());
     piece.key = plan.type === 'stairs' ? `stairs:${piece.edge.key}` : piece.edge ? `edge:${piece.edge.key}` : `${piece.type}:${piece.cell.i},${piece.cell.j}`;
@@ -836,7 +899,30 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     piece.remote = !!owner.remote;
     pieces.push(piece);
     dirty = true;
+    weigh();
     return piece;
+  }
+
+  // A door, swung `swing` (0 shut .. 1 open) of the way: its boards, what
+  // you aim at, and where it stops you.
+  function hang(piece) {
+    const angle = DOOR.open * piece.swing * piece.swing * (3 - 2 * piece.swing);
+    for (const part of piece.parts) if (part.leaf) leafMatrix(piece.hinge, part.leaf, angle, part.matrix);
+    piece.aim = piece.parts.map((part) => bounds([part]));
+    if (piece.leafSegment) {
+      const h = piece.hinge, c = Math.cos(angle), s = Math.sin(angle), w = DOOR.width - 0.02;
+      Object.assign(piece.leafSegment, { ax: h.x, az: h.z, bx: h.x + (h.ux * c - h.nx * s) * w, bz: h.z + (h.uz * c - h.nz * s) * w });
+    }
+    dirty = true;
+  }
+  // Opens or shuts a door (its team's, in a match), in every game.
+  const doors = new Set();   // the ones still swinging
+  function swingDoor(piece, open) {
+    piece.open = open;
+    doors.add(piece);
+    share(stateOf(piece));
+    onSound?.('knock', 0.45);
+    return {};
   }
 
   // Finished: what makes it solid.
@@ -856,14 +942,27 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
       const ux = (bx - ax) / CELL, uz = (bz - az) / CELL;
       if (piece.type === 'railing') {
         piece.segments = [{ ax, az, bx, bz, y0: y, y1: y + RAIL }];
-      } else if (piece.type === 'doorway') {
-        // Either side of the opening, and the lintel over it.
+      } else if (piece.type === 'doorway' || piece.type === 'door') {
+        // Either side of the opening, and the lintel over it (and the door,
+        // where it's swung to).
         const side = (CELL - DOOR.width) / 2;
         piece.segments = [
           { ax, az, bx: ax + ux * side, bz: az + uz * side, y0: y, y1: y + WALL_HEIGHT },
           { ax: bx - ux * side, az: bz - uz * side, bx, bz, y0: y, y1: y + WALL_HEIGHT },
           { ax, az, bx, bz, y0: y + DOOR.height, y1: y + WALL_HEIGHT },
         ];
+        if (piece.type === 'door') {
+          piece.leafSegment = { y0: y, y1: y + DOOR.height };
+          piece.segments.push(piece.leafSegment);
+          // Looking into the doorway finds the door, open or shut (E), though
+          // a swing goes through it when it's open.
+          const mx = (ax + bx) / 2, mz = (az + bz) / 2, w = DOOR.width / 2, d = 0.25;
+          piece.opening = new THREE.Box3(
+            new THREE.Vector3(mx - Math.abs(ux) * w - Math.abs(uz) * d, y, mz - Math.abs(uz) * w - Math.abs(ux) * d),
+            new THREE.Vector3(mx + Math.abs(ux) * w + Math.abs(uz) * d, y + DOOR.height, mz + Math.abs(uz) * w + Math.abs(ux) * d),
+          );
+          hang(piece);
+        }
       } else {
         piece.segments = [{ ax, az, bx, bz, y0: y, y1: y + WALL_HEIGHT }];
       }
@@ -965,15 +1064,92 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     release(list);
   }
 
+  // --- Stability: how firmly each piece is held up, 0..1 (by piece), with
+  // `gone` left out (to see what taking it down would bring down).
+  function stabilities(gone = null) {
+    const held = new Map();
+    const floorOf = (cell) => (cell?.floor && cell.floor !== gone ? cell.floor : null);
+    const floors = pieces.filter((p) => p.type === 'floor' && p !== gone);
+    // On its own posts, or on pilings: standing on the ground.
+    for (const f of floors) held.set(f, !f.onPilings || (f.cell.pilings && f.cell.pilings !== gone) ? 1 : 0);
+    // Otherwise, hanging off the floors beside it at its level.
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const f of floors) {
+        for (const [di, dj] of SIDES) {
+          const n = floorOf(cells.get(cellKey(f.cell.i + di, f.cell.j + dj)));
+          if (!n || Math.abs(n.cell.y - f.cell.y) > STABILITY.level) continue;
+          const s = held.get(n) - STABILITY.step;
+          if (s > held.get(f) + 1e-9) {
+            held.set(f, s);
+            changed = true;
+          }
+        }
+      }
+    }
+    // Everything else, by the floors under it (pilings stand on the ground).
+    const under = (cell, y) => {
+      const f = floorOf(cell);
+      return f && Math.abs(cell.y - y) <= STABILITY.level ? held.get(f) : 0;
+    };
+    for (const p of pieces) {
+      if (p === gone || held.has(p)) continue;
+      if (p.type === 'pilings') held.set(p, 1);
+      else if (p.type === 'roof') held.set(p, Math.max(0, ...(p.cells ?? [p.cell]).map((c) => (floorOf(c) ? held.get(c.floor) : 0))));
+      else if (p.type === 'stairs') held.set(p, floorOf(p.cell) ? held.get(p.cell.floor) : 0);
+      else {
+        // On an edge: held by the floor either side of it.
+        const [di, dj] = SIDES[p.side];
+        held.set(p, Math.max(under(p.cell, p.low), under(cells.get(cellKey(p.cell.i + di, p.cell.j + dj)), p.low)));
+      }
+    }
+    return held;
+  }
+  // Every piece's stability, now; your own pieces newly hanging by less warn you.
+  function weigh() {
+    const held = stabilities();
+    for (const p of pieces) {
+      const was = p.stability ?? 1;
+      p.stability = held.get(p) ?? 1;
+      if (p.stability < was - 1e-6 && p.stability > 0 && (!sharing || p.team === sharing.team)) {
+        warn(`Your ${p.name} lost what held it up: it hangs on at ${Math.round(p.stability * 100)}% stability.`);
+      }
+    }
+    return held;
+  }
+  // After something comes down: whatever is left with nothing holding it up
+  // falls too, in every game the same, leaving half its wood (on your own).
+  function settle() {
+    for (;;) {
+      const held = weigh(), falling = pieces.filter((p) => held.get(p) <= 0);
+      if (!falling.length) return;
+      for (const p of falling) {
+        if (!pieces.includes(p)) continue;
+        if (!sharing) free(p, Math.ceil((p.done ? p.cost : p.added) / 2));
+        unregister(p);
+        if (!sharing || p.team === sharing.team) warn(`Your ${p.name} had nothing left holding it up and fell.`);
+      }
+      onSound?.('break', 1);
+    }
+  }
+  // What taking a piece down would bring down with it.
+  function wouldFall(piece) {
+    const held = stabilities(piece);
+    return pieces.filter((p) => p !== piece && held.get(p) <= 0);
+  }
+
   // Hold X: take a piece apart (or clear a blueprint), getting the wood back.
   function takeDown(piece) {
     if (standingOn(piece).length) {
       return { message: piece.type === 'pilings' ? 'Take the floor off these pilings first.' : 'Take down the walls and roof on this floor first.' };
     }
+    const falls = wouldFall(piece);
+    if (falls.length) return { message: `That would bring down the ${falls[0].name} it holds up: take that down first.` };
     free(piece, piece.done ? piece.cost : piece.added);
     unregister(piece);
     share({ op: 'remove', key: piece.key });
     onSound?.('knock', 0.5);
+    weigh();
     return { notify: piece.done ? `Took the ${piece.name} apart` : 'Blueprint cleared' };
   }
 
@@ -993,25 +1169,23 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     return { used: true, notify: `Broke the ${piece.name}` };
   }
 
-  // Broken with tools on your own island: it falls, with whatever stood on
-  // it, and half the wood in each is left lying where it stood.
+  // Broken with tools on your own island: it falls, leaving half its wood
+  // lying where it stood, and so does anything it was all that held up.
   function smash(piece) {
     if (!pieces.includes(piece)) return;
-    const on = standingOn(piece);
     free(piece, Math.ceil((piece.done ? piece.cost : piece.added) / 2));
     unregister(piece);
     onSound?.('break', 1);
-    for (const other of on) smash(other);
+    settle();
   }
 
-  // Broken by tools in a match: it falls, with what stood on it, the same
-  // in every game.
+  // Broken by tools in a match: it falls, and so does anything it was all
+  // that held up, the same in every game.
   function destroy(piece) {
     if (!pieces.includes(piece)) return;
-    const on = standingOn(piece);
     unregister(piece);
     onSound?.('break', 1);
-    for (const other of on) destroy(other);
+    settle();
   }
 
   let lastWarning = -Infinity;
@@ -1021,16 +1195,15 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     onMessage?.(text);
   }
 
-  // Worn through: it gives way, with whatever stood on it.
+  // Worn through: it gives way, and so does anything it was all that held up.
   function breakUp(piece) {
     if (!pieces.includes(piece)) return;
-    const on = standingOn(piece);
     free(piece, piece.cost);
     unregister(piece);
     share({ op: 'remove', key: piece.key });
-    for (const other of on) breakUp(other);
     const afloat = piece.water > piece.low;
     warn(`Your ${piece.name} has given way. Its ${piece.material}s are ${afloat ? 'floating away' : 'lying where it stood'}.`);
+    settle();
   }
 
   // Weather and sea at work on everything built, twice a second.
@@ -1089,6 +1262,7 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
   // and how high it stands above the water.
   function describe(piece) {
     const bits = [`${PIECE[piece.type].name} ${Math.ceil(piece.health * 100)}%`, `${jointName(piece.joints).toLowerCase()} joints`];
+    if (piece.type === 'door') bits.push(piece.open ? 'open' : 'shut');
     if (piece.wet > 0.5) bits.push('soaked');
     const water = piece.water ?? uniforms.uWaterLevel.value;
     if (piece.type === 'pilings') bits.push(`top ${(piece.top - water).toFixed(1)} m above the water`);
@@ -1210,8 +1384,9 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     share(config) { sharing = config; },
 
     // A change made in someone else's game: { op: 'place', key, team, plan },
-    // { op: 'state', key, added, done, joints, health }, { op: 'remove', key }
-    // or { op: 'hit', key, amount } (condition lost to a tool).
+    // { op: 'state', key, added, done, joints, health, open (a door) },
+    // { op: 'remove', key } or { op: 'hit', key, amount } (condition lost
+    // to a tool).
     apply(msg) {
       if (msg.op === 'place') {
         if (byKey(msg.key)) return;
@@ -1226,9 +1401,14 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
         if (msg.joints != null) piece.joints = clamp(Number(msg.joints) || 0, 0, 1);
         if (Number.isFinite(msg.health)) piece.health = clamp(msg.health, 0.01, 1);
         if (msg.done && !piece.done) complete(piece);
+        if (piece.type === 'door' && typeof msg.open === 'boolean' && msg.open !== piece.open) {
+          piece.open = msg.open;
+          doors.add(piece);
+        }
         dirty = true;
       } else if (msg.op === 'remove') {
         unregister(piece);
+        settle();
       } else if (msg.op === 'hit' && piece.done) {
         piece.health -= Number(msg.amount) || 0;
         dirty = true;
@@ -1262,7 +1442,7 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
       let best = null, bestT = REACH;
       for (const piece of pieces) {
         if (piece.center.distanceToSquared(ray.origin) > 100) continue;
-        for (const box of piece.aim) {
+        for (const box of piece.opening ? [...piece.aim, piece.opening] : piece.aim) {
           if (!ray.intersectBox(box, v)) continue;
           const t = v.distanceTo(ray.origin);
           if (t < bestT) {
@@ -1280,18 +1460,22 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
       const breaks = piece.done && !!tool && !carrying && !ownKubo && (sharing?.canBreak?.() ?? true);
       const smashing = breaks ? [['Right-click', 'Break it']] : [];
       const use = breaks && !sharing ? () => strike(piece, tool) : null;
+      // Hanging on by less than the ground would give it: how stable it is.
+      const meter = piece.stability < 1 ? [[null, { meter: piece.stability, label: `Stability ${Math.round(piece.stability * 100)}%` }]] : [];
       if (enemy(piece)) {
         const state = piece.done ? `${Math.ceil(piece.health * 100)}%` : 'blueprint';
-        return { score, key: piece, dim: !breaks, prompt: [...smashing, [null, `${sharing.teamName(piece.team)}’s ${piece.name} · ${state}`]] };
+        const locked = piece.type === 'door' && piece.done ? ` · ${piece.open ? 'open' : 'locked'}` : '';
+        return { score, key: piece, dim: !breaks, prompt: [...smashing, [null, `${sharing.teamName(piece.team)}’s ${piece.name} · ${state}${locked}`], ...meter] };
       }
       const has = carrying?.kind === wood;
+      const fix = piece.done && has && piece.health < 0.97;
+      // A finished door, with your arms empty: open it or shut it.
+      const door = piece.type === 'door' && piece.done && !carrying ? [['E', piece.open ? 'Shut the door' : 'Open the door'], () => swingDoor(piece, !piece.open)] : null;
       // A bahay kubo: repairs, but no taking it apart for its wood.
       if (piece.builtIn) {
-        const fix = has && piece.health < 0.97;
-        return {
-          score, key: piece, dim: !fix && !breaks, act: fix ? () => repair(piece) : null,
-          prompt: [...(fix ? [['E', `Repair with a ${wood} (+${Math.round(REPAIR[wood] * 100)}%)`]] : []), ...smashing, [null, describe(piece)]],
-        };
+        const act = fix ? () => repair(piece) : door?.[1] ?? null;
+        const first = fix ? [['E', `Repair with a ${wood} (+${Math.round(REPAIR[wood] * 100)}%)`]] : door ? [door[0]] : [];
+        return { score, key: piece, dim: !act && !breaks, act, prompt: [...first, ...smashing, [null, describe(piece)], ...meter] };
       }
       const hold = () => takeDown(piece);
       if (!piece.done) {
@@ -1307,14 +1491,17 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
       }
       const prompt = [];
       let act = null;
-      if (has && piece.health < 0.97) {
+      if (fix) {
         prompt.push(['E', `Repair with a ${wood} (+${Math.round(REPAIR[wood] * 100)}%)`]);
         act = () => repair(piece);
+      } else if (door) {
+        prompt.push(door[0]);
+        act = door[1];
       } else if (!carrying) {
         prompt.push(['E', piece.joints == null ? 'Join the frame' : 'Rework the joints']);
         act = () => ({ joinery: joineryFor(piece) });
       }
-      prompt.push(...smashing, ['X', 'Hold to take apart'], [null, describe(piece)]);
+      prompt.push(...smashing, ['X', 'Hold to take apart'], [null, describe(piece)], ...meter);
       return { score, key: piece, dim: !act && !breaks, hold, act, use, prompt };
     },
 
@@ -1344,6 +1531,17 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
 
     update(dt, sea, weather) {
       if (dt > 0 && !sharing) wear(dt, sea, weather);
+      // Doors swinging open or shut.
+      for (const piece of doors) {
+        if (!pieces.includes(piece)) {
+          doors.delete(piece);
+          continue;
+        }
+        const to = piece.open ? 1 : 0;
+        piece.swing = to > piece.swing ? Math.min(to, piece.swing + dt / DOOR.time) : Math.max(to, piece.swing - dt / DOOR.time);
+        if (piece.done) hang(piece);
+        if (piece.swing === to) doors.delete(piece);
+      }
       if (dirty) {
         dirty = false;
         render();

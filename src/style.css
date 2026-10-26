@@ -156,6 +156,12 @@ body.spectating :is(#bars, #hotbar, #hotbar-name, #prompt, #crosshair, #tutorial
 }
 #prompt.dim kbd { border-color: var(--muted); color: var(--muted); }
 #prompt .info { font-size: 12px; color: var(--muted); }
+#prompt .meter { display: flex; align-items: center; gap: 7px; }
+#prompt .meter i {
+  width: 70px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.15);
+  background-image: linear-gradient(hsl(var(--hue) 70% 50%), hsl(var(--hue) 70% 50%));
+  background-size: var(--fill) 100%; background-repeat: no-repeat;
+}
 
 #build-bar {
   position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);

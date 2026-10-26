@@ -39,17 +39,18 @@ export class Match {
     return this.bases?.findIndex((b, i) => i !== team && b && Math.hypot(x - b.x, z - b.z) < radius) ?? -1;
   }
 
-  // Where a player is: [x, y, z, yaw, speed], 20 times a second. While the
-  // barriers are up (closed), a place inside another team's base doesn't
-  // count: nobody gets in until they come down.
+  // Where a player is: [x, y, z, yaw, speed, held, acts] (what's in their
+  // hand and how many swings so far, for the others to see), 20 times a
+  // second. While the barriers are up (closed), a place inside another
+  // team's base doesn't count: nobody gets in until they come down.
   move(id, state, closed = false) {
     const p = this.players.get(id);
-    if (!p?.alive || !Array.isArray(state) || state.length !== 5 || !state.every(Number.isFinite)) return;
+    if (!p?.alive || !Array.isArray(state) || state.length < 5 || state.length > 7 || !state.every(Number.isFinite)) return;
     if (closed && this.inBase(state[0], state[2], p.team, KEEP_OUT - 0.5) >= 0) return;
     p.pos = state;
   }
 
-  // Everyone up and about, for the others' games: { id: [x, y, z, yaw, speed] }.
+  // Everyone up and about, for the others' games: { id: [x, y, z, yaw, speed, held, acts] }.
   snapshot() {
     const out = {};
     for (const p of this.players.values()) if (p.alive && p.pos) out[p.id] = p.pos;

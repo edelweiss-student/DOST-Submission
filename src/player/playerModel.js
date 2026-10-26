@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { ITEMS } from '../items/items.js';
+import { isTool, toolGeometry, lyingGeometry } from '../items/models.js';
 
 // A player, low-poly: a survivor built from chunky, flat-shaded blocks,
 // coloured per vertex. The shirt, its sleeves and a headband are in the
@@ -78,6 +80,19 @@ const BLOCKS = [
 
 const linear = (hex) => new THREE.Color(hex);
 
+// What's in the right hand, in the forearm's frame: the palm, below the
+// elbow. A tool is gripped there standing up (its handle along the
+// forearm's front, its head forward), anything else rests in the palm.
+const PALM = new THREE.Vector3(0, -0.3, -0.03);
+const GRIPPED = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, Math.PI / 2, 0, 'XYZ'));
+const TOOL_SIZE = { knife: 0.9, axe: 0.75, pickaxe: 0.7, spear: 1 };
+// A swing (a chop or a strike, or a throw), in seconds.
+const SWING = 0.4;
+// A spear drawn back points the way they face, a little up.
+const AIMED = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.2);
+const qa = new THREE.Quaternion(), qb = new THREE.Quaternion();
+const ease = (t) => t * t * (3 - 2 * t);
+
 // One block: a box with its top widened (or narrowed), or a cone,
 // coloured, and bound whole to one joint.
 function block([joint, color, size, [x, y, z], shape], teamColor) {
@@ -142,7 +157,39 @@ export class PlayerModel {
     this.object.add(this.mesh);
     this.phase = Math.random() * 10;
     this.time = Math.random() * 10;
+    // The right hand, and what's in it (hold()).
+    this.hand = new THREE.Group();
+    this.hand.position.copy(PALM);
+    this.bones.forearmR.add(this.hand);
+    this.held = null;
+    this.item = null;
+    this.swingT = 1;      // how far through a swing (1: not swinging)
+    this.drawn = false;   // a spear drawn back over the shoulder to throw
   }
+
+  // Puts an item (an id in items/items.js; null for nothing) in the right
+  // hand. The team's bed and bahay kubo aren't carried in the hand.
+  hold(id) {
+    if (id === this.held) return;
+    this.held = id;
+    if (this.item) {
+      this.hand.remove(this.item);
+      this.item.geometry.dispose();
+      this.item = null;
+    }
+    if (!id || !ITEMS[id] || ITEMS[id].keep) return;
+    const tool = isTool(id);
+    this.item = new THREE.Mesh(tool ? toolGeometry(id) : lyingGeometry(id), this.mesh.material);
+    if (tool) {
+      this.item.quaternion.copy(GRIPPED);
+      this.item.scale.setScalar(TOOL_SIZE[id] ?? 1);
+    }
+    this.item.castShadow = true;
+    this.hand.add(this.item);
+  }
+
+  // Swings what's in the hand (or the fist): up and over, then down.
+  swing() { this.swingT = 0; }
 
   // Changes the team colour (a team switch).
   setColor(color) {
@@ -177,9 +224,41 @@ export class PlayerModel {
     b.hips.position.y = this.rest + 0.025 * Math.cos(2 * this.phase) * walk;
     b.spine.rotation.set(-0.06 * walk - 0.015 * Math.sin(t * 1.7) * still, 0.12 * s * walk, 0);
     b.head.rotation.set(0.04 * walk, 0.25 * Math.sin(t * 0.37) * still, 0);
+    this.poseHand(dt, s * walk);
+  }
+
+  // The right arm with something in it: carried out in front, the forearm
+  // up; a spear drawn back over the shoulder; a swing up and over, then
+  // down through where it lands.
+  poseHand(dt, stride) {
+    const b = this.bones;
+    if (this.swingT < 1) {
+      this.swingT = Math.min(1, this.swingT + dt / SWING);
+      const t = this.swingT, up = t < 0.35 ? ease(t / 0.35) : 1 - ease((t - 0.35) / 0.65);
+      b.upperArmR.rotation.set(0.5 + 2.1 * up, 0, 0.1);
+      b.forearmR.rotation.x = 0.3 + 0.5 * up;
+      b.spine.rotation.y += 0.25 * (up - 0.5);
+    } else if (this.drawn) {
+      b.upperArmR.rotation.set(2.6, 0, 0.35);
+      b.forearmR.rotation.x = 1.3;
+    } else if (this.item) {
+      b.upperArmR.rotation.set(0.15 + stride * 0.2, 0, 0.12);
+      b.forearmR.rotation.x = 1.2;
+    }
+    if (!this.drawn || this.swingT < 1) {
+      this.hand.quaternion.identity();
+      return;
+    }
+    // The hand turned so the spear points ahead, whatever the arm's doing:
+    // the forearm's turn (within the body) undone, then AIMED.
+    b.forearmR.updateWorldMatrix(true, false);
+    b.forearmR.getWorldQuaternion(qa);
+    this.object.getWorldQuaternion(qb);
+    this.hand.quaternion.copy(qa.invert().multiply(qb).multiply(AIMED));
   }
 
   dispose() {
+    this.hold(null);
     this.geometry.dispose();
     this.mesh.material.dispose();
   }

@@ -100,6 +100,17 @@ const DRAW = {
     ctx.fillStyle = '#5d4a33';
     ctx.fillRect(4, 54, 56, 5);
   },
+  door(ctx) {
+    // A doorway with its plank door standing half open.
+    boards(ctx, [[10, 12], [54, 12], [54, 54], [10, 54]]);
+    lines(ctx, [[10, 22.5, 54, 22.5], [10, 33, 23, 33], [41, 33, 54, 33], [10, 43.5, 23, 43.5], [41, 43.5, 54, 43.5]]);
+    ctx.fillStyle = '#16100a';
+    ctx.fillRect(23, 22.5, 18, 31.5);
+    boards(ctx, [[23, 22.5], [33, 25], [33, 57], [23, 54]]);
+    lines(ctx, [[26.3, 23.5, 26.3, 55], [29.6, 24.2, 29.6, 55.8]], 1);
+    ctx.fillStyle = '#e0c068';
+    ctx.fillRect(30, 39, 2, 3);
+  },
   stairs(ctx) {
     // Steps from the ground up to a deck, seen from the side.
     lines(ctx, [[8, 58, 46, 14]], 5);

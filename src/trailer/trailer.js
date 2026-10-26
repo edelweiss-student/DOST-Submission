@@ -208,7 +208,7 @@ export function createTrailer(ctx) {
       start() {
         time(6.9);
         weatherTo('clear');
-        put(0, site.x, site.z, site.yaw);
+        put(0, site.x, site.z, site.yaw).model.hold('axe');   // the lone survivor, axe in hand
       },
       update(u) {
         const h = mix(48, 9, ease(u)), a = site.yaw + 0.5 * u, gy = ground(site.x, site.z);
@@ -329,6 +329,7 @@ export function createTrailer(ctx) {
         weatherTo('overcast');
         sea.rise = 0.2;
         setUpWars();
+        for (let i = 0; i < 4; i++) actor(i).model.hold('spear');
         this.throws = [[1.2, 1, 0], [2.4, 2, 3], [3.5, 3, 1], [5.0, 0, 2], [6.4, 2, 1], [7.6, 1, 3]];
       },
       update(u, s) {
@@ -342,6 +343,7 @@ export function createTrailer(ctx) {
         }
         while (this.throws.length && s >= this.throws[0][0]) {
           const [, from, to] = this.throws.shift();
+          actor(from).model.swing();
           throwSpear(handOf(from), chestOf(to), 0.8);
         }
         const a = 0.6 + u * 0.5, y = (site.kubo?.deck ?? 3) + 1.8;
@@ -356,8 +358,10 @@ export function createTrailer(ctx) {
       start() {
         weatherTo('rain', 0, 1);
         setUpWars();
+        actor(0).model.hold('pickaxe');   // the bed breaker
+        for (let i = 1; i < 4; i++) actor(i).model.hold('spear');
         this.throws = [[0.8, 1, 0], [1.6, 2, 0], [2.6, 3, 0], [4.6, 1, 0]];
-        this.broken = false;
+        this.broken = this.struck = false;
       },
       update(u, s) {
         const bed = site.bed;
@@ -372,7 +376,12 @@ export function createTrailer(ctx) {
         put(3, bed.x + ax * 2 - px * 6, bed.z + az * 2 - pz * 6, Math.atan2(ax - px, az - pz), 2);
         while (this.throws.length && s >= this.throws[0][0]) {
           const [, from] = this.throws.shift();
+          actor(from).model.swing();
           throwSpear(handOf(from), chestOf(0), 0.7);
+        }
+        if (!this.struck && s > 3.25) {
+          this.struck = true;
+          actor(0).model.swing();
         }
         if (!this.broken && s > 3.6) {
           this.broken = true;

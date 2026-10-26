@@ -19,8 +19,8 @@ export const ITEMS = {
     stack: 48, color: '#9bb04a', floats: true,
   },
   berries: {
-    name: 'Berries', description: 'Right-click to eat: a little stamina and health back.',
-    stack: 24, color: '#8e1f3a', floats: true, eat: { stamina: 25, health: 6 },
+    name: 'Berries', description: 'Right-click to eat: 20 health and some stamina back (one handful a second). After a hit your health only comes back on its own after a few seconds, so in a fight, eat.',
+    stack: 24, color: '#8e1f3a', floats: true, eat: { stamina: 25, health: 20 },
   },
   knife: {
     name: 'Makeshift knife', description: 'A sharp stone flake wedged into a split stick. Cuts twice the fibre from bushes, and fibre from grass anywhere it grows.',
@@ -47,6 +47,12 @@ export const ITEMS = {
     stack: 1, color: '#b89a62', floats: false, keep: true,
   },
 };
+
+// Items as small numbers, the same in every game (0: nothing), for what's
+// in someone's hand in a match's updates.
+const IDS = Object.keys(ITEMS);
+export const itemCode = (id) => (id && ITEMS[id] ? IDS.indexOf(id) + 1 : 0);
+export const itemOf = (code) => IDS[Math.abs(code) - 1] ?? null;
 
 // --- Icons, drawn once at startup (the game ships no image files).
 

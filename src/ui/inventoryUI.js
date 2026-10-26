@@ -210,8 +210,9 @@ export class InventoryUI {
   }
 
   // The actions under the crosshair, as [key, text] pairs, e.g.
-  // [['E', 'Gather sticks']], plus [null, text] lines that only inform;
-  // dim when there's nothing to be done.
+  // [['E', 'Gather sticks']], plus [null, text] lines that only inform
+  // (text can be { meter (0..1), label } for a bar, e.g. a piece's
+  // stability); dim when there's nothing to be done.
   setPrompt(actions, dim = false) {
     const p = this.el.prompt;
     const key = actions ? JSON.stringify([actions, dim]) : '';
@@ -224,7 +225,14 @@ export class InventoryUI {
       const line = p.appendChild(document.createElement('div'));
       if (k) line.appendChild(document.createElement('kbd')).textContent = k;
       else line.className = 'info';
-      line.append(text);
+      if (text?.meter === undefined) {
+        line.append(text);
+        continue;
+      }
+      line.classList.add('meter');
+      line.style.setProperty('--fill', `${Math.round(text.meter * 100)}%`);
+      line.style.setProperty('--hue', String(Math.round(text.meter * 120)));   // red to green
+      line.append(document.createElement('i'), text.label);
     }
   }
 

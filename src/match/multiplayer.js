@@ -146,6 +146,9 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, menu, 
     // passes through another team's player (reported), or null.
     throwSpear: (from, vel, charge) => wars?.throwSpear(from, vel, charge),
     spearStrike: (ray, length) => wars?.spearStrike(ray, length) ?? null,
+    // What the other players see: a swing, and a spear being drawn back.
+    acted: () => wars?.acted(),
+    drawing: (on) => { if (wars) wars.drawing = on; },
     // Your team's bed, while it's in your inventory: where it would go
     // (aiming along ray; null hides it), putting it down, turning it.
     aimBed: (ray) => wars?.aimBed(ray) ?? null,

@@ -10,6 +10,9 @@ const FLOAT_DEPTH = 1.45;       // feet below the surface while treading water
 const STEP = 0.5;               // highest ledge you step up onto (a built floor)
 const CLIMB = 2.2;              // ...or climb onto out of the water
 export const MAX_OXYGEN = 30;   // seconds of breath
+// Health comes back on its own, HEAL a second, but only REGEN_DELAY
+// seconds after you were last hurt: in a fight, eating heals you.
+const HEAL = 2, REGEN_DELAY = 6;
 
 // Stamina per second in mild weather: about 12 s of sprinting or 10 s of
 // fast swimming from full. Standing still refills it in about 7 s. Run it
@@ -50,6 +53,7 @@ export class Player {
     this.roll = 0;
     this.oxygen = MAX_OXYGEN;
     this.health = 100;
+    this.sinceHurt = Infinity;   // seconds since you were last hurt (hurt())
     this.stamina = MAX_STAMINA;
     this.exhausted = false;
     this.heat = 20;        // how hot you feel, °C
@@ -98,6 +102,12 @@ export class Player {
     this.keys.clear();
   }
 
+  // Losing health (a hit, in a match): it won't come back on its own for a while.
+  hurt(amount) {
+    this.health -= amount;
+    this.sinceHurt = 0;
+  }
+
   // Eating gives back stamina and health (see `eat` in items/items.js).
   eat({ stamina = 0, health = 0 }) {
     this.stamina = Math.min(MAX_STAMINA, this.stamina + stamina);
@@ -122,6 +132,7 @@ export class Player {
     this.camera.rotation.set(0, this.spawn.yaw, 0, 'YXZ');
     this.oxygen = MAX_OXYGEN;
     this.health = 100;
+    this.sinceHurt = Infinity;
     this.stamina = MAX_STAMINA;
     this.exhausted = false;
   }
@@ -278,8 +289,9 @@ export class Player {
     if (this.dead) return;
     if (this.underwater) this.oxygen = Math.max(0, this.oxygen - dt);
     else this.oxygen = Math.min(MAX_OXYGEN, this.oxygen + dt * 6);
-    if (this.oxygen <= 0) this.health -= 12 * dt;
-    else this.health = Math.min(100, this.health + 2 * dt);
+    this.sinceHurt += dt;
+    if (this.oxygen <= 0) this.hurt(12 * dt);
+    else if (this.sinceHurt > REGEN_DELAY) this.health = Math.min(100, this.health + HEAL * dt);
     if (this.health <= 0) {
       this.onBlackout?.();
       if (this.onDeath) {

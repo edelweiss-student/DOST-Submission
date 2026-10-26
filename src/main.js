@@ -603,6 +603,7 @@ function swing() {
   const tool = inventory.current, kind = selectedTool();
   const work = !kind ? null : throwing() ? building.focus(aimRay, null, kind)?.use : focus?.use;
   if (!kind && !match?.fighting) return;   // a fist only strikes, in a match
+  match?.acted();
   held.swing(() => {
     if (match?.fighting && match.strike(aimRay, kind ?? 'none')) {
       report({ used: !!kind }, tool);
@@ -627,12 +628,14 @@ function drawBack() {
     return;
   }
   drawing = { t: 0 };
+  match?.drawing(true);
 }
 function letGo(throwIt) {
   if (!drawing) return;
   const charge = drawnBack();
   drawing = null;
   held.draw(0);
+  match?.drawing(false);
   meter.hidden = true;
   if (throwIt && throwing()) throwSpear(charge);
 }
@@ -694,6 +697,10 @@ function promptFor(playing) {
   return [focus.prompt, focus.dim];
 }
 
+// Eating: a handful at most this often (ms), so it takes a moment to heal.
+const EAT_GAP = 1000;
+let lastAte = -Infinity;
+
 // Right-click: use the selected item. Swing a tool, draw back the spear
 // (held), eat food, or in a match put up your team's bahay kubo or bed.
 function useSelected() {
@@ -715,16 +722,17 @@ function useSelected() {
     return;
   }
   const food = stack && ITEMS[stack.id].eat;
-  if (!food) return;
+  if (!food || performance.now() - lastAte < EAT_GAP) return;
+  lastAte = performance.now();
   inventory.take(inventory.selected, 1);
   player.eat(food);
-  inventoryUI.notify(`Ate ${ITEMS[stack.id].name.toLowerCase()}`);
+  inventoryUI.notify(`Ate ${ITEMS[stack.id].name.toLowerCase()}${food.health ? ` (+${food.health} health)` : ''}`);
   tutorial.event('ate');
 }
 
 // Keys: 1-9 or the mouse wheel pick a hotbar slot, I or Tab open the
 // inventory, E gathers, picks up, builds and repairs (by hand), Q drops one
-// of the selected item (or puts down wood you're carrying), B builds (1-8
+// of the selected item (or puts down wood you're carrying), B builds (1-9
 // or the wheel pick the piece, R turns it, Z raises pilings), holding X
 // takes apart, F strikes (in a match), K opens the map, P toggles the
 // performance readout, M mutes. In the joinery mini-game, E or Space works

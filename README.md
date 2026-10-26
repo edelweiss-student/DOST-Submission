@@ -226,7 +226,7 @@ the weather panel says what's coming next.
 **The bahay kubo.** Each team has one, the house on stilts of the
 Philippines (`world/building.js`, with its look in `world/kubo.js`): 4 m
 square (2 × 2 building cells), its floor 1.8 m above the highest ground
-under it, on bamboo stilts, with woven bamboo (sawali) walls, a doorway and
+under it, on bamboo stilts, with woven bamboo (sawali) walls, a door and
 windows, a split-bamboo floor, a steep nipa-thatch roof that overhangs well
 to shed typhoon rain, and bamboo steps up to the door.
 
@@ -245,15 +245,21 @@ to shed typhoon rain, and bamboo steps up to the door.
   steps, stand on its floor, shelter under its roof and are stopped by its
   walls. Its pieces are well joined and can be repaired with planks (and
   logs, for the stilts), but not taken apart for their wood. Another team
-  can break them like any build: break a stilt and the floor on it falls,
-  with what stands on that. Your own team's tools can't touch it.
+  can break them like any build: break a stilt and the floor on it hangs
+  on by the floors beside it (see Stability), and with all four stilts
+  gone the house comes down. Your own team's tools can't touch it.
+- Its door opens for your team only (`E`). To anyone else it's locked:
+  they have to break it down (or come in some other way).
 
 **Bed wars** (`match/bedwars.js`, with the rules in `match/rules.js`):
 
 - **The others.** Every other player shows as a survivor in their team's
   colour, with their name overhead. Each game sends where its player is 20
   times a second, through the server, and draws the others a tenth of a
-  second behind, so they move smoothly and walk in step.
+  second behind, so they move smoothly and walk in step. What's in their
+  selected hotbar slot shows in their right hand (a tool or spear gripped
+  upright, anything else in the palm; never the bed or bahay kubo), and
+  you see them swing it, throw, and draw a spear back over the shoulder.
 - **Fighting.** Left-click (with the mouse captured) or `F` swings what's in
   your hand, and so does right-click with a tool. The swing lands on
   whatever is nearest under the crosshair within 3.2 m: another team's
@@ -262,7 +268,9 @@ to shed typhoon rain, and bamboo steps up to the door.
   reach, a tool does its usual work (a tree to fell, a log to split). The
   hit counts as the swing lands. A hit flashes the crosshair red and wears
   the tool. Being hit flashes the edges of the screen red and knocks you
-  back. Health is 100 and slowly comes back. Each hit does:
+  back. Health is 100 and comes back slowly on its own, but only 6
+  seconds after you were last hurt: in a fight, eat berries (20 health a
+  handful). Each hit does:
 
   | In your hand | To a player | To a bed | To a build |
   | --- | --- | --- | --- |
@@ -343,8 +351,8 @@ they agree.
 | I / Tab | Open or close the inventory and crafting |
 | K | Open or close the map |
 | Q | Drop one of the selected item, or put down the wood you're carrying |
-| B | Build mode: `1`–`8` or the wheel choose a piece, `R` turns it, `Z` raises or lowers pilings, `E` (or left-click) places it, `B` or right-click leaves |
-| E on a build | Add the wood you carry, repair it with a plank (or log), or with empty arms rework its joints |
+| B | Build mode: `1`–`9` or the wheel choose a piece, `R` turns it, `Z` raises or lowers pilings, `E` (or left-click) places it, `B` or right-click leaves |
+| E on a build | Add the wood you carry, repair it with a plank (or log), or with empty arms open or shut a door, or rework the joints of anything else |
 | Hold X | Take apart something you built, or clear a blueprint |
 | M | Mute |
 | H | Hide the tips |
@@ -429,7 +437,10 @@ island is picked over. Boulders give nothing.
 
 Items stack (sticks and stones 32, fibre 48, berries 24). Wood isn't an
 item: it never goes in the bag (see below). Berries are food: right-click
-with some selected to get back 25 stamina and 6 health.
+with some selected to get back 25 stamina and 20 health, a handful a
+second at most. Health comes back on its own too (2 a second), but only 6
+seconds after you were last hurt (in a match, or drowning), so eating is
+how you heal in a fight.
 
 `Q` throws one of the selected item in front of you. Items in the world can
 be picked up again with `E`. Stones sink; everything else floats, riding the
@@ -529,7 +540,8 @@ pilings stand:
 | 5 | Pilings | 4 logs | Four log stilts driven into the ground or the seabed. A floor goes on top of them, 2, 3, 4 or 5 m above the water (`Z` changes the height). Two diagonal log braces stiffen two opposite sides (`R` turns them to the other two) |
 | 6 | Window | 5 planks | A wall with a window in it |
 | 7 | Railing | 3 planks | Along a floor edge, so you don't fall off |
-| 8 | Stairs | 5 planks | Steps you walk up, at about 40° from a floor edge (an open one, or a doorway) down to the ground or the seabed, for floors 0.6 to 6 m up. Everyone can build 3 at most (a bahay kubo's own steps don't count); take one apart to build another |
+| 8 | Stairs | 5 planks | Steps you walk up, at about 40° from a floor edge (an open one, a doorway or a door) down to the ground, the seabed, or a lower floor in the way (they land on it), for floors 0.6 to 6 m up. Everyone can build 3 at most (a bahay kubo's own steps don't count); take one apart to build another |
+| 9 | Door | 7 planks | A doorway with a plank door hung in it. `E` opens it (it swings in, over the floor it was built from) and shuts it; shut, it stops you like a wall. In a match only your own team can open your doors: anyone else has to break them |
 
 A see-through preview follows the crosshair: green where the piece fits,
 red (with the reason) where it doesn't. A floor levels itself above the
@@ -549,7 +561,9 @@ crown and keeps the rain off what's under it.
 **Getting up there.** There are no ladders: stairs take you up to a raised
 floor (6 m at most), a floor less than about 2 m above the water can be
 climbed onto straight out of it, and floors at the same height join, so a
-walkway on pilings can run out from a floor you reached by stairs.
+walkway on pilings can run out from a floor you reached by stairs. Stairs
+can go down from a high floor onto a lower one beside it (from about 0.6 m
+lower: any closer and you just step down).
 
 **Joinery.** When a piece gets its last plank, you make its joints in a
 quick mini-game. `E`, `Space` or a click works each step:
@@ -591,22 +605,36 @@ Worn wood greys and darkens, and below about half its condition, boards
 start falling off. To **repair** a piece, carry a plank (a log, for pilings)
 to it and press `E`: each one brings it back 40% (50% for a log). A message
 warns you when something drops below 35%, and the build bar counts what
-needs repairs. When a piece wears through it gives way, along with whatever
-stood on it, and its wood falls or floats away.
+needs repairs. When a piece wears through it gives way, and its wood falls
+or floats away; what it held up may still stand (see Stability).
 
 Holding `X` for a moment on a piece takes it apart and gives all its wood
 back; on a blueprint it clears it and gives back what it had. A floor can't
 be taken apart while walls, a roof or stairs stand on it, nor pilings with
-a floor on top.
+a floor on top, nor anything that's all that holds another floor up.
 
 **Breaking it.** Any tool breaks what's built, faster than taking it
 apart but at a cost. With a tool selected, right-click a finished piece:
 each blow takes off as much of its condition as it would of another
 team's in a match (15% for the axe, 10% for the pickaxe, 4% for the knife;
-see Bed wars), and the piece darkens as it goes. At nothing it breaks,
-with whatever stands on it, and only half the wood in each is left lying
-where it stood. A piece that's only been knocked about can be repaired
+see Bed wars), and the piece darkens as it goes. At nothing it breaks, and
+only half its wood is left lying where it stood (and half of anything that
+falls with it). A piece that's only been knocked about can be repaired
 like a worn one.
+
+**Stability.** When something comes down, what it held up doesn't always
+fall with it. Pilings stand in the ground or the seabed, and a floor on
+its own posts stands on those, so both are 100% stable. A floor on pilings
+stands on them; break the pilings and it hangs off the floors beside it at
+its level, 25% less stable for each floor between it and one standing on
+the ground (75% next to one, 50% two along, 25% three along). Walls,
+doorways, doors, windows and railings are as stable as the better floor
+either side of them, and a roof and stairs as the floor under them.
+Anything left at 0% falls, leaving half its wood. Look at a piece hanging
+on by less than 100% and a meter under its condition shows how stable it
+is, and a message warns you when one of yours loses what held it up. In a
+match every game works this out the same way, so the same pieces fall
+everywhere.
 
 ## How the climate works
 

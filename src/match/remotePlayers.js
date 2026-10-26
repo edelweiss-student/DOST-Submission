@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { TEAMS } from './teams.js';
 import { PlayerModel } from '../player/playerModel.js';
 import { patchMaterial } from '../world/materials.js';
+import { itemOf } from '../items/items.js';
 
 const DELAY = 0.1;   // seconds: others are drawn this far behind, between two updates
 const LOST = 1;      // seconds without news before someone is hidden
@@ -36,7 +37,8 @@ function nameTag(name, color) {
 // colour (player/playerModel.js) with their names over their heads. Their
 // games send where they are 20 times a second (through the server); each is
 // drawn a tenth of a second behind, moving smoothly between the two updates
-// either side of that moment, walking in step with their speed.
+// either side of that moment, walking in step with their speed, with what's
+// in their hand, swinging it when they do.
 export class RemotePlayers {
   constructor(scene) {
     this.scene = scene;
@@ -56,7 +58,9 @@ export class RemotePlayers {
     }
   }
 
-  // The server's update: { id: [x, y, z, yaw, speed] }.
+  // The server's update: { id: [x, y, z, yaw, speed, held, acts] } (held:
+  // what's in their hand, items/items.js itemCode(), negative while a spear
+  // is drawn back; acts: their swings and throws so far).
   receive(update) {
     const t = performance.now() / 1000;
     for (const [id, s] of Object.entries(update)) {
@@ -103,6 +107,11 @@ export class RemotePlayers {
       const k = b.t > a.t ? Math.min(1, Math.max(0, (t - a.t) / (b.t - a.t))) : 1;
       object.position.set(lerp(a.s[0], b.s[0], k), lerp(a.s[1], b.s[1], k), lerp(a.s[2], b.s[2], k));
       object.rotation.y = turn(a.s[3], b.s[3], k);
+      const latest = u[u.length - 1].s, held = latest[5] ?? 0, acts = latest[6] ?? 0;
+      p.model.hold(itemOf(held));
+      p.model.drawn = held < 0;
+      if (p.acts !== undefined && acts !== p.acts) p.model.swing();
+      p.acts = acts;
       p.model.update(dt, lerp(a.s[4], b.s[4], k));
       object.visible = true;
     }
