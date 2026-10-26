@@ -90,7 +90,7 @@ export class BedWars {
     net.on('bedDestroyed', ({ team, by, flood }) => this.bedDestroyed(team, by, flood));
     net.on('death', (down) => this.death(down));
     net.on('respawned', ({ id }) => this.respawned(id));
-    net.on('matchOver', ({ winner, time, by }) => this.end(winner, time, by));
+    net.on('matchOver', ({ winner }) => this.end(winner));
     net.on('bedPlaced', (bed) => this.bedPlaced(bed));
     net.on('bedRefused', ({ reason }) => {
       this.placing = false;
@@ -447,6 +447,12 @@ export class BedWars {
     this.feed('The storm surge is here');
   }
 
+  // The flood at the end of the match: the sea climbs faster and faster.
+  flood() {
+    this.hud.message('The flood is coming! The sea is rising faster and faster: soon no bed will stay dry, and the last team standing wins.', 9);
+    this.feed('The flood is coming');
+  }
+
   // Someone went down (out, if their bed was gone).
   death({ id, name, by, out }) {
     for (const t of this.teams.values()) if (t.members.has(id)) t.members.get(id).out = out;
@@ -505,10 +511,8 @@ export class BedWars {
 
   // The match is over: who won (-1 for nobody), and the way back to the
   // lobby. time: it ended when time ran out after the surge.
-  // The match is over: winner (a team, or -1); time: time ran out, and
-  // by: what decided it then ('players', 'bed', 'knockouts', or null for a
-  // draw).
-  end(winner, time = false, by = null) {
+  // The match is over: winner (a team, or -1 if nobody's left).
+  end(winner) {
     this.over = true;
     this.player.setInput(false);
     this.player.dragLook = false;
@@ -516,17 +520,9 @@ export class BedWars {
     this.deathScreen.hidden = true;
     const screen = $('match-end');
     const title = screen.querySelector('h2');
-    title.textContent = winner === this.team ? 'Your team wins!' : winner >= 0 ? `Team ${TEAMS[winner].name} wins` : time ? 'A draw' : 'Nobody is left';
+    title.textContent = winner === this.team ? 'Your team wins!' : winner >= 0 ? `Team ${TEAMS[winner].name} wins` : 'Nobody is left';
     title.style.setProperty('--team', TEAMS[winner]?.color ?? '');
-    const name = winner >= 0 ? `Team ${TEAMS[winner].name}` : '';
-    const decided = {
-      players: `Time ran out with ${name} having the most players still standing.`,
-      bed: `Time ran out with the teams level on players: ${name}’s bed had the most health left.`,
-      knockouts: `Time ran out with the teams level on players and beds: ${name} knocked out the most players.`,
-    };
-    screen.querySelector('p').textContent = time
-      ? winner >= 0 ? decided[by] ?? decided.players : 'Time ran out with the teams level on players, beds and knockouts.'
-      : winner >= 0 ? 'Every other team is out.' : 'Every team went down for good.';
+    screen.querySelector('p').textContent = winner >= 0 ? 'Every other team is out.' : 'Every team went down for good.';
     screen.querySelector('button').onclick = () => location.reload();
     screen.hidden = false;
   }

@@ -10,7 +10,7 @@ import { Server } from 'socket.io';
 import { TEAMS, BUILD_TIME, WATCH } from '../src/match/teams.js';
 import { Lobby } from './lobby.js';
 import { Match } from './match.js';
-import { RESPAWN_TIME, SURGE, FINAL, PIECE_HP, MAX_STAIRS, damageOf } from '../src/match/rules.js';
+import { RESPAWN_TIME, SURGE, FLOOD, PIECE_HP, MAX_STAIRS, damageOf } from '../src/match/rules.js';
 
 // The multiplayer game server: a lobby of up to four teams, and the match it
 // starts. It decides the island (its seed), so every player generates the
@@ -22,18 +22,18 @@ import { RESPAWN_TIME, SURGE, FINAL, PIECE_HP, MAX_STAIRS, damageOf } from '../s
 //   npm run server                    a new island each time it starts
 //   npm run server -- --seed 1234     a chosen island
 //   npm run server -- --port 4000     another port (default: $PORT, else 3001)
-//   npm run server -- --build 60      a 60-second build phase, for testing (default 600)
+//   npm run server -- --build 60      a 60-second build phase, for testing (default 240)
 //   npm run server -- --surge 120     the storm surge 2 minutes after the barriers come
-//                                     down, for testing (default 480; see rules.js)
+//                                     down, for testing (default 330; see rules.js)
 
 const { values: args } = parseArgs({ options: { seed: { type: 'string' }, port: { type: 'string' }, build: { type: 'string' }, surge: { type: 'string' } } });
 // A host such as Render says which port to use in PORT.
 const PORT = Number(args.port) || Number(process.env.PORT) || 3001;
 const SEED = Number(args.seed) || randomInt(1, 2 ** 31);
 const BUILD = Number(args.build) > 0 ? Number(args.build) : BUILD_TIME;
-// The storm: its surge, and when time is up after it (shortened with it).
+// The storm: its surge, and when the flood comes after it (shortened with it).
 const STORM = Number(args.surge) > 0 ? Number(args.surge) : SURGE;
-const STORM_FINAL = (FINAL * STORM) / SURGE;
+const STORM_FLOOD = (FLOOD.after * STORM) / SURGE;
 const DIST = fileURLToPath(new URL('../dist', import.meta.url));
 
 const TYPES = {
@@ -103,13 +103,12 @@ const endMatch = () => {
   storm = [];
   match = null;
 };
-// The match is over (result: { winner, time? }): tell everyone who won, and
-// open the lobby again.
+// The match is over (result: { winner }): tell everyone who won, and open
+// the lobby again.
 const finish = (result) => {
   if (!result) return;
   const name = TEAMS[result.winner]?.name;
-  const how = result.time ? 'Time’s up: ' : '';
-  console.log(`${how}${name ? `Team ${name} wins the match` : result.time ? 'a draw' : 'Nobody is left: the match is over'}`);
+  console.log(name ? `Team ${name} wins the match` : 'Nobody is left: the match is over');
   io.emit('matchOver', result);
   endMatch();
   lobby.reset();
@@ -149,7 +148,7 @@ io.on('connection', (socket) => {
     tick = setInterval(() => io.volatile.emit('moves', match.snapshot()), 50);
     opening = setTimeout(() => {
       console.log('The build phase is over: every base is open, and the storm is building');
-      io.emit('basesOpen', { surge: STORM, final: STORM_FINAL });
+      io.emit('basesOpen', { surge: STORM, flood: STORM + STORM_FLOOD });
       // Bahay kubos nobody put up go up near their team's base, then beds
       // nobody placed go down in their kubo (or at the base).
       for (const kubo of match?.autoPlaceKubos() ?? []) {
@@ -166,7 +165,10 @@ io.on('connection', (socket) => {
           console.log('The storm surge is at its peak');
           io.emit('surge');
         }, STORM * 1000),
-        setTimeout(() => finish(match?.timeUp()), (STORM + STORM_FINAL) * 1000),
+        setTimeout(() => {
+          console.log('The flood is coming in');
+          io.emit('flood');
+        }, (STORM + STORM_FLOOD) * 1000),
       ];
     }, lobby.buildLeft);
   });

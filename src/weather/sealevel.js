@@ -7,7 +7,9 @@ import { uniforms, clamp, smoothstep } from '../shared.js';
 //          melted;
 // - tide:  two high tides a day;
 // - surge: storms pile water against the shore. Worse storms push harder;
-//          a surge builds over about a minute and drains away more slowly.
+//          a surge builds over about a minute and drains away more slowly;
+// - flood: in a multiplayer match, the flood at its end (match/rules.js),
+//          set from the match's clock.
 //
 // The sea level moves the water (rendering and physics) and floods the
 // beaches. Salt water leaves its mark: grass it reaches dies back and the
@@ -28,7 +30,8 @@ export class SeaLevel {
     this.rise = 0;
     this.tide = 0;
     this.surge = 0;
-    this.level = 0;        // rise + tide + surge, metres above the starting sea level
+    this.flood = 0;
+    this.level = 0;        // rise + tide + surge + flood, metres above the starting sea level
     this.rate = 0;         // metres per second (positive while the water is coming up)
     this.tideRate = 0;     // metres per second, the tide alone
     this.saltLine = 0;     // ground plants below this are dead (drops back slowly)
@@ -51,7 +54,7 @@ export class SeaLevel {
     const storm = weather.key === 'storm' ? SURGE[0] + (SURGE[1] - SURGE[0]) * weather.severity : 0;
     const target = storm * smoothstep(0.35, 0.9, weather.current.wind);
     if (dt > 0) this.surge += (target - this.surge) * (1 - Math.exp(-dt / (target > this.surge ? 50 : 140)));
-    const level = this.rise + this.tide + this.surge;
+    const level = this.rise + this.tide + this.surge + this.flood;
     if (dt > 0) this.rate = (level - this.level) / dt;
     this.level = level;
 

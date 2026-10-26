@@ -32,7 +32,6 @@ export class Match {
     this.bases = null;   // every team's base ({ x, z }), from the first game to say
     this.kubos = new Map();   // where each team's bahay kubo went up: { team, i0, j0, turn, deck, by }
     this.kuboAt = null;  // where each goes up if nobody puts it up, from the first game to say
-    this.knockouts = new Map(this.teams.map((team) => [team, 0]));   // other teams' players each team has knocked out
   }
 
   // Whose base (any team's but `team`) (x, z) is within `radius` of, or -1.
@@ -208,9 +207,8 @@ export class Match {
     p.alive = false;
     p.pos = null;
     p.out = !(this.beds.get(p.team) > 0);
-    const striker = now - p.hurtAt < 10000 ? this.players.get(p.hurtBy) : null;
-    if (striker && striker.team !== p.team) this.knockouts.set(striker.team, (this.knockouts.get(striker.team) ?? 0) + 1);
-    return { name: p.name, team: p.team, by: striker?.name ?? null, out: p.out };
+    const by = now - p.hurtAt < 10000 ? this.players.get(p.hurtBy)?.name ?? null : null;
+    return { name: p.name, team: p.team, by, out: p.out };
   }
 
   // Back at their bed (if they're still in it).
@@ -229,23 +227,6 @@ export class Match {
     if (!(this.beds.get(team) > 0) || !this.placed.has(team)) return false;
     this.beds.set(team, 0);
     return true;
-  }
-
-  // Time's up: the team with the most players still in wins; level on
-  // that, the one whose bed has the most health left; then the one that
-  // knocked out the most players; only then is it a draw. { winner (-1 for
-  // a draw), time: true, by: what decided it ('players', 'bed',
-  // 'knockouts'), or null for a draw }.
-  timeUp() {
-    const left = new Map();
-    for (const p of this.players.values()) if (!p.out) left.set(p.team, (left.get(p.team) ?? 0) + 1);
-    let leaders = [...left.keys()];
-    for (const [by, score] of [['players', (t) => left.get(t)], ['bed', (t) => this.beds.get(t) ?? 0], ['knockouts', (t) => this.knockouts.get(t) ?? 0]]) {
-      const best = Math.max(...leaders.map(score));
-      leaders = leaders.filter((t) => score(t) === best);
-      if (leaders.length === 1) return { winner: leaders[0], time: true, by };
-    }
-    return { winner: -1, time: true, by: null };
   }
 
   // Over once only one team has anyone left in it (if it began with more

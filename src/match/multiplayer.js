@@ -5,7 +5,7 @@ import { findBases } from './bases.js';
 import { Barriers } from './barriers.js';
 import { BedWars } from './bedwars.js';
 import { CELL } from '../world/building.js';
-import { SURGE, FINAL, STAGES, pressureAt } from './rules.js';
+import { SURGE, FLOOD, STAGES, pressureAt, floodRise } from './rules.js';
 import { WEATHER, stormLabel } from '../weather/weather.js';
 
 const NAME_KEY = 'washed-away.name';
@@ -58,21 +58,21 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, menu, 
   let wars = null;      // the fighting, once the match is on
   let buildEnds = 0;    // when the build phase ends (performance.now() time), while it lasts
   let stormStart = 0;   // when the barriers came down (performance.now() time), once they have
-  let surgeAt = SURGE, finalAt = SURGE + FINAL;   // seconds after that: the surge, and time's up
+  let surgeAt = SURGE, floodAt = SURGE + FLOOD.after;   // seconds after that: the surge, and the flood
   let surged = false;
   let warned = false, bumped = -Infinity, bannerUntil = 0;
   const timer = document.getElementById('match-timer');
 
   // The build phase is over (the server says so, with the storm's timing):
   // the barriers come down and the bagyo starts building.
-  const open = ({ surge = SURGE, final = FINAL } = {}) => {
+  const open = ({ surge = SURGE, flood = SURGE + FLOOD.after } = {}) => {
     if (!buildEnds) return;
     buildEnds = 0;
     barriers.open();
     wars.peace = false;
     stormStart = performance.now();
     surgeAt = surge;
-    finalAt = surge + final;
+    floodAt = flood;
     hud.message(`The barriers are down: every base is open. A bagyo is coming: the sea will rise, and any bed the water reaches is washed away. Its storm surge peaks in ${span(surge * 1000)}.`, 9);
     timer.textContent = 'Barriers down · every base is open';
     timer.className = 'open';
@@ -80,10 +80,12 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, menu, 
   };
   // Seconds since the barriers came down.
   const stormTime = () => (performance.now() - stormStart) / 1000;
-  // The weather of the storm's stage now, what comes next and when; and the
-  // countdown at the top of the screen, to the surge and then to time's up.
+  // The weather of the storm's stage now, what comes next and when; the
+  // flood, once it's come; and the countdown at the top of the screen, to
+  // the surge, then to the flood, then how high it has risen.
   const storm = () => {
     const t = stormTime();
+    sea.flood = floodRise(t - floodAt);
     const i = STAGES.findLastIndex((stage) => t >= stage.at * surgeAt);
     const now = STAGES[i], next = STAGES[i + 1];
     weather.follow(now.weather, now.severity, next?.weather ?? 'storm', (next ? next.at * surgeAt : surgeAt) - t);
@@ -93,9 +95,12 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, menu, 
       return text[0].toUpperCase() + text.slice(1);
     };
     const out = wars.out && 'You’re out';
-    if (surged) {
-      timer.textContent = line(out, 'storm surge', `${clock((finalAt - t) * 1000)} left`);
+    if (t >= floodAt) {
+      timer.textContent = line(out, 'the flood is rising', `+${sea.flood.toFixed(1)} m`);
       timer.className = 'final';
+    } else if (surged) {
+      timer.textContent = line(out, 'storm surge', `the flood in ${clock((floodAt - t) * 1000)}`);
+      timer.className = floodAt - t < 60 ? 'final' : 'soon';
     } else {
       timer.textContent = line(out, weather.signal && `Signal No. ${weather.signal}`, `storm surge in ${clock((surgeAt - t) * 1000)}`);
       timer.className = surgeAt - t < 60 ? 'soon' : '';
@@ -181,7 +186,8 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, menu, 
       if (buildEnds) return `Next: ${WEATHER.rain.label}, when the barriers come down`;
       if (!stormStart) return null;
       const t = stormTime();
-      if (surged) return `Time’s up in ${clock((finalAt - t) * 1000)}`;
+      if (t >= floodAt) return 'Next: the flood keeps rising, faster and faster';
+      if (surged) return `Next: the flood in ${clock((floodAt - t) * 1000)}`;
       const next = STAGES.find((stage) => stage.at * surgeAt > t);
       const label = !next ? 'Storm surge' : next.weather === 'storm' ? stormLabel(next.severity) : WEATHER[next.weather].label;
       return `Next: ${label} in ${clock(((next ? next.at : 1) * surgeAt - t) * 1000)}`;
@@ -245,6 +251,8 @@ export function createMatch({ net, seed, error }, { terrain, player, hud, menu, 
     surged = true;
     wars?.surge();
   });
+  // The flood (each game raises the sea itself, from the match's clock).
+  net.on('flood', () => wars?.flood());
   // After a reconnect the server says hello again.
   net.on('welcome', (hello) => {
     if (hello.seed !== seed) location.reload();   // it restarted with another island

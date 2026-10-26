@@ -48,15 +48,22 @@ export const spearDamage = (charge) => Math.round(SPEAR.damage[0] + (SPEAR.damag
 // it, so the sea rises (up to 2.4 m: see weather/sealevel.js) and the
 // storms push it further in. Any bed the water reaches is washed away; a
 // bed raised high (in a bahay kubo on its stilts) stays dry. SURGE is the
-// storm surge at the storm's peak; FINAL seconds later time is up: the
-// team with the most players still in wins; level on that, the one whose
-// bed has the most health left; level on that too, the one that knocked
-// out the most players; only then is it a draw. Times are seconds after
-// the barriers come down (a match is 12 minutes with the build phase);
-// the server can shorten the storm for testing (--surge), and its stages
-// and FINAL keep their places in it.
+// storm surge at the storm's peak. FLOOD.after seconds later, 12 minutes
+// into the match with the build phase, the flood comes: the sea stops
+// waiting on the storm and climbs faster and faster (`rate` metres a
+// minute at first, `faster` more each minute), over the beaches, then the
+// bases, then the bahay kubos, until every bed is washed away and going
+// down is for good. There's no time limit: the last team with anyone left
+// wins. Times are seconds after the barriers come down; the server can
+// shorten the storm for testing (--surge), and its stages and the flood
+// keep their places in it.
 export const SURGE = 330;
-export const FINAL = 150;
+export const FLOOD = { after: 150, rate: 2, faster: 1 };
+// How far (m) the flood has raised the sea, s seconds after it came.
+export const floodRise = (s) => {
+  const m = Math.max(0, s) / 60;
+  return FLOOD.rate * m + (FLOOD.faster * m * m) / 2;
+};
 // Each stage starts at a fraction of the way to the surge. The storms'
 // winds match the Philippines' wind signals (weather/weather.js): about
 // 58 km/h (Signal No. 1), 76 (No. 2) and 98 (No. 3).
