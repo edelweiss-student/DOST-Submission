@@ -245,9 +245,8 @@ to shed typhoon rain, and bamboo steps up to the door.
   steps, stand on its floor, shelter under its roof and are stopped by its
   walls. Its pieces are well joined and can be repaired with planks (and
   logs, for the stilts), but not taken apart for their wood. Another team
-  can break them like any build: break a stilt and the floor on it hangs
-  on by the floors beside it (see Stability), and with all four stilts
-  gone the house comes down. Your own team's tools can't touch it.
+  can break them like any build: break a stilt and the floor on it falls,
+  with what stands on that. Your own team's tools can't touch it.
 - Its door opens for your team only (`E`). To anyone else it's locked:
   they have to break it down (or come in some other way).
 
@@ -605,36 +604,22 @@ Worn wood greys and darkens, and below about half its condition, boards
 start falling off. To **repair** a piece, carry a plank (a log, for pilings)
 to it and press `E`: each one brings it back 40% (50% for a log). A message
 warns you when something drops below 35%, and the build bar counts what
-needs repairs. When a piece wears through it gives way, and its wood falls
-or floats away; what it held up may still stand (see Stability).
+needs repairs. When a piece wears through it gives way, along with whatever
+stood on it, and its wood falls or floats away.
 
 Holding `X` for a moment on a piece takes it apart and gives all its wood
 back; on a blueprint it clears it and gives back what it had. A floor can't
 be taken apart while walls, a roof or stairs stand on it, nor pilings with
-a floor on top, nor anything that's all that holds another floor up.
+a floor on top.
 
 **Breaking it.** Any tool breaks what's built, faster than taking it
 apart but at a cost. With a tool selected, right-click a finished piece:
 each blow takes off as much of its condition as it would of another
 team's in a match (15% for the axe, 10% for the pickaxe, 4% for the knife;
-see Bed wars), and the piece darkens as it goes. At nothing it breaks, and
-only half its wood is left lying where it stood (and half of anything that
-falls with it). A piece that's only been knocked about can be repaired
+see Bed wars), and the piece darkens as it goes. At nothing it breaks,
+with whatever stands on it, and only half the wood in each is left lying
+where it stood. A piece that's only been knocked about can be repaired
 like a worn one.
-
-**Stability.** When something comes down, what it held up doesn't always
-fall with it. Pilings stand in the ground or the seabed, and a floor on
-its own posts stands on those, so both are 100% stable. A floor on pilings
-stands on them; break the pilings and it hangs off the floors beside it at
-its level, 25% less stable for each floor between it and one standing on
-the ground (75% next to one, 50% two along, 25% three along). Walls,
-doorways, doors, windows and railings are as stable as the better floor
-either side of them, and a roof and stairs as the floor under them.
-Anything left at 0% falls, leaving half its wood. Look at a piece hanging
-on by less than 100% and a meter under its condition shows how stable it
-is, and a message warns you when one of yours loses what held it up. In a
-match every game works this out the same way, so the same pieces fall
-everywhere.
 
 ## How the climate works
 

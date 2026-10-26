@@ -30,14 +30,8 @@ import { boardGeometry, logGeometry } from './wood.js';
 // boards grey and fall off; repairs with planks (or logs, for pilings) bring
 // a piece back; left alone it gives way and its wood floats off. Tools
 // break things too: each blow costs a finished piece some of its condition
-// (DAMAGE in match/rules.js), and at nothing it falls, leaving half its wood.
-//
-// What's left may still stand: every piece has a stability (stabilities()).
-// Pilings, and floors on their own posts, stand on the ground. A floor
-// whose pilings are broken hangs off the floors beside it, a little less
-// stable for each floor between it and the ground, and walls, roofs and
-// stairs are as stable as the floors under them. Whatever is left with
-// nothing holding it up falls.
+// (DAMAGE in match/rules.js), and at nothing it falls, with whatever stood
+// on it, leaving half its wood.
 //
 // In a multiplayer match what's built is shared (share()): every change
 // goes to the other players' games, which apply() it, and pieces belong to
@@ -102,10 +96,6 @@ const RESIST = { pilings: 5 };
 const REPAIR = { plank: 0.4, log: 0.5 };
 // Ground each piece covers (m²), which stresses the land under it (see climate/entity.js).
 const FOOTPRINT = { floor: CELL * CELL, pilings: 0.5, wall: 0.3, doorway: 0.3, door: 0.3, window: 0.3, railing: 0.2, roof: 0, stairs: 0.8 };
-// Stability: how much less stable a floor is for each floor between it and
-// one that stands on the ground, and how far apart (m) floors can be in
-// height and still hold each other up.
-const STABILITY = { step: 0.25, level: 0.35 };
 
 // Joinery decides how well a piece holds together (q 0..1): from rough
 // joints, which wear about as fast as unjoined ones, to masterful ones that
@@ -867,7 +857,6 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
         cell.floor = piece;
         cell.y = plan.y;
         piece.low = plan.y - DECK;   // the underside of the deck (posts and pilings are meant to stand in water)
-        piece.onPilings = !!plan.onPilings;   // else it stands on its own posts
       } else {
         cell.pilings = piece;
         cell.top = plan.top;
@@ -882,14 +871,12 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
       stairs.set(plan.edge.key, piece);
       piece.cell = plan.cell;
       piece.edge = plan.edge;
-      piece.side = plan.side;
       piece.low = plan.bottom;
       piece.run = plan.run;
     } else {
       edges.set(plan.edge.key, piece);
       piece.cell = plan.cell;
       piece.edge = plan.edge;
-      piece.side = plan.side;
       piece.low = plan.y;
       if (plan.type === 'door') Object.assign(piece, { hinge: hingeOf(plan.edge), open: false, swing: 0 });
     }
@@ -899,7 +886,6 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     piece.remote = !!owner.remote;
     pieces.push(piece);
     dirty = true;
-    weigh();
     return piece;
   }
 
@@ -1064,92 +1050,15 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     release(list);
   }
 
-  // --- Stability: how firmly each piece is held up, 0..1 (by piece), with
-  // `gone` left out (to see what taking it down would bring down).
-  function stabilities(gone = null) {
-    const held = new Map();
-    const floorOf = (cell) => (cell?.floor && cell.floor !== gone ? cell.floor : null);
-    const floors = pieces.filter((p) => p.type === 'floor' && p !== gone);
-    // On its own posts, or on pilings: standing on the ground.
-    for (const f of floors) held.set(f, !f.onPilings || (f.cell.pilings && f.cell.pilings !== gone) ? 1 : 0);
-    // Otherwise, hanging off the floors beside it at its level.
-    for (let changed = true; changed;) {
-      changed = false;
-      for (const f of floors) {
-        for (const [di, dj] of SIDES) {
-          const n = floorOf(cells.get(cellKey(f.cell.i + di, f.cell.j + dj)));
-          if (!n || Math.abs(n.cell.y - f.cell.y) > STABILITY.level) continue;
-          const s = held.get(n) - STABILITY.step;
-          if (s > held.get(f) + 1e-9) {
-            held.set(f, s);
-            changed = true;
-          }
-        }
-      }
-    }
-    // Everything else, by the floors under it (pilings stand on the ground).
-    const under = (cell, y) => {
-      const f = floorOf(cell);
-      return f && Math.abs(cell.y - y) <= STABILITY.level ? held.get(f) : 0;
-    };
-    for (const p of pieces) {
-      if (p === gone || held.has(p)) continue;
-      if (p.type === 'pilings') held.set(p, 1);
-      else if (p.type === 'roof') held.set(p, Math.max(0, ...(p.cells ?? [p.cell]).map((c) => (floorOf(c) ? held.get(c.floor) : 0))));
-      else if (p.type === 'stairs') held.set(p, floorOf(p.cell) ? held.get(p.cell.floor) : 0);
-      else {
-        // On an edge: held by the floor either side of it.
-        const [di, dj] = SIDES[p.side];
-        held.set(p, Math.max(under(p.cell, p.low), under(cells.get(cellKey(p.cell.i + di, p.cell.j + dj)), p.low)));
-      }
-    }
-    return held;
-  }
-  // Every piece's stability, now; your own pieces newly hanging by less warn you.
-  function weigh() {
-    const held = stabilities();
-    for (const p of pieces) {
-      const was = p.stability ?? 1;
-      p.stability = held.get(p) ?? 1;
-      if (p.stability < was - 1e-6 && p.stability > 0 && (!sharing || p.team === sharing.team)) {
-        warn(`Your ${p.name} lost what held it up: it hangs on at ${Math.round(p.stability * 100)}% stability.`);
-      }
-    }
-    return held;
-  }
-  // After something comes down: whatever is left with nothing holding it up
-  // falls too, in every game the same, leaving half its wood (on your own).
-  function settle() {
-    for (;;) {
-      const held = weigh(), falling = pieces.filter((p) => held.get(p) <= 0);
-      if (!falling.length) return;
-      for (const p of falling) {
-        if (!pieces.includes(p)) continue;
-        if (!sharing) free(p, Math.ceil((p.done ? p.cost : p.added) / 2));
-        unregister(p);
-        if (!sharing || p.team === sharing.team) warn(`Your ${p.name} had nothing left holding it up and fell.`);
-      }
-      onSound?.('break', 1);
-    }
-  }
-  // What taking a piece down would bring down with it.
-  function wouldFall(piece) {
-    const held = stabilities(piece);
-    return pieces.filter((p) => p !== piece && held.get(p) <= 0);
-  }
-
   // Hold X: take a piece apart (or clear a blueprint), getting the wood back.
   function takeDown(piece) {
     if (standingOn(piece).length) {
       return { message: piece.type === 'pilings' ? 'Take the floor off these pilings first.' : 'Take down the walls and roof on this floor first.' };
     }
-    const falls = wouldFall(piece);
-    if (falls.length) return { message: `That would bring down the ${falls[0].name} it holds up: take that down first.` };
     free(piece, piece.done ? piece.cost : piece.added);
     unregister(piece);
     share({ op: 'remove', key: piece.key });
     onSound?.('knock', 0.5);
-    weigh();
     return { notify: piece.done ? `Took the ${piece.name} apart` : 'Blueprint cleared' };
   }
 
@@ -1169,23 +1078,25 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     return { used: true, notify: `Broke the ${piece.name}` };
   }
 
-  // Broken with tools on your own island: it falls, leaving half its wood
-  // lying where it stood, and so does anything it was all that held up.
+  // Broken with tools on your own island: it falls, with whatever stood on
+  // it, and half the wood in each is left lying where it stood.
   function smash(piece) {
     if (!pieces.includes(piece)) return;
+    const on = standingOn(piece);
     free(piece, Math.ceil((piece.done ? piece.cost : piece.added) / 2));
     unregister(piece);
     onSound?.('break', 1);
-    settle();
+    for (const other of on) smash(other);
   }
 
-  // Broken by tools in a match: it falls, and so does anything it was all
-  // that held up, the same in every game.
+  // Broken by tools in a match: it falls, with what stood on it, the same
+  // in every game.
   function destroy(piece) {
     if (!pieces.includes(piece)) return;
+    const on = standingOn(piece);
     unregister(piece);
     onSound?.('break', 1);
-    settle();
+    for (const other of on) destroy(other);
   }
 
   let lastWarning = -Infinity;
@@ -1195,15 +1106,16 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
     onMessage?.(text);
   }
 
-  // Worn through: it gives way, and so does anything it was all that held up.
+  // Worn through: it gives way, with whatever stood on it.
   function breakUp(piece) {
     if (!pieces.includes(piece)) return;
+    const on = standingOn(piece);
     free(piece, piece.cost);
     unregister(piece);
     share({ op: 'remove', key: piece.key });
+    for (const other of on) breakUp(other);
     const afloat = piece.water > piece.low;
     warn(`Your ${piece.name} has given way. Its ${piece.material}s are ${afloat ? 'floating away' : 'lying where it stood'}.`);
-    settle();
   }
 
   // Weather and sea at work on everything built, twice a second.
@@ -1408,7 +1320,6 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
         dirty = true;
       } else if (msg.op === 'remove') {
         unregister(piece);
-        settle();
       } else if (msg.op === 'hit' && piece.done) {
         piece.health -= Number(msg.amount) || 0;
         dirty = true;
@@ -1460,12 +1371,10 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
       const breaks = piece.done && !!tool && !carrying && !ownKubo && (sharing?.canBreak?.() ?? true);
       const smashing = breaks ? [['Right-click', 'Break it']] : [];
       const use = breaks && !sharing ? () => strike(piece, tool) : null;
-      // Hanging on by less than the ground would give it: how stable it is.
-      const meter = piece.stability < 1 ? [[null, { meter: piece.stability, label: `Stability ${Math.round(piece.stability * 100)}%` }]] : [];
       if (enemy(piece)) {
         const state = piece.done ? `${Math.ceil(piece.health * 100)}%` : 'blueprint';
         const locked = piece.type === 'door' && piece.done ? ` · ${piece.open ? 'open' : 'locked'}` : '';
-        return { score, key: piece, dim: !breaks, prompt: [...smashing, [null, `${sharing.teamName(piece.team)}’s ${piece.name} · ${state}${locked}`], ...meter] };
+        return { score, key: piece, dim: !breaks, prompt: [...smashing, [null, `${sharing.teamName(piece.team)}’s ${piece.name} · ${state}${locked}`]] };
       }
       const has = carrying?.kind === wood;
       const fix = piece.done && has && piece.health < 0.97;
@@ -1475,7 +1384,7 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
       if (piece.builtIn) {
         const act = fix ? () => repair(piece) : door?.[1] ?? null;
         const first = fix ? [['E', `Repair with a ${wood} (+${Math.round(REPAIR[wood] * 100)}%)`]] : door ? [door[0]] : [];
-        return { score, key: piece, dim: !act && !breaks, act, prompt: [...first, ...smashing, [null, describe(piece)], ...meter] };
+        return { score, key: piece, dim: !act && !breaks, act, prompt: [...first, ...smashing, [null, describe(piece)]] };
       }
       const hold = () => takeDown(piece);
       if (!piece.done) {
@@ -1501,7 +1410,7 @@ export function createBuilding(scene, { terrain, colliders, wood, kubo, rng, sha
         prompt.push(['E', piece.joints == null ? 'Join the frame' : 'Rework the joints']);
         act = () => ({ joinery: joineryFor(piece) });
       }
-      prompt.push(...smashing, ['X', 'Hold to take apart'], [null, describe(piece)], ...meter);
+      prompt.push(...smashing, ['X', 'Hold to take apart'], [null, describe(piece)]);
       return { score, key: piece, dim: !act && !breaks, hold, act, use, prompt };
     },
 
